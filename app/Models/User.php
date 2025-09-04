@@ -45,4 +45,19 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function projects()
+    {
+        return $this->hasMany(Project::class);
+    }
+
+    public function activeProject()
+    {
+        return $this->hasOne(Project::class)->where('is_active', true)->latest();
+    }
+
+    public function preferences()
+    {
+        return $this->hasOne(UserPreference::class);
+    }
 }

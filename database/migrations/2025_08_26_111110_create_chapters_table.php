@@ -13,7 +13,20 @@ return new class extends Migration
     {
         Schema::create('chapters', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('project_id')->constrained()->onDelete('cascade');
+            $table->integer('chapter_number');
+            $table->string('title');
+            $table->longText('content')->nullable();
+            $table->enum('status', ['not_started', 'draft', 'in_review', 'approved'])->default('not_started');
+            $table->integer('word_count')->default(0);
+            $table->integer('target_word_count');
+            $table->json('outline')->nullable(); // Store chapter sections
+            $table->text('summary')->nullable(); // For context awareness
+            $table->integer('version')->default(1);
             $table->timestamps();
+
+            $table->unique(['project_id', 'chapter_number']);
+            $table->index('status');
         });
     }
 
