@@ -56,6 +56,24 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --animate-accordion-down: accordion-down 0.2s ease-out;
+    --animate-accordion-up: accordion-up 0.2s ease-out;
+    @keyframes accordion-down {
+        from {
+            height: 0;
+        }
+        to {
+            height: var(--reka-accordion-content-height);
+        }
+    }
+    @keyframes accordion-up {
+        from {
+            height: var(--reka-accordion-content-height);
+        }
+        to {
+            height: 0;
+        }
+    }
 }
 
 /*
@@ -164,4 +182,138 @@
     body {
         @apply bg-background text-foreground;
     }
+}
+
+/* Filament Stats Overview Widget CSS */
+.fi-wi-stats-overview {
+    display: grid;
+    gap: 1rem 0;
+}
+
+.fi-wi-stats-overview-header {
+    display: grid;
+    gap: 0.25rem 0;
+}
+
+.fi-wi-stats-overview-header-heading {
+    grid-column: 1 / -1;
+    font-size: 1rem;
+    line-height: 1.5;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+}
+
+.fi-wi-stats-overview-header-description {
+    overflow: hidden;
+    word-wrap: break-word;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.fi-wi-stats-overview-stats-ctn {
+    display: grid;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    .fi-wi-stats-overview-stats-ctn.md\:grid-cols-1 {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    .fi-wi-stats-overview-stats-ctn.md\:grid-cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .fi-wi-stats-overview-stats-ctn.md\:grid-cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1280px) {
+    .fi-wi-stats-overview-stats-ctn.md\:grid-cols-2.xl\:grid-cols-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+.fi-wi-stats-overview-stat {
+    position: relative;
+    border-radius: 0.75rem;
+    background-color: hsl(var(--card));
+    padding: 1.5rem;
+    box-shadow:
+        0 1px 3px 0 rgba(0, 0, 0, 0.1),
+        0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    border-width: 0.5px;
+    border-style: solid;
+    border-color: hsl(var(--border) / 0.5);
+}
+
+/* Ensure Filament stat card styles override default card styles */
+[data-slot='card'].fi-wi-stats-overview-stat {
+    border-width: 0.5px !important;
+    border-color: hsl(var(--border) / 0.5) !important;
+    box-shadow:
+        0 1px 3px 0 rgba(0, 0, 0, 0.1),
+        0 1px 2px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.fi-wi-stats-overview-stat > div {
+    display: grid;
+    gap: 0.5rem 0;
+}
+
+.fi-wi-stats-overview-stat .flex {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fi-wi-stats-overview-stat .flex.gap-x-1 {
+    gap: 0.25rem;
+}
+
+.fi-wi-stats-overview-stat-icon {
+    height: 1.25rem;
+    width: 1.25rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.fi-wi-stats-overview-stat-label {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+}
+
+.fi-wi-stats-overview-stat-value {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: hsl(var(--foreground));
+}
+
+.fi-wi-stats-overview-stat-description {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.fi-wi-stats-overview-stat-description-icon {
+    height: 1.25rem;
+    width: 1.25rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.fi-wi-stats-overview-stat-chart {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    border-bottom-left-radius: 0.75rem;
+    border-bottom-right-radius: 0.75rem;
+}
+
+.fi-wi-stats-overview-stat-chart canvas {
+    height: 1.5rem;
 }

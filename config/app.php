@@ -123,4 +123,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Chrome Path for Browsershot
+    |--------------------------------------------------------------------------
+    |
+    | This value determines the path to the Chrome executable used by
+    | Browsershot for PDF generation. Leave empty for auto-detection.
+    |
+    */
+
+    'chrome_path' => env('BROWSERSHOT_CHROME_PATH'),
+
 ];
