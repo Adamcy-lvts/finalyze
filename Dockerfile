@@ -25,6 +25,17 @@ RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
 RUN curl -sL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs
 
+# Update package sources and install Chromium
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    wget \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] https://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable
+
 ENV PATH /node_modules/.bin:$PATH
 
 # Install Composer
