@@ -48,7 +48,7 @@ const currentPasswordInput = ref<HTMLInputElement | null>(null);
                             ref="currentPasswordInput"
                             name="current_password"
                             type="password"
-                            class="block w-full mt-1"
+                            class="mt-1 block w-full"
                             autocomplete="current-password"
                             placeholder="Current password"
                         />
@@ -62,7 +62,7 @@ const currentPasswordInput = ref<HTMLInputElement | null>(null);
                             ref="passwordInput"
                             name="password"
                             type="password"
-                            class="block w-full mt-1"
+                            class="mt-1 block w-full"
                             autocomplete="new-password"
                             placeholder="New password"
                         />
@@ -75,7 +75,7 @@ const currentPasswordInput = ref<HTMLInputElement | null>(null);
                             id="password_confirmation"
                             name="password_confirmation"
                             type="password"
-                            class="block w-full mt-1"
+                            class="mt-1 block w-full"
                             autocomplete="new-password"
                             placeholder="Confirm password"
                         />

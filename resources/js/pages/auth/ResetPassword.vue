@@ -30,7 +30,7 @@ const inputEmail = ref(props.email);
             <div class="grid gap-6">
                 <div class="grid gap-2">
                     <Label for="email">Email</Label>
-                    <Input id="email" type="email" name="email" autocomplete="email" v-model="inputEmail" class="block w-full mt-1" readonly />
+                    <Input id="email" type="email" name="email" autocomplete="email" v-model="inputEmail" class="mt-1 block w-full" readonly />
                     <InputError :message="errors.email" class="mt-2" />
                 </div>
 
@@ -41,7 +41,7 @@ const inputEmail = ref(props.email);
                         type="password"
                         name="password"
                         autocomplete="new-password"
-                        class="block w-full mt-1"
+                        class="mt-1 block w-full"
                         autofocus
                         placeholder="Password"
                     />
@@ -55,14 +55,14 @@ const inputEmail = ref(props.email);
                         type="password"
                         name="password_confirmation"
                         autocomplete="new-password"
-                        class="block w-full mt-1"
+                        class="mt-1 block w-full"
                         placeholder="Confirm password"
                     />
                     <InputError :message="errors.password_confirmation" />
                 </div>
 
-                <Button type="submit" class="w-full mt-4" :disabled="processing">
-                    <LoaderCircle v-if="processing" class="w-4 h-4 animate-spin" />
+                <Button type="submit" class="mt-4 w-full" :disabled="processing">
+                    <LoaderCircle v-if="processing" class="h-4 w-4 animate-spin" />
                     Reset password
                 </Button>
             </div>

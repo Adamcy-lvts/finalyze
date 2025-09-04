@@ -53,13 +53,13 @@ import { LoaderCircle } from 'lucide-vue-next';
                     <InputError :message="errors.password_confirmation" />
                 </div>
 
-                <Button type="submit" class="w-full mt-2" tabindex="5" :disabled="processing">
-                    <LoaderCircle v-if="processing" class="w-4 h-4 animate-spin" />
+                <Button type="submit" class="mt-2 w-full" tabindex="5" :disabled="processing">
+                    <LoaderCircle v-if="processing" class="h-4 w-4 animate-spin" />
                     Create account
                 </Button>
             </div>
 
-            <div class="text-sm text-center text-muted-foreground">
+            <div class="text-center text-sm text-muted-foreground">
                 Already have an account?
                 <TextLink :href="route('login')" class="underline underline-offset-4" :tabindex="6">Log in</TextLink>
             </div>
