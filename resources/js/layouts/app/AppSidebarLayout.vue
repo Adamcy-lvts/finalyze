@@ -8,15 +8,19 @@ import type { BreadcrumbItemType } from '@/types';
 
 interface Props {
     breadcrumbs?: BreadcrumbItemType[];
+    class?: string;
+    title?: string;
 }
 
 withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
+    class: '',
+    title: '',
 });
 </script>
 
 <template>
-    <AppShell variant="sidebar">
+    <AppShell variant="sidebar" :class="$props.class">
         <AppSidebar />
         <AppContent variant="sidebar" class="overflow-x-hidden">
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
@@ -24,5 +28,10 @@ withDefaults(defineProps<Props>(), {
         </AppContent>
     </AppShell>
     <!-- Sonner Toast Container -->
-    <Toaster />
+    <Toaster
+        position="top-right"
+        :expand="false"
+        :rich-colors="true"
+        :close-button="true"
+    />
 </template>

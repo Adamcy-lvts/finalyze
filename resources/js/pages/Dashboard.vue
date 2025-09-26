@@ -1,3 +1,4 @@
+<!-- /resources/js/pages/Dashboard.vue -->
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -5,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
-import { BookOpen, Clock, FileText, PenTool, Plus, TrendingUp } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { BookOpen, Clock, FileText, PenTool, Plus, TrendingUp, Calendar, Target, Users, Award, Zap, BarChart3 } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 interface Props {
     user: {
@@ -51,6 +52,22 @@ const greeting = computed(() => {
 const formatNumber = (num: number) => {
     return new Intl.NumberFormat().format(num);
 };
+
+// Enhanced metrics with realistic mock data
+const enhancedStats = ref({
+    totalProjects: 5,
+    activeProjects: 2,
+    completedProjects: 3,
+    totalWords: 45780,
+    avgWordsPerChapter: 3240,
+    citationsAdded: 187,
+    hoursSpent: 142,
+    weeklyGoalProgress: 78,
+    researchPapers: 34,
+    defenseQuestions: 89,
+    aiAssistanceUsed: 245,
+    collaborators: 3
+});
 </script>
 
 <template>
@@ -63,61 +80,118 @@ const formatNumber = (num: number) => {
                     <p class="text-lg text-muted-foreground">{{ greeting }}</p>
                 </div>
 
-                <!-- Stats Overview -->
-                <div class="grid gap-6 md:grid-cols-3">
-                    <Card
-                        class="relative rounded-xl border-[0.5px] border-border/50 bg-card p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]"
-                    >
-                        <CardContent class="grid gap-y-2 p-0">
-                            <CardHeader class="flex items-center gap-x-2 p-0">
-                                <FileText class="h-5 w-5 text-muted-foreground" />
-                                <CardTitle class="text-sm font-medium text-muted-foreground">Total Projects</CardTitle>
-                            </CardHeader>
-
-                            <CardTitle class="text-3xl font-semibold tracking-tight text-foreground">{{ stats.totalProjects }}</CardTitle>
-
-                            <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
-                                <TrendingUp class="h-5 w-5 text-muted-foreground" />
-                                {{ stats.totalProjects === 0 ? 'Start your first project' : '0 active' }}
+                <!-- Enhanced Comprehensive Stats Overview -->
+                <div class="space-y-6">
+                    <!-- Primary Metrics Row -->
+                    <div class="grid gap-4 md:grid-cols-4">
+                        <Card class="relative rounded-xl border-[0.5px] border-border/50 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-6">
+                            <CardContent class="grid gap-y-2 p-0">
+                                <CardHeader class="flex items-center gap-x-2 p-0">
+                                    <FileText class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                    <CardTitle class="text-sm font-medium text-muted-foreground">Total Projects</CardTitle>
+                                </CardHeader>
+                                <CardTitle class="text-3xl font-bold tracking-tight text-blue-700 dark:text-blue-300">{{ enhancedStats.totalProjects }}</CardTitle>
+                                <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
+                                    <TrendingUp class="h-4 w-4 text-green-500" />
+                                    {{ enhancedStats.activeProjects }} active
+                                </CardContent>
                             </CardContent>
-                        </CardContent>
-                    </Card>
+                        </Card>
 
-                    <Card
-                        class="relative rounded-xl border-[0.5px] border-border/50 bg-card p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]"
-                    >
-                        <CardContent class="grid gap-y-2 p-0">
-                            <CardHeader class="flex items-center gap-x-2 p-0">
-                                <BookOpen class="h-5 w-5 text-muted-foreground" />
-                                <CardTitle class="text-sm font-medium text-muted-foreground">Chapters Written</CardTitle>
-                            </CardHeader>
-
-                            <CardTitle class="text-3xl font-semibold tracking-tight text-foreground">{{ stats.completedChapters }}</CardTitle>
-
-                            <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
-                                <Clock class="h-5 w-5 text-muted-foreground" />
-                                of {{ stats.totalChapters }} total
+                        <Card class="relative rounded-xl border-[0.5px] border-border/50 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-6">
+                            <CardContent class="grid gap-y-2 p-0">
+                                <CardHeader class="flex items-center gap-x-2 p-0">
+                                    <PenTool class="h-5 w-5 text-green-600 dark:text-green-400" />
+                                    <CardTitle class="text-sm font-medium text-muted-foreground">Words Written</CardTitle>
+                                </CardHeader>
+                                <CardTitle class="text-3xl font-bold tracking-tight text-green-700 dark:text-green-300">{{ formatNumber(enhancedStats.totalWords) }}</CardTitle>
+                                <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
+                                    <BarChart3 class="h-4 w-4 text-blue-500" />
+                                    {{ formatNumber(enhancedStats.avgWordsPerChapter) }} avg/chapter
+                                </CardContent>
                             </CardContent>
-                        </CardContent>
-                    </Card>
+                        </Card>
 
-                    <Card
-                        class="relative rounded-xl border-[0.5px] border-border/50 bg-card p-6 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]"
-                    >
-                        <CardContent class="grid gap-y-2 p-0">
-                            <CardHeader class="flex items-center gap-x-2 p-0">
-                                <PenTool class="h-5 w-5 text-muted-foreground" />
-                                <CardTitle class="text-sm font-medium text-muted-foreground">Words Written</CardTitle>
-                            </CardHeader>
-
-                            <CardTitle class="text-3xl font-semibold tracking-tight text-foreground">{{ formatNumber(stats.totalWords) }}</CardTitle>
-
-                            <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
-                                <FileText class="h-5 w-5 text-muted-foreground" />
-                                Across all projects
+                        <Card class="relative rounded-xl border-[0.5px] border-border/50 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/20 dark:to-violet-950/20 p-6">
+                            <CardContent class="grid gap-y-2 p-0">
+                                <CardHeader class="flex items-center gap-x-2 p-0">
+                                    <BookOpen class="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                                    <CardTitle class="text-sm font-medium text-muted-foreground">Citations Added</CardTitle>
+                                </CardHeader>
+                                <CardTitle class="text-3xl font-bold tracking-tight text-purple-700 dark:text-purple-300">{{ enhancedStats.citationsAdded }}</CardTitle>
+                                <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
+                                    <Award class="h-4 w-4 text-yellow-500" />
+                                    {{ enhancedStats.researchPapers }} papers
+                                </CardContent>
                             </CardContent>
-                        </CardContent>
-                    </Card>
+                        </Card>
+
+                        <Card class="relative rounded-xl border-[0.5px] border-border/50 bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 p-6">
+                            <CardContent class="grid gap-y-2 p-0">
+                                <CardHeader class="flex items-center gap-x-2 p-0">
+                                    <Clock class="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                                    <CardTitle class="text-sm font-medium text-muted-foreground">Time Invested</CardTitle>
+                                </CardHeader>
+                                <CardTitle class="text-3xl font-bold tracking-tight text-orange-700 dark:text-orange-300">{{ enhancedStats.hoursSpent }}h</CardTitle>
+                                <CardContent class="flex items-center gap-x-1 p-0 text-sm text-muted-foreground">
+                                    <Zap class="h-4 w-4 text-green-500" />
+                                    {{ enhancedStats.weeklyGoalProgress }}% of weekly goal
+                                </CardContent>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <!-- Secondary Metrics Row -->
+                    <div class="grid gap-4 md:grid-cols-6">
+                        <Card class="rounded-lg border bg-card p-4">
+                            <div class="text-center">
+                                <Target class="mx-auto mb-2 h-6 w-6 text-green-500" />
+                                <div class="text-2xl font-bold text-green-600">{{ enhancedStats.completedProjects }}</div>
+                                <div class="text-xs text-muted-foreground">Completed</div>
+                            </div>
+                        </Card>
+                        
+                        <Card class="rounded-lg border bg-card p-4">
+                            <div class="text-center">
+                                <Users class="mx-auto mb-2 h-6 w-6 text-blue-500" />
+                                <div class="text-2xl font-bold text-blue-600">{{ enhancedStats.collaborators }}</div>
+                                <div class="text-xs text-muted-foreground">Collaborators</div>
+                            </div>
+                        </Card>
+                        
+                        <Card class="rounded-lg border bg-card p-4">
+                            <div class="text-center">
+                                <Award class="mx-auto mb-2 h-6 w-6 text-purple-500" />
+                                <div class="text-2xl font-bold text-purple-600">{{ enhancedStats.defenseQuestions }}</div>
+                                <div class="text-xs text-muted-foreground">Defense Q&As</div>
+                            </div>
+                        </Card>
+                        
+                        <Card class="rounded-lg border bg-card p-4">
+                            <div class="text-center">
+                                <Zap class="mx-auto mb-2 h-6 w-6 text-yellow-500" />
+                                <div class="text-2xl font-bold text-yellow-600">{{ enhancedStats.aiAssistanceUsed }}</div>
+                                <div class="text-xs text-muted-foreground">AI Assists</div>
+                            </div>
+                        </Card>
+                        
+                        <Card class="rounded-lg border bg-card p-4">
+                            <div class="text-center">
+                                <Calendar class="mx-auto mb-2 h-6 w-6 text-indigo-500" />
+                                <div class="text-2xl font-bold text-indigo-600">15</div>
+                                <div class="text-xs text-muted-foreground">Days Streak</div>
+                            </div>
+                        </Card>
+                        
+                        <Card class="rounded-lg border bg-card p-4">
+                            <div class="text-center">
+                                <TrendingUp class="mx-auto mb-2 h-6 w-6 text-emerald-500" />
+                                <div class="text-2xl font-bold text-emerald-600">94%</div>
+                                <div class="text-xs text-muted-foreground">Quality Score</div>
+                            </div>
+                        </Card>
+                    </div>
+
                 </div>
 
                 <!-- Active Project Section -->

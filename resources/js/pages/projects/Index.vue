@@ -1,8 +1,17 @@
-<!-- resources/js/Pages/Projects/Index.vue -->
+<!-- /resources/js/pages/projects/Index.vue -->
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
@@ -10,24 +19,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
-import { 
-  CheckCircle, 
-  Eye, 
-  MoreVertical, 
-  Plus, 
-  Trash2, 
-  Search, 
-  Filter, 
-  Grid3x3, 
-  List, 
-  Clock, 
-  BookOpen, 
+import { ref, computed, watchEffect } from 'vue';
+import {
+  CheckCircle,
+  Eye,
+  MoreVertical,
+  Plus,
+  Trash2,
+  Search,
+  Filter,
+  Grid3x3,
+  List,
+  Clock,
+  BookOpen,
   GraduationCap,
   TrendingUp,
   Star,
   Target,
-  FileText
+  FileText,
+  X
 } from 'lucide-vue-next';
 
 interface Project {
@@ -57,6 +67,18 @@ const typeFilter = ref('all');
 const sortBy = ref('created_at');
 const sortOrder = ref<'asc' | 'desc'>('desc');
 const viewMode = ref<'grid' | 'list'>('grid');
+
+// Bulk selection state
+const selectedProjects = ref<number[]>([]);
+const selectAll = ref(false);
+const selectAllIndeterminate = ref(false);
+const showBulkDeleteConfirmation = ref(false);
+const bulkDeleting = ref(false);
+
+// Individual delete state
+const showIndividualDeleteConfirmation = ref(false);
+const projectToDelete = ref<Project | null>(null);
+const individualDeleting = ref(false);
 
 // Computed filtered and sorted projects
 const filteredProjects = computed(() => {
@@ -153,11 +175,133 @@ const setActiveProject = (projectSlug: string) => {
     router.post(route('projects.set-active', projectSlug));
 };
 
-const deleteProject = (projectSlug: string) => {
-    if (confirm('Are you sure you want to delete this project?')) {
-        router.delete(route('projects.destroy', projectSlug));
+const deleteProject = (project: Project) => {
+    projectToDelete.value = project;
+    showIndividualDeleteConfirmation.value = true;
+};
+
+const confirmIndividualDelete = async () => {
+    if (!projectToDelete.value) return;
+
+    const projectId = projectToDelete.value.id;
+    const projectSlug = projectToDelete.value.slug;
+
+    individualDeleting.value = true;
+
+    try {
+        router.delete(route('projects.destroy', projectSlug), {
+            onSuccess: () => {
+                showIndividualDeleteConfirmation.value = false;
+                projectToDelete.value = null;
+                // Clear selection if deleted project was selected
+                if (selectedProjects.value.includes(projectId)) {
+                    selectedProjects.value = selectedProjects.value.filter(id => id !== projectId);
+                    updateSelectAllState();
+                }
+            },
+            onError: () => {
+                alert('Failed to delete project. Please try again.');
+            },
+            onFinish: () => {
+                individualDeleting.value = false;
+            }
+        });
+    } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('An error occurred while deleting the project.');
+        individualDeleting.value = false;
     }
 };
+
+// Bulk selection functions
+const toggleProjectSelection = (projectId: number) => {
+    const index = selectedProjects.value.indexOf(projectId);
+    if (index > -1) {
+        selectedProjects.value.splice(index, 1);
+    } else {
+        selectedProjects.value.push(projectId);
+    }
+    updateSelectAllState();
+};
+
+const toggleSelectAll = () => {
+    if (selectAll.value || selectAllIndeterminate.value) {
+        // If all selected or some selected, clear all
+        selectedProjects.value = [];
+    } else {
+        // If none selected, select all filtered projects
+        selectedProjects.value = filteredProjects.value.map(project => project.id);
+    }
+    updateSelectAllState();
+};
+
+const updateSelectAllState = () => {
+    const selectedCount = selectedProjects.value.length;
+    const totalCount = filteredProjects.value.length;
+
+    if (selectedCount === 0) {
+        selectAll.value = false;
+        selectAllIndeterminate.value = false;
+    } else if (selectedCount === totalCount) {
+        selectAll.value = true;
+        selectAllIndeterminate.value = false;
+    } else {
+        // Intermediate state: some but not all selected
+        selectAll.value = false;
+        selectAllIndeterminate.value = true;
+    }
+};
+
+const clearSelection = () => {
+    selectedProjects.value = [];
+    selectAll.value = false;
+};
+
+const bulkDeleteProjects = async () => {
+    if (selectedProjects.value.length === 0) return;
+
+    bulkDeleting.value = true;
+
+    try {
+        const response = await fetch(route('projects.bulk-destroy'), {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            },
+            body: JSON.stringify({
+                project_ids: selectedProjects.value
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Refresh the page to show updated projects
+            router.reload();
+        } else {
+            alert('Error deleting projects: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error deleting projects:', error);
+        alert('An error occurred while deleting projects.');
+    } finally {
+        bulkDeleting.value = false;
+        showBulkDeleteConfirmation.value = false;
+        clearSelection();
+    }
+};
+
+const selectedProjectsCount = computed(() => selectedProjects.value.length);
+const hasSelectedProjects = computed(() => selectedProjectsCount.value > 0);
+
+// Watch for changes in filtered projects and update select all state
+watchEffect(() => {
+    // Remove selected projects that are no longer in filtered results
+    const filteredIds = filteredProjects.value.map(p => p.id);
+    selectedProjects.value = selectedProjects.value.filter(id => filteredIds.includes(id));
+    updateSelectAllState();
+});
 </script>
 
 <template>
@@ -238,6 +382,18 @@ const deleteProject = (projectSlug: string) => {
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <!-- Search and Filters -->
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <!-- Select All Checkbox -->
+                            <div class="flex items-center gap-2">
+                                <Checkbox
+                                    :checked="selectAll"
+                                    @update:checked="toggleSelectAll"
+                                    aria-label="Select all projects"
+                                />
+                                <span class="text-sm text-muted-foreground">
+                                    {{ selectAll ? 'Deselect All' : selectAllIndeterminate ? `Select All (${selectedProjectsCount} selected)` : 'Select All' }}
+                                </span>
+                            </div>
+
                             <div class="relative">
                                 <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                 <Input
@@ -305,6 +461,33 @@ const deleteProject = (projectSlug: string) => {
                         </div>
                     </div>
 
+                    <!-- Bulk Actions Toolbar -->
+                    <div v-if="hasSelectedProjects" class="flex items-center justify-between p-4 bg-primary/5 border border-primary/20 rounded-lg shadow-sm">
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2">
+                                <CheckCircle class="h-4 w-4 text-primary" />
+                                <span class="text-sm font-medium text-primary">
+                                    {{ selectedProjectsCount }} project{{ selectedProjectsCount === 1 ? '' : 's' }} selected
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                @click="showBulkDeleteConfirmation = true"
+                                :disabled="bulkDeleting"
+                            >
+                                <Trash2 class="mr-2 h-4 w-4" />
+                                Delete Selected
+                            </Button>
+                            <Button variant="outline" size="sm" @click="clearSelection">
+                                <X class="mr-2 h-4 w-4" />
+                                Clear Selection
+                            </Button>
+                        </div>
+                    </div>
+
                     <!-- Results Counter -->
                     <div class="text-sm text-muted-foreground">
                         {{ filteredProjects.length }} of {{ totalProjects }} projects
@@ -320,13 +503,24 @@ const deleteProject = (projectSlug: string) => {
                             :key="project.id"
                             :class="[
                                 'group relative cursor-pointer transition-all duration-200 hover:shadow-lg',
-                                { '': project.is_active },
+                                {
+                                    '': project.is_active,
+                                    'ring-2 ring-primary/20 bg-primary/5': selectedProjects.includes(project.id)
+                                },
                             ]"
-                            @click="() => router.visit(route('projects.show', project.slug))"
+                            @click.stop="() => router.visit(route('projects.show', project.slug))"
                         >
                             <CardHeader class="pb-4">
                                 <div class="flex items-start justify-between">
                                     <div class="flex items-center gap-2">
+                                        <Checkbox
+                                            :checked="selectedProjects.includes(project.id)"
+                                            @update:checked="() => toggleProjectSelection(project.id)"
+                                            @click.stop
+                                            aria-label="Select project"
+                                            class="opacity-60 group-hover:opacity-100 transition-opacity"
+                                            :class="{ 'opacity-100': selectedProjects.includes(project.id) }"
+                                        />
                                         <component :is="getProjectIcon(project.type)" class="h-4 w-4 text-muted-foreground" />
                                         <Badge
                                             v-if="project.is_active"
@@ -359,7 +553,7 @@ const deleteProject = (projectSlug: string) => {
                                                 Set Active
                                             </DropdownMenuItem>
                                             <DropdownMenuItem
-                                                @click.stop="deleteProject(project.slug)"
+                                                @click.stop="deleteProject(project)"
                                                 class="text-destructive"
                                             >
                                                 <Trash2 class="mr-2 h-3 w-3" />
@@ -408,13 +602,24 @@ const deleteProject = (projectSlug: string) => {
                             :key="project.id"
                             :class="[
                                 'group cursor-pointer transition-all duration-200 hover:shadow-lg',
-                                { 'ring-2 ring-primary/20 border-primary': project.is_active }
+                                {
+                                    'ring-2 ring-primary/20 border-primary': project.is_active,
+                                    'ring-2 ring-primary/20 bg-primary/5': selectedProjects.includes(project.id)
+                                }
                             ]"
-                            @click="() => router.visit(route('projects.show', project.slug))"
+                            @click.stop="() => router.visit(route('projects.show', project.slug))"
                         >
                             <CardContent class="py-4">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3 min-w-0 flex-1">
+                                        <Checkbox
+                                            :checked="selectedProjects.includes(project.id)"
+                                            @update:checked="() => toggleProjectSelection(project.id)"
+                                            @click.stop
+                                            aria-label="Select project"
+                                            class="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                            :class="{ 'opacity-100': selectedProjects.includes(project.id) }"
+                                        />
                                         <component :is="getProjectIcon(project.type)" class="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                         <div class="min-w-0 flex-1">
                                             <div class="flex items-center gap-2 mb-1">
@@ -467,7 +672,7 @@ const deleteProject = (projectSlug: string) => {
                                                     Set Active
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem
-                                                    @click.stop="deleteProject(project.slug)"
+                                                    @click.stop="deleteProject(project)"
                                                     class="text-destructive"
                                                 >
                                                     <Trash2 class="mr-2 h-3 w-3" />
@@ -539,5 +744,67 @@ const deleteProject = (projectSlug: string) => {
                 </Card>
             </div>
         </div>
+
+        <!-- Bulk Delete Confirmation Modal -->
+        <Dialog :open="showBulkDeleteConfirmation" @update:open="showBulkDeleteConfirmation = $event">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Delete Selected Projects</DialogTitle>
+                    <DialogDescription>
+                        Are you sure you want to delete {{ selectedProjectsCount }} project{{ selectedProjectsCount === 1 ? '' : 's' }}?
+                        This action cannot be undone and will permanently remove the selected projects and all their data.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:space-x-2">
+                    <Button
+                        variant="outline"
+                        @click="showBulkDeleteConfirmation = false"
+                        :disabled="bulkDeleting"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        @click="bulkDeleteProjects"
+                        :disabled="bulkDeleting"
+                    >
+                        <Trash2 v-if="!bulkDeleting" class="mr-2 h-4 w-4" />
+                        <div v-else class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent"></div>
+                        {{ bulkDeleting ? 'Deleting...' : 'Delete Projects' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Individual Delete Confirmation Modal -->
+        <Dialog :open="showIndividualDeleteConfirmation" @update:open="showIndividualDeleteConfirmation = $event">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Delete Project</DialogTitle>
+                    <DialogDescription>
+                        Are you sure you want to delete "{{ projectToDelete?.title || 'Untitled Project' }}"?
+                        This action cannot be undone and will permanently remove the project and all its data.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:space-x-2">
+                    <Button
+                        variant="outline"
+                        @click="showIndividualDeleteConfirmation = false"
+                        :disabled="individualDeleting"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        @click="confirmIndividualDelete"
+                        :disabled="individualDeleting"
+                    >
+                        <Trash2 v-if="!individualDeleting" class="mr-2 h-4 w-4" />
+                        <div v-else class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent"></div>
+                        {{ individualDeleting ? 'Deleting...' : 'Delete Project' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

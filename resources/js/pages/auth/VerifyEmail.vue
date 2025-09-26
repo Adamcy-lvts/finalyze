@@ -1,3 +1,4 @@
+<!-- /resources/js/pages/auth/VerifyEmail.vue -->
 <script setup lang="ts">
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';

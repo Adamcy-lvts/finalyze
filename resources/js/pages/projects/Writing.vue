@@ -1,15 +1,17 @@
-<!-- resources/js/Pages/Projects/Writing.vue -->
+<!-- /resources/js/pages/projects/Writing.vue -->
 <script setup lang="ts">
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import { Toggle } from '@/components/ui/toggle';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import { Activity, ArrowLeft, BookOpen, Brain, Clock, Edit, FileText, Play, Target, Zap } from 'lucide-vue-next';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 
@@ -59,6 +61,62 @@ const props = defineProps<Props>();
 const activeTab = ref('overview');
 const isGenerating = ref(false);
 const generationType = ref<'progressive' | 'bulk'>('progressive');
+const isTogglingMode = ref(false);
+const currentMode = ref(props.project.mode);
+
+// Watch for prop changes to sync currentMode with server state
+watch(() => props.project.mode, (newMode) => {
+    console.log('🔄 Project mode prop changed to:', newMode);
+    currentMode.value = newMode;
+}, { immediate: true });
+
+// Dialog state for mode confirmation
+const showModeConfirmDialog = ref(false);
+const pendingNewMode = ref<'auto' | 'manual'>('auto');
+
+// Dialog state for bulk generation confirmation
+const showBulkGenerationDialog = ref(false);
+const showTopicApprovalDialog = ref(false);
+
+// Debug project mode on load
+console.log('🔍 PROJECT MODE DEBUG:', {
+    projectMode: props.project.mode,
+    currentMode: currentMode.value,
+    projectData: props.project
+});
+
+// Regular ref for Switch state - will be manually synced
+const isAutoMode = ref(currentMode.value === 'auto');
+
+// Watch currentMode changes and update switch state
+watch(currentMode, (newMode) => {
+    console.log('🔄 currentMode changed to:', newMode);
+    isAutoMode.value = newMode === 'auto';
+}, { immediate: true });
+
+// Handle switch toggle clicks
+const handleSwitchToggle = () => {
+    if (isTogglingMode.value) {
+        console.log('🔄 SWITCH DISABLED - currently toggling');
+        return;
+    }
+
+    const newMode = currentMode.value === 'auto' ? 'manual' : 'auto';
+    console.log('🔄 SWITCH CLICKED:', {
+        currentMode: currentMode.value,
+        willChangeTo: newMode
+    });
+
+    // Set pending mode and show confirmation dialog
+    pendingNewMode.value = newMode;
+    showModeConfirmDialog.value = true;
+};
+
+console.log('🔍 INITIAL TOGGLE STATE:', {
+    currentMode: currentMode.value,
+    isAutoMode: isAutoMode.value,
+    shouldBeChecked: currentMode.value === 'auto'
+});
 
 /**
  * COMPUTED PROPERTIES FOR PROGRESS TRACKING
@@ -73,7 +131,7 @@ const progressPercentage = computed(() => {
 });
 
 const completedChapters = computed(() => {
-    return props.project.chapters.filter((chapter) => chapter.status === 'completed').length;
+    return props.project.chapters.filter((chapter) => chapter.status === 'approved').length;
 });
 
 const nextChapterNumber = computed(() => {
@@ -142,32 +200,22 @@ const timeSinceLastUpdate = computed(() => {
 
 onMounted(() => {
     // Auto-select appropriate tab based on writing mode
-    activeTab.value = props.project.mode === 'auto' ? 'ai-generation' : 'manual-writing';
+    activeTab.value = currentMode.value === 'auto' ? 'ai-generation' : 'manual-writing';
 });
 
 /**
  * AI CHAPTER GENERATION - AUTO MODE
  * Opens the editor with streaming AI generation
  */
-const generateChapter = (type: 'single' | 'progressive' | 'bulk') => {
+const generateChapter = (type: 'single' | 'progressive' | 'bulk', specificChapter?: number) => {
     if (type === 'bulk') {
-        const maxChapters = maxAllowedChapters.value;
-        // For bulk generation, we'll handle it differently - maybe show a confirmation dialog
-        if (
-            confirm(
-                `Generate all ${maxChapters} chapters at once? This will create complete drafts for all chapters defined in your project category.`,
-            )
-        ) {
-            // Navigate to a bulk generation page or handle bulk generation differently
-            toast('Bulk Generation', {
-                description: 'Bulk generation coming soon. For now, please generate chapters one by one.',
-            });
-        }
+        // Show bulk generation confirmation dialog
+        showBulkGenerationDialog.value = true;
         return;
     }
 
-    // Check if we can generate more chapters
-    const chapterNumber = nextChapterNumber.value;
+    // Use specific chapter number if provided, otherwise use next available
+    const chapterNumber = specificChapter || nextChapterNumber.value;
     if (!chapterNumber) {
         toast('Chapter Limit Reached', {
             description: `You have reached the maximum number of chapters (${maxAllowedChapters.value}) for this project category.`,
@@ -175,9 +223,17 @@ const generateChapter = (type: 'single' | 'progressive' | 'bulk') => {
         return;
     }
 
-    // For single/progressive generation, navigate to the chapter editor with AI streaming
+    // Check if chapter already has content
+    const existingChapter = props.project.chapters.find(c => c.chapter_number === chapterNumber);
+    if (existingChapter && existingChapter.content && existingChapter.content.trim() !== '') {
+        if (!confirm(`Chapter ${chapterNumber} already has content. Do you want to regenerate it?`)) {
+            return;
+        }
+    }
+
+    // For single/progressive generation, navigate to the chapter write mode with AI streaming
     router.visit(
-        route('chapters.edit', {
+        route('chapters.write', {
             project: props.project.slug,
             chapter: chapterNumber,
         }) +
@@ -193,6 +249,46 @@ const generateChapter = (type: 'single' | 'progressive' | 'bulk') => {
 const editChapter = (chapterNumber: number) => {
     router.visit(
         route('chapters.edit', {
+            project: props.project.slug,
+            chapter: chapterNumber,
+        }),
+    );
+};
+
+/**
+ * NAVIGATE TO APPROPRIATE CHAPTER MODE
+ * Uses write mode for new chapters, edit mode for existing ones
+ */
+const goToChapter = (chapterNumber: number) => {
+    const chapter = props.project.chapters.find(c => c.chapter_number === chapterNumber);
+    const hasContent = chapter?.content && chapter.content.trim() !== '';
+    
+    if (hasContent) {
+        // Chapter has content, use edit mode
+        router.visit(
+            route('chapters.edit', {
+                project: props.project.slug,
+                chapter: chapterNumber,
+            }),
+        );
+    } else {
+        // Chapter is new or empty, use write mode
+        router.visit(
+            route('chapters.write', {
+                project: props.project.slug,
+                chapter: chapterNumber,
+            }),
+        );
+    }
+};
+
+/**
+ * START NEW CHAPTER
+ * Always opens in write mode for new content creation
+ */
+const startChapter = (chapterNumber: number) => {
+    router.visit(
+        route('chapters.write', {
             project: props.project.slug,
             chapter: chapterNumber,
         }),
@@ -233,35 +329,126 @@ const getDefaultChapterTitle = (chapterNumber: number): string => {
 };
 
 /**
+ * CONFIRM MODE CHANGE
+ * Called when user confirms the mode change in the dialog
+ */
+const confirmModeChange = () => {
+    showModeConfirmDialog.value = false;
+    toggleWritingMode();
+};
+
+/**
+ * CONFIRM BULK GENERATION
+ * Called when user confirms the bulk generation in the dialog
+ */
+const confirmBulkGeneration = () => {
+    showBulkGenerationDialog.value = false;
+    // Navigate to bulk generation page
+    router.visit(route('projects.bulk-generate', props.project.slug) + '?start=true');
+};
+
+/**
+ * CONFIRM TOPIC APPROVAL RESET
+ * Called when user confirms going back to topic approval
+ */
+const confirmTopicApprovalReset = () => {
+    showTopicApprovalDialog.value = false;
+    try {
+        // Use Inertia router for better CSRF handling
+        router.post(
+            route('projects.go-back-to-topic-approval', props.project.slug),
+            {},
+            {
+                onSuccess: () => {
+                    toast('Success', {
+                        description: 'Returned to topic approval',
+                    });
+                },
+                onError: () => {
+                    toast('Error', {
+                        description: 'Failed to go back. Please try again.',
+                    });
+                },
+            },
+        );
+    } catch {
+        toast('Error', {
+            description: 'Failed to go back. Please try again.',
+        });
+    }
+};
+
+/**
+ * TOGGLE WRITING MODE
+ * Switch between Auto (AI Assisted) and Manual writing modes
+ */
+const toggleWritingMode = async () => {
+    const newMode = pendingNewMode.value;
+    const modeNames = { auto: 'AI Assisted', manual: 'Manual' };
+
+    console.log('🔄 TOGGLE - Function called', { currentMode: currentMode.value, newMode });
+    console.log('🔄 TOGGLE - Mode change', { from: currentMode.value, to: newMode });
+    console.log('🔄 TOGGLE - User confirmed, starting request');
+
+    isTogglingMode.value = true;
+
+    try {
+        const routeUrl = route('projects.update-mode', props.project.slug);
+        console.log('🔄 TOGGLE - Route URL:', routeUrl);
+
+        router.patch(
+            routeUrl,
+            { mode: newMode },
+            {
+                onSuccess: (page) => {
+                    console.log('🔄 TOGGLE - Success response:', page);
+
+                    // Update the current mode with the new value
+                    currentMode.value = newMode;
+
+                    // Show success message
+                    const flashMessage = (page.props?.flash as any)?.message || `Switched to ${modeNames[newMode]} writing mode`;
+                    toast('Success', {
+                        description: flashMessage,
+                    });
+
+                    // Update active tab based on new mode
+                    activeTab.value = newMode === 'auto' ? 'ai-generation' : 'manual-writing';
+
+                    console.log('🔄 TOGGLE - UI Updated:', {
+                        newMode,
+                        currentMode: currentMode.value,
+                        isAutoMode: isAutoMode.value,
+                        activeTab: activeTab.value
+                    });
+                },
+                onError: (errors) => {
+                    console.error('🔄 TOGGLE - Error response:', errors);
+                    toast('Error', {
+                        description: 'Failed to switch writing mode. Please try again.',
+                    });
+                },
+                onFinish: () => {
+                    console.log('🔄 TOGGLE - Request finished');
+                    isTogglingMode.value = false;
+                },
+            }
+        );
+    } catch (error) {
+        console.error('🔄 TOGGLE - Exception:', error);
+        toast('Error', {
+            description: 'Failed to switch writing mode. Please try again.',
+        });
+        isTogglingMode.value = false;
+    }
+};
+
+/**
  * GO BACK TO TOPIC APPROVAL
  * Allows users to modify their topic approval status
  */
-const goBackToTopicApproval = async () => {
-    if (confirm('This will reset your writing progress and return to topic approval. Continue?')) {
-        try {
-            // Use Inertia router for better CSRF handling
-            router.post(
-                route('projects.go-back-to-topic-approval', props.project.slug),
-                {},
-                {
-                    onSuccess: () => {
-                        toast('Success', {
-                            description: 'Returned to topic approval',
-                        });
-                    },
-                    onError: () => {
-                        toast('Error', {
-                            description: 'Failed to go back. Please try again.',
-                        });
-                    },
-                },
-            );
-        } catch {
-            toast('Error', {
-                description: 'Failed to go back. Please try again.',
-            });
-        }
-    }
+const goBackToTopicApproval = () => {
+    showTopicApprovalDialog.value = true;
 };
 </script>
 
@@ -284,12 +471,45 @@ const goBackToTopicApproval = async () => {
                 <h1 class="text-3xl font-bold">{{ project.title }}</h1>
                 <div class="flex items-center justify-center gap-4 text-sm">
                     <Badge variant="outline" class="capitalize">{{ project.type }}</Badge>
-                    <Badge :class="project.mode === 'auto' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'">
-                        <Brain v-if="project.mode === 'auto'" class="mr-1 h-3 w-3" />
+                    <Badge :class="currentMode === 'auto' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'">
+                        <Brain v-if="currentMode === 'auto'" class="mr-1 h-3 w-3" />
                         <Edit v-else class="mr-1 h-3 w-3" />
-                        {{ project.mode === 'auto' ? 'AI Assisted' : 'Manual Writing' }}
+                        {{ currentMode === 'auto' ? 'AI Assisted' : 'Manual Writing' }}
                     </Badge>
                 </div>
+
+                <!-- Writing Mode Toggle -->
+                <Card class="mx-auto max-w-md border-[0.5px] border-border/50 bg-gradient-to-r from-blue-50 to-purple-50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] dark:from-blue-900/20 dark:to-purple-900/20">
+                    <CardContent class="p-4">
+                        <div class="flex items-center justify-between gap-4">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-500">
+                                    <Brain v-if="currentMode === 'auto'" class="h-5 w-5 text-white" />
+                                    <Edit v-else class="h-5 w-5 text-white" />
+                                </div>
+                                <div>
+                                    <p class="font-medium text-foreground">Writing Mode</p>
+                                    <p class="text-xs text-muted-foreground">
+                                        {{ currentMode === 'auto' ? 'AI helps generate content' : 'Write everything manually' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <Toggle
+                                    v-model:pressed="isAutoMode"
+                                    :disabled="isTogglingMode"
+                                    @click="handleSwitchToggle"
+                                    class="px-6 py-2.5 font-semibold text-sm rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                                    :class="currentMode === 'auto'
+                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-blue-500/25 hover:shadow-blue-500/40 hover:from-blue-700 hover:to-purple-700 dark:from-blue-500 dark:to-purple-500 dark:shadow-blue-400/25 dark:hover:shadow-blue-400/40'
+                                        : 'bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 shadow-gray-300/50 hover:shadow-gray-400/60 hover:from-gray-200 hover:to-gray-300 dark:from-gray-800 dark:to-gray-700 dark:text-gray-200 dark:shadow-gray-900/50 dark:hover:shadow-gray-900/70'"
+                                >
+                                    {{ currentMode === 'auto' ? '✨ AI' : '✏️ Manual' }}
+                                </Toggle>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             <!-- Recent Activity & Continue Writing -->
@@ -323,10 +543,10 @@ const goBackToTopicApproval = async () => {
                             </div>
                         </div>
                         <Button
-                            @click="editChapter(lastWorkedChapter.chapter_number)"
+                            @click="startChapter(lastWorkedChapter.chapter_number)"
                             class="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 dark:from-amber-500 dark:to-orange-500 dark:hover:from-amber-600 dark:hover:to-orange-600"
                         >
-                            <Edit class="mr-2 h-4 w-4" />
+                            <Play class="mr-2 h-4 w-4" />
                             Resume Writing
                         </Button>
                     </div>
@@ -382,7 +602,7 @@ const goBackToTopicApproval = async () => {
                             <p class="text-sm text-muted-foreground">Jump into the editor and start writing your next chapter manually</p>
                         </div>
                         <Button
-                            @click="nextChapterNumber ? editChapter(nextChapterNumber) : null"
+                            @click="nextChapterNumber ? startChapter(nextChapterNumber) : null"
                             :disabled="!canGenerateMoreChapters"
                             size="lg"
                             class="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 dark:from-green-500 dark:to-blue-500 dark:hover:from-green-600 dark:hover:to-blue-600"
@@ -395,7 +615,7 @@ const goBackToTopicApproval = async () => {
 
                 <!-- Generate Chapter Button (for Auto mode) -->
                 <Card
-                    v-if="project.mode === 'auto'"
+                    v-if="currentMode === 'auto'"
                     class="border-[0.5px] border-border/50 bg-gradient-to-r from-purple-50 to-pink-50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] dark:from-purple-900/20 dark:to-pink-900/20"
                 >
                     <CardContent class="space-y-4 p-6 text-center">
@@ -462,8 +682,8 @@ const goBackToTopicApproval = async () => {
             <Tabs v-model="activeTab" class="space-y-6">
                 <TabsList class="grid w-full grid-cols-3">
                     <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="ai-generation" v-if="project.mode === 'auto'">AI Generation</TabsTrigger>
-                    <TabsTrigger value="manual-writing">{{ project.mode === 'auto' ? 'Edit Chapters' : 'Manual Writing' }}</TabsTrigger>
+                    <TabsTrigger value="ai-generation" v-if="currentMode === 'auto'">AI Generation</TabsTrigger>
+                    <TabsTrigger value="manual-writing">{{ currentMode === 'auto' ? 'Edit Chapters' : 'Manual Writing' }}</TabsTrigger>
                 </TabsList>
 
                 <!-- Overview Tab -->
@@ -488,16 +708,43 @@ const goBackToTopicApproval = async () => {
                             <CardContent>
                                 <div class="flex items-center justify-between">
                                     <div class="text-sm text-muted-foreground">{{ chapter.word_count.toLocaleString() }} words</div>
-                                    <Button
-                                        v-if="chapter.content && chapter.content.trim() !== ''"
-                                        @click="editChapter(chapter.chapter_number)"
-                                        size="sm"
-                                        variant="outline"
-                                    >
-                                        <Edit class="mr-1 h-4 w-4" />
-                                        Edit
-                                    </Button>
-                                    <Badge v-else variant="outline" class="text-xs text-muted-foreground"> Not Started </Badge>
+                                    <div class="flex gap-2">
+                                        <!-- Generate Button (for Auto mode and empty chapters) -->
+                                        <Button
+                                            v-if="currentMode === 'auto' && (!chapter.content || chapter.content.trim() === '')"
+                                            @click="generateChapter('progressive', chapter.chapter_number)"
+                                            size="sm"
+                                            class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                                        >
+                                            <Brain class="mr-1 h-4 w-4" />
+                                            Generate
+                                        </Button>
+
+                                        <!-- Edit Button (for chapters with content) -->
+                                        <Button
+                                            v-if="chapter.content && chapter.content.trim() !== ''"
+                                            @click="editChapter(chapter.chapter_number)"
+                                            size="sm"
+                                            variant="outline"
+                                        >
+                                            <Edit class="mr-1 h-4 w-4" />
+                                            Edit
+                                        </Button>
+
+                                        <!-- Start Button (for empty chapters) -->
+                                        <Button
+                                            v-else-if="currentMode === 'manual' || !currentMode"
+                                            @click="startChapter(chapter.chapter_number)"
+                                            size="sm"
+                                            variant="default"
+                                        >
+                                            <Edit class="mr-1 h-4 w-4" />
+                                            Start
+                                        </Button>
+
+                                        <!-- Not Started Badge (fallback) -->
+                                        <Badge v-else variant="outline" class="text-xs text-muted-foreground"> Not Started </Badge>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>
@@ -507,14 +754,14 @@ const goBackToTopicApproval = async () => {
                             <BookOpen class="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
                             <p class="mb-4 text-sm text-muted-foreground">
                                 No chapters created yet.
-                                {{ project.mode === 'auto' ? 'Use AI generation to get started.' : 'Create your first chapter manually.' }}
+                                {{ currentMode === 'auto' ? 'Use AI generation to get started.' : 'Create your first chapter manually.' }}
                             </p>
                         </div>
                     </div>
                 </TabsContent>
 
                 <!-- AI Generation Tab (Auto Mode Only) -->
-                <TabsContent v-if="project.mode === 'auto'" value="ai-generation" class="space-y-6">
+                <TabsContent v-if="currentMode === 'auto'" value="ai-generation" class="space-y-6">
                     <Card class="border-[0.5px] border-border/50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
                         <CardHeader>
                             <CardTitle class="flex items-center gap-2">
@@ -540,8 +787,8 @@ const goBackToTopicApproval = async () => {
                                     <label class="flex cursor-pointer items-center space-x-3 rounded-lg border p-4 hover:bg-muted/30">
                                         <input type="radio" v-model="generationType" value="bulk" class="h-4 w-4" />
                                         <div class="flex-1">
-                                            <p class="font-medium">⚡ Bulk Generation</p>
-                                            <p class="text-xs text-muted-foreground">Generate all chapters at once for complete first draft</p>
+                                            <p class="font-medium">⚡ Complete Project Generation</p>
+                                            <p class="text-xs text-muted-foreground">Generate entire project with literature, chapters, references, and appendices</p>
                                         </div>
                                     </label>
                                 </div>
@@ -583,10 +830,10 @@ const goBackToTopicApproval = async () => {
                                     <Button @click="generateChapter('bulk')" :disabled="isGenerating" size="lg" class="w-full" variant="default">
                                         <Zap v-if="!isGenerating" class="mr-2 h-5 w-5" />
                                         <Clock v-else class="mr-2 h-5 w-5 animate-spin" />
-                                        {{ isGenerating ? 'Generating All Chapters...' : `Generate All ${maxAllowedChapters} Chapters` }}
+                                        {{ isGenerating ? 'Generating Complete Project...' : `Generate Complete Project` }}
                                     </Button>
                                     <p class="mt-2 text-xs text-muted-foreground">
-                                        AI will create a complete first draft of all chapters. You can review and edit afterward.
+                                        AI will collect literature, generate all chapters with real citations, create preliminary pages, and assemble the complete project.
                                     </p>
                                 </div>
                             </div>
@@ -620,7 +867,7 @@ const goBackToTopicApproval = async () => {
                             <!-- Create New Chapter -->
                             <div class="flex gap-3">
                                 <Button
-                                    @click="nextChapterNumber ? editChapter(nextChapterNumber) : null"
+                                    @click="nextChapterNumber ? startChapter(nextChapterNumber) : null"
                                     :disabled="!canGenerateMoreChapters"
                                     size="lg"
                                     class="flex-1"
@@ -630,7 +877,7 @@ const goBackToTopicApproval = async () => {
                                 </Button>
 
                                 <Button
-                                    v-if="project.mode === 'auto'"
+                                    v-if="currentMode === 'auto'"
                                     @click="generateChapter('single')"
                                     :disabled="isGenerating || !canGenerateMoreChapters"
                                     size="lg"
@@ -644,7 +891,7 @@ const goBackToTopicApproval = async () => {
 
                             <p class="text-xs text-muted-foreground">
                                 {{
-                                    project.mode === 'manual'
+                                    currentMode === 'manual'
                                         ? 'Use the full-featured editor to write your chapters from scratch.'
                                         : 'Write manually or generate an AI draft to edit and improve.'
                                 }}
@@ -689,22 +936,36 @@ const goBackToTopicApproval = async () => {
                                                 <Badge v-else variant="outline" class="bg-gray-50 text-gray-500"> Not Started </Badge>
                                             </div>
                                         </div>
-                                        <Button
-                                            @click="editChapter(i)"
-                                            size="sm"
-                                            :variant="
-                                                project.chapters.find((c) => c.chapter_number === i && c.content && c.content.trim() !== '')
-                                                    ? 'outline'
-                                                    : 'default'
-                                            "
-                                        >
-                                            <Edit class="mr-1 h-4 w-4" />
-                                            {{
-                                                project.chapters.find((c) => c.chapter_number === i && c.content && c.content.trim() !== '')
-                                                    ? 'Edit'
-                                                    : 'Start'
-                                            }}
-                                        </Button>
+                                        <div class="flex gap-2">
+                                            <!-- Generate Button (for Auto mode and empty chapters) -->
+                                            <Button
+                                                v-if="currentMode === 'auto' && !project.chapters.find((c) => c.chapter_number === i && c.content && c.content.trim() !== '')"
+                                                @click="generateChapter('progressive', i)"
+                                                size="sm"
+                                                class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                                            >
+                                                <Brain class="mr-1 h-4 w-4" />
+                                                Generate Chapter {{ i }}
+                                            </Button>
+
+                                            <!-- Edit/Start Button -->
+                                            <Button
+                                                @click="goToChapter(i)"
+                                                size="sm"
+                                                :variant="
+                                                    project.chapters.find((c) => c.chapter_number === i && c.content && c.content.trim() !== '')
+                                                        ? 'outline'
+                                                        : 'default'
+                                                "
+                                            >
+                                                <Edit class="mr-1 h-4 w-4" />
+                                                {{
+                                                    project.chapters.find((c) => c.chapter_number === i && c.content && c.content.trim() !== '')
+                                                        ? 'Edit'
+                                                        : 'Start Writing'
+                                                }}
+                                            </Button>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -713,5 +974,146 @@ const goBackToTopicApproval = async () => {
                 </TabsContent>
             </Tabs>
         </div>
+
+        <!-- Mode Change Confirmation Dialog -->
+        <Dialog v-model:open="showModeConfirmDialog">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <Brain v-if="pendingNewMode === 'auto'" class="h-5 w-5 text-blue-600" />
+                        <Edit v-else class="h-5 w-5 text-purple-600" />
+                        Switch Writing Mode
+                    </DialogTitle>
+                    <DialogDescription class="space-y-3 text-left">
+                        <p v-if="pendingNewMode === 'auto'" class="text-left">
+                            Switch to <strong>AI Assisted</strong> writing mode?
+                        </p>
+                        <p v-else class="text-left">
+                            Switch to <strong>Manual</strong> writing mode?
+                        </p>
+
+                        <div class="space-y-1 text-left">
+                            <template v-if="pendingNewMode === 'auto'">
+                                <p class="text-sm text-left">• You'll be able to generate chapters with AI</p>
+                                <p class="text-sm text-left">• Existing content will remain unchanged</p>
+                            </template>
+                            <template v-else>
+                                <p class="text-sm text-left">• You'll write chapters manually</p>
+                                <p class="text-sm text-left">• AI generation will be disabled</p>
+                                <p class="text-sm text-left">• Existing content will remain unchanged</p>
+                            </template>
+                        </div>
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="flex-col gap-2 sm:flex-row">
+                    <Button @click="showModeConfirmDialog = false" variant="outline" class="w-full sm:w-auto">
+                        Cancel
+                    </Button>
+                    <Button
+                        @click="confirmModeChange"
+                        :disabled="isTogglingMode"
+                        :class="pendingNewMode === 'auto' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'"
+                        class="w-full sm:w-auto"
+                    >
+                        <Clock v-if="isTogglingMode" class="mr-2 h-4 w-4 animate-spin" />
+                        {{ isTogglingMode ? 'Switching...' : `Switch to ${pendingNewMode === 'auto' ? 'AI Assisted' : 'Manual'}` }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Bulk Generation Confirmation Dialog -->
+        <Dialog v-model:open="showBulkGenerationDialog">
+            <DialogContent class="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <Zap class="h-5 w-5 text-yellow-600" />
+                        Generate Complete Project
+                    </DialogTitle>
+                    <DialogDescription class="space-y-4 text-left">
+                        <div class="rounded-lg bg-yellow-50 p-4 border border-yellow-200">
+                            <div class="flex items-start gap-3">
+                                <Brain class="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                <div class="space-y-2 text-left">
+                                    <p class="font-medium text-yellow-800">Comprehensive AI Generation</p>
+                                    <p class="text-sm text-yellow-700">
+                                        This will generate a complete project with all {{ maxAllowedChapters }} chapters,
+                                        literature mining, references, preliminary pages, and appendices using faculty-specific structure.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2 text-left">
+                            <p class="font-medium text-foreground">What will be generated:</p>
+                            <ul class="text-sm text-muted-foreground space-y-1 ml-4">
+                                <li>• All {{ maxAllowedChapters }} chapters with real citations</li>
+                                <li>• Literature collection from academic databases</li>
+                                <li>• Preliminary pages (title page, abstract, table of contents)</li>
+                                <li>• Appendices (bibliography, glossary, data tables)</li>
+                                <li>• Defense preparation materials</li>
+                            </ul>
+                        </div>
+
+                        <div class="flex items-center gap-2 text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
+                            <Clock class="h-4 w-4 text-blue-600" />
+                            <span>This comprehensive process will take approximately <strong>15-20 minutes</strong> to complete.</span>
+                        </div>
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="flex-col gap-2 sm:flex-row">
+                    <Button @click="showBulkGenerationDialog = false" variant="outline" class="w-full sm:w-auto">
+                        Cancel
+                    </Button>
+                    <Button
+                        @click="confirmBulkGeneration"
+                        class="w-full sm:w-auto bg-yellow-600 hover:bg-yellow-700"
+                    >
+                        <Zap class="mr-2 h-4 w-4" />
+                        Start Generation
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Topic Approval Reset Confirmation Dialog -->
+        <Dialog v-model:open="showTopicApprovalDialog">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <ArrowLeft class="h-5 w-5 text-orange-600" />
+                        Return to Topic Approval
+                    </DialogTitle>
+                    <DialogDescription class="space-y-3 text-left">
+                        <div class="rounded-lg bg-orange-50 p-4 border border-orange-200">
+                            <div class="flex items-start gap-3">
+                                <Target class="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                                <div class="space-y-2 text-left">
+                                    <p class="font-medium text-orange-800">Warning: Progress Reset</p>
+                                    <p class="text-sm text-orange-700">
+                                        This will reset your writing progress and return you to the topic approval stage.
+                                        All chapter content will be preserved, but you'll need to re-approve your topic.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-sm text-muted-foreground">Are you sure you want to continue?</p>
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="flex-col gap-2 sm:flex-row">
+                    <Button @click="showTopicApprovalDialog = false" variant="outline" class="w-full sm:w-auto">
+                        Cancel
+                    </Button>
+                    <Button
+                        @click="confirmTopicApprovalReset"
+                        variant="destructive"
+                        class="w-full sm:w-auto"
+                    >
+                        <ArrowLeft class="mr-2 h-4 w-4" />
+                        Reset Progress
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

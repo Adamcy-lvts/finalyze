@@ -1,3 +1,4 @@
+<!-- /resources/js/pages/settings/Profile.vue -->
 <script setup lang="ts">
 import { Form, Head, Link, usePage } from '@inertiajs/vue3';
 

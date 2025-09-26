@@ -1,4 +1,4 @@
-<!-- resources/js/Pages/Projects/Show.vue -->
+<!-- /resources/js/pages/projects/Show.vue -->
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
-import { ArrowLeft, BookOpen, Calendar, FileText, Play, Settings, University } from 'lucide-vue-next';
+import { ArrowLeft, BookOpen, Calendar, FileText, Lightbulb, Play, Settings, University } from 'lucide-vue-next';
 
 interface Chapter {
     id: number;
@@ -22,6 +22,7 @@ interface Chapter {
 interface Project {
     id: number;
     title: string | null;
+    slug: string;
     type: string;
     status: string;
     mode: string;
@@ -103,10 +104,20 @@ const totalTargetWords = () => {
                         <span class="text-sm text-muted-foreground">{{ project.mode }} mode</span>
                     </div>
                 </div>
-                <Button @click="continueCurrentChapter" size="lg" class="self-start sm:self-center">
-                    <Play class="mr-2 h-5 w-5" />
-                    Continue Writing
-                </Button>
+                <div class="flex gap-3 self-start sm:self-center">
+                    <Button variant="outline" @click="() => {
+                        const guidanceUrl = route('projects.guidance', project.slug);
+                        console.log('🎯 GUIDANCE - Navigating to:', guidanceUrl, 'Project slug:', project.slug);
+                        router.visit(guidanceUrl);
+                    }" size="lg">
+                        <Lightbulb class="mr-2 h-5 w-5" />
+                        Guidance
+                    </Button>
+                    <Button @click="continueCurrentChapter" size="lg">
+                        <Play class="mr-2 h-5 w-5" />
+                        Continue Writing
+                    </Button>
+                </div>
             </div>
 
             <!-- Progress Overview -->

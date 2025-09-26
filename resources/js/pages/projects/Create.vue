@@ -1,4 +1,4 @@
-<!-- resources/js/Pages/Projects/Create.vue -->
+<!-- /resources/js/pages/projects/Create.vue -->
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

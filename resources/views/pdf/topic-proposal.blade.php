@@ -95,7 +95,7 @@
     <!-- Header Section -->
     <div class="header">
         <h1>{{ $project->full_university_name }}</h1>
-        <h2>Faculty of {{ ucwords($project->field_of_study) }}</h2>
+        <h2>Faculty of {{ ucwords($project->faculty) }}</h2>
         <h3>Department of {{ $project->course }}</h3>
         
         <div class="proposal-title">PROJECT TOPIC PROPOSAL</div>

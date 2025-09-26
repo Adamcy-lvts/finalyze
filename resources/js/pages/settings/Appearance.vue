@@ -1,3 +1,4 @@
+<!-- /resources/js/pages/settings/Appearance.vue -->
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 

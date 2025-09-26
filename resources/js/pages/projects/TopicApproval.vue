@@ -1,4 +1,4 @@
-<!-- resources/js/Pages/Projects/TopicApproval.vue -->
+<!-- /resources/js/pages/projects/TopicApproval.vue -->
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -104,7 +104,6 @@ const confirmApproval = async () => {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
             },
             body: JSON.stringify({
-                project_id: props.project.id,
                 approved: approved,
             }),
         });
@@ -118,7 +117,7 @@ const confirmApproval = async () => {
                 });
                 // Use the updated slug from the response (slug changes after approval)
                 const updatedSlug = data.slug || props.project.slug;
-                router.visit(route('projects.writing', updatedSlug));
+                router.visit(route('projects.guidance', updatedSlug));
             } else {
                 toast('New Topic Needed', {
                     description: "No problem! Let's find a topic that works better for your supervisor.",
@@ -175,9 +174,9 @@ const startWriting = () => {
         description: 'Opening the editor for manual writing',
     });
 
-    // Navigate directly to chapter 1 editor without AI generation
+    // Navigate directly to chapter 1 in write mode to start writing
     router.visit(
-        route('chapters.edit', {
+        route('chapters.write', {
             project: props.project.slug,
             chapter: 1,
         }),
@@ -273,32 +272,7 @@ const startWriting = () => {
                     </Button>
                 </CardContent>
             </Card>
-
-            <!-- Quick Start Writing Option -->
-            <Card
-                class="border-[0.5px] border-border/50 bg-gradient-to-r from-blue-50 to-purple-50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]"
-            >
-                <CardHeader>
-                    <CardTitle class="flex items-center gap-2">
-                        <Edit class="h-5 w-5" />
-                        Start Writing Now
-                    </CardTitle>
-                    <CardDescription>
-                        Can't wait for supervisor approval? Start writing your first chapter while waiting for feedback.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button
-                        @click="startWriting"
-                        size="lg"
-                        class="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700"
-                    >
-                        <Edit class="mr-2 h-5 w-5" />
-                        Start Writing Chapter 1
-                    </Button>
-                    <p class="mt-2 text-center text-xs text-muted-foreground">You can always revise based on supervisor feedback later</p>
-                </CardContent>
-            </Card>
+           
 
             <!-- Approval Actions -->
             <Card class="border-[0.5px] border-border/50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">

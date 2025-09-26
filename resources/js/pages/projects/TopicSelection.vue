@@ -1,4 +1,4 @@
-<!-- resources/js/Pages/Projects/TopicSelection.vue -->
+<!-- /resources/js/pages/projects/TopicSelection.vue -->
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle, ChevronDown, ChevronUp, Lightbulb, Loader2, RefreshCw } from 'lucide-vue-next';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
 
 interface Project {
@@ -28,6 +28,7 @@ interface Project {
 
 interface Props {
     project: Project;
+    savedTopics?: Topic[];
 }
 
 const props = defineProps<Props>();
@@ -65,127 +66,279 @@ onMounted(() => {
         customTitle.value = props.project.title || '';
         activeTab.value = 'existing';
     }
-});
 
-// Streaming-related variables
-const eventSource = ref<EventSource | null>(null);
-const generationProgress = ref('');
-const streamingContent = ref('');
-
-const generateTopics = async () => {
-    if (isGenerating.value) return;
-
-    isGenerating.value = true;
-    generationProgress.value = 'Connecting to AI service...';
-    streamingContent.value = '';
-    generatedTopics.value = [];
-
-    try {
-        // Build URL with query parameters for streaming
-        const url = new URL(route('topics.stream', props.project.slug));
-        url.searchParams.append('project_id', props.project.id.toString());
-        url.searchParams.append('regenerate', (generatedTopics.value.length > 0).toString());
-
-        // Create EventSource for Server-Sent Events
-        eventSource.value = new EventSource(url.toString(), {
-            withCredentials: true,
+    // If we have saved topics, load them and switch to generated tab
+    if (props.savedTopics && props.savedTopics.length > 0) {
+        generatedTopics.value = props.savedTopics;
+        console.log('📦 SAVED TOPICS - Loaded from database', {
+            count: props.savedTopics.length,
+            topics: props.savedTopics.map(t => t.title)
         });
 
-        // Handle incoming messages
-        eventSource.value.onmessage = (event) => {
+        // Switch to generated tab if no current topic is set
+        if (!props.project.topic) {
+            activeTab.value = 'generated';
+        }
+    }
+});
+
+// Generation progress
+const generationProgress = ref('');
+const currentProgressStep = ref('');
+
+// Progress tracking for better UX
+const progressSteps = {
+    'connecting': { order: 1, label: 'Connecting to AI service' },
+    'analyzing': { order: 2, label: 'Analyzing your project context' },
+    'generating': { order: 3, label: 'Generating research topics' },
+    'enriching': { order: 4, label: 'Enriching with metadata' },
+    'complete': { order: 5, label: 'Complete' }
+};
+
+const getStepIndicatorClass = (step: string) => {
+    const currentStepOrder = progressSteps[currentProgressStep.value]?.order || 0;
+    const stepOrder = progressSteps[step]?.order || 0;
+    
+    if (stepOrder < currentStepOrder) {
+        return 'h-3 w-3 rounded-full bg-green-500'; // Completed
+    } else if (stepOrder === currentStepOrder) {
+        return 'h-3 w-3 rounded-full bg-primary animate-pulse'; // Current
+    } else {
+        return 'h-3 w-3 rounded-full bg-muted'; // Pending
+    }
+};
+
+const getProgressPercentage = () => {
+    const currentStepOrder = progressSteps[currentProgressStep.value]?.order || 0;
+    const totalSteps = Object.keys(progressSteps).length;
+    return Math.min((currentStepOrder / totalSteps) * 100, 100);
+};
+
+const generateTopics = async () => {
+    console.log('🚀 TOPIC GENERATION - Starting streaming topic generation');
+    isGenerating.value = true;
+    generatedTopics.value = [];
+    
+    try {
+        // Initialize progress tracking
+        currentProgressStep.value = 'connecting';
+        generationProgress.value = 'Connecting to AI service...';
+        
+        // Start Server-Sent Events connection for real-time progress
+        const streamUrl = route('topics.stream', props.project.slug) + '?regenerate=true';
+        console.log('📡 TOPIC GENERATION - Connecting to stream:', streamUrl);
+        
+        const eventSource = new EventSource(streamUrl);
+        
+        eventSource.onopen = () => {
+            console.log('📡 SSE - Connection opened');
+            currentProgressStep.value = 'connecting';
+            generationProgress.value = 'Connected to AI service - analyzing your project...';
+        };
+        
+        eventSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-
+                console.log('📡 SSE - Message received:', data.type, data);
+                
                 switch (data.type) {
                     case 'start':
-                        generationProgress.value = data.message;
+                        currentProgressStep.value = 'analyzing';
+                        generationProgress.value = data.message || 'Starting topic generation...';
                         break;
-
+                        
                     case 'progress':
-                        generationProgress.value = data.message;
+                        // Update progress step based on message content
+                        if (data.message && data.message.includes('academic context')) {
+                            currentProgressStep.value = 'analyzing';
+                        } else if (data.message && data.message.includes('generating')) {
+                            currentProgressStep.value = 'generating';
+                        } else if (data.message && data.message.includes('enriching')) {
+                            currentProgressStep.value = 'enriching';
+                        }
+                        
+                        generationProgress.value = data.message || 'Processing...';
                         if (data.context) {
-                            const context = data.context;
-                            generationProgress.value += ` (${context.academic_level} in ${context.field_of_study})`;
+                            console.log('🎓 Academic context:', data.context);
                         }
                         break;
-
+                        
                     case 'content':
-                        if (data.from_cache) {
-                            // Handle cached topics
-                            generatedTopics.value = data.topics.map((topic: string, index: number) => ({
-                                id: index + 1,
-                                title: topic,
-                                description: `Generated topic for ${props.project.field_of_study}`,
-                                difficulty: 'Medium',
-                                timeline: '12-18 months',
-                                resource_level: 'Moderate',
-                                feasibility_score: 0.8,
-                                keywords: topic.toLowerCase().split(' ').slice(0, 3),
-                                research_type: 'Applied Research',
-                            }));
-                            generationProgress.value = data.message;
-                        } else {
-                            // Handle streaming content
-                            if (data.chunk) {
-                                streamingContent.value += data.chunk;
-                            }
-                            if (data.content) {
-                                streamingContent.value = data.content;
-                            }
-                            generationProgress.value = `Generating... (${data.word_count || 0} words)`;
+                        currentProgressStep.value = 'generating';
+                        if (data.chunk) {
+                            // Show dynamic progress as content is being generated
+                            const wordCount = data.word_count || 0;
+                            generationProgress.value = `Generating topics... (${wordCount} words generated)`;
+                        }
+                        if (data.topics && data.from_cache) {
+                            // Using cached topics for faster response
+                            currentProgressStep.value = 'enriching';
+                            generationProgress.value = 'Loading topics from cache for faster response...';
                         }
                         break;
-
+                        
                     case 'complete':
-                        isGenerating.value = false;
-                        if (data.topics) {
+                        currentProgressStep.value = 'complete';
+                        if (data.topics && Array.isArray(data.topics)) {
                             generatedTopics.value = data.topics;
+                            generationProgress.value = `✓ Successfully generated ${data.topics.length} personalized research topics!`;
+                            activeTab.value = 'generated';
+                            
+                            toast('Success', {
+                                description: `${data.topics.length} research topics generated successfully!`,
+                            });
+                        } else {
+                            generationProgress.value = data.message || 'Topics generated successfully!';
                         }
-                        generationProgress.value = `✓ ${data.message} (${data.total_topics} topics generated)`;
-                        activeTab.value = 'generated';
-
-                        toast('Success', {
-                            description: `${data.total_topics} topics generated successfully!`,
-                        });
                         break;
-
+                        
                     case 'error':
-                        isGenerating.value = false;
-                        generationProgress.value = 'Generation failed';
-
-                        toast('Error', {
-                            description: data.message || 'Failed to generate topics',
-                        });
-                        break;
-
+                        throw new Error(data.message || 'Stream error occurred');
+                        
                     case 'end':
-                        eventSource.value?.close();
-                        eventSource.value = null;
+                        console.log('📡 SSE - Stream ended');
+                        eventSource.close();
+                        isGenerating.value = false;
                         break;
                 }
-            } catch (error) {
-                console.error('Failed to parse SSE data:', error);
+            } catch (parseError) {
+                console.error('📡 SSE - Failed to parse message:', parseError, event.data);
             }
         };
-
-        // Handle connection errors
-        eventSource.value.onerror = (error) => {
-            console.error('EventSource error:', error);
+        
+        eventSource.onerror = (error) => {
+            console.error('📡 SSE - Connection error:', error);
+            eventSource.close();
+            
+            // Check if we already have topics (partial success)
+            if (generatedTopics.value.length > 0) {
+                generationProgress.value = `✓ Generated ${generatedTopics.value.length} topics (connection ended early)`;
+                activeTab.value = 'generated';
+                toast('Partial Success', {
+                    description: `${generatedTopics.value.length} topics generated before connection ended.`,
+                });
+            } else {
+                // Fallback to regular endpoint if streaming fails
+                console.log('📡 TOPIC GENERATION - Falling back to regular endpoint');
+                generateTopicsWithFallback().catch(fallbackError => {
+                    console.error('Fallback also failed:', fallbackError);
+                    generationProgress.value = 'Failed to generate topics. Please try again.';
+                    toast('Error', {
+                        description: 'Failed to generate topics. Please try again.',
+                    });
+                });
+            }
+            
             isGenerating.value = false;
-            generationProgress.value = 'Connection lost';
-
-            // Close and cleanup
-            eventSource.value?.close();
-            eventSource.value = null;
-
-            toast('Connection Error', {
-                description: 'Lost connection to AI service. Please try again.',
-            });
         };
-    } catch (error) {
-        isGenerating.value = false;
+        
+        // Set a timeout to prevent infinite loading
+        setTimeout(() => {
+            if (isGenerating.value) {
+                console.log('⏰ TOPIC GENERATION - Timeout reached, closing stream');
+                eventSource.close();
+                
+                if (generatedTopics.value.length > 0) {
+                    generationProgress.value = `✓ Generated ${generatedTopics.value.length} topics (timeout reached)`;
+                    activeTab.value = 'generated';
+                } else {
+                    generationProgress.value = 'Generation timed out. Please try again.';
+                    toast('Timeout', {
+                        description: 'Topic generation took longer than expected. Please try again.',
+                    });
+                }
+                
+                isGenerating.value = false;
+            }
+        }, 300000); // 5 minutes timeout
+        
+    } catch (error: any) {
+        console.error('💥 TOPIC GENERATION - Error:', error);
+        generationProgress.value = 'Failed to generate topics. Please try again.';
+        
         toast('Error', {
-            description: 'Failed to start topic generation. Please try again.',
+            description: error.message || 'Failed to generate topics. Please try again.',
+        });
+        
+        isGenerating.value = false;
+    }
+};
+
+// Fallback to regular endpoint if streaming fails
+const generateTopicsWithFallback = async () => {
+    console.log('🔄 TOPIC GENERATION - Using fallback method');
+    generationProgress.value = 'Retrying with fallback method...';
+    
+    try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (!csrfToken) {
+            throw new Error('CSRF token not found. Please refresh the page and try again.');
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+
+        const response = await fetch(route('topics.generate', props.project.slug), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                regenerate: true,
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const responseClone = response.clone();
+                const errorData = await responseClone.json();
+                errorMessage = errorData.message || errorMessage;
+            } catch (e) {
+                try {
+                    const errorText = await response.text();
+                    if (response.status === 419) {
+                        errorMessage = 'Session expired. Please refresh the page and try again.';
+                    } else if (response.status === 504) {
+                        errorMessage = 'Request timed out. Please try again in a few moments.';
+                    } else if (errorText.includes('<!DOCTYPE')) {
+                        errorMessage = 'Server returned an error page instead of data. Please try again.';
+                    }
+                } catch (textError) {
+                    if (response.status === 504) {
+                        errorMessage = 'Request timed out. Please try again in a few moments.';
+                    }
+                }
+            }
+            throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        
+        if (data.topics && Array.isArray(data.topics)) {
+            generatedTopics.value = data.topics;
+            generationProgress.value = `✓ Successfully generated ${data.topics.length} research topics!`;
+            activeTab.value = 'generated';
+            
+            toast('Success', {
+                description: `${data.topics.length} research topics generated successfully!`,
+            });
+        } else {
+            throw new Error('Invalid response format: topics array not found');
+        }
+        
+    } catch (error: any) {
+        console.error('💥 FALLBACK GENERATION - Error:', error);
+        generationProgress.value = 'Failed to generate topics. Please try again.';
+        
+        toast('Error', {
+            description: error.message || 'Failed to generate topics. Please try again.',
         });
     }
 };
@@ -265,8 +418,18 @@ const submitTopic = async () => {
         customTopic: customTopic.value?.substring(0, 50) + '...',
         customDescription: customDescription.value?.substring(0, 50) + '...',
         customTitle: customTitle.value,
-        project_id: props.project.id,
         project_slug: props.project.slug,
+        current_url: window.location.href,
+        timestamp: new Date().toISOString(),
+    });
+    
+    console.log('🔍 TOPIC SUBMISSION - Full form data:', {
+        customTopic: customTopic.value,
+        customDescription: customDescription.value,
+        customTitle: customTitle.value,
+        customTopic_length: customTopic.value?.length || 0,
+        customDescription_length: customDescription.value?.length || 0,
+        customTitle_length: customTitle.value?.length || 0,
     });
 
     if (!customTopic.value.trim() && !customDescription.value.trim()) {
@@ -281,7 +444,6 @@ const submitTopic = async () => {
 
     try {
         const requestData = {
-            project_id: props.project.id,
             topic: customTopic.value.trim() || customTitle.value.trim() || 'Research Topic',
             title: customTitle.value.trim() || generateTitleFromTopic(customTopic.value || customDescription.value),
             description: customDescription.value.trim(),
@@ -289,34 +451,75 @@ const submitTopic = async () => {
 
         console.log('📤 TOPIC SUBMISSION - Request data:', requestData);
         console.log('📍 TOPIC SUBMISSION - Request URL:', route('topics.select', props.project.slug));
-
+        
+        // Get CSRF token and validate it exists
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        console.log('🔐 TOPIC SUBMISSION - CSRF token found:', !!csrfToken);
+        console.log('🔐 TOPIC SUBMISSION - CSRF token preview:', csrfToken?.substring(0, 10) + '...');
+        
+        if (!csrfToken) {
+            throw new Error('CSRF token not found. Please refresh the page and try again.');
+        }
+        
+        console.log('📡 TOPIC SUBMISSION - Making fetch request...');
         const response = await fetch(route('topics.select', props.project.slug), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify(requestData),
         });
 
+        console.log('📥 TOPIC SUBMISSION - Response received');
         console.log('📥 TOPIC SUBMISSION - Response status:', response.status);
+        console.log('📥 TOPIC SUBMISSION - Response statusText:', response.statusText);
         console.log('📥 TOPIC SUBMISSION - Response ok:', response.ok);
+        console.log('📥 TOPIC SUBMISSION - Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (response.ok) {
-            const responseData = await response.text();
+            console.log('✅ TOPIC SUBMISSION - Success! Processing response...');
+            const responseData = await response.json();
             console.log('✅ TOPIC SUBMISSION - Response data:', responseData);
 
             toast('Topic Selected!', {
                 description: 'Your project topic has been set. You can now submit it for supervisor approval.',
             });
 
-            console.log('🔄 TOPIC SUBMISSION - Redirecting to:', route('projects.show', props.project.slug));
-            // Redirect to project show page or approval flow
-            router.visit(route('projects.show', props.project.slug));
+            console.log('🔄 TOPIC SUBMISSION - Letting middleware handle redirect');
+            console.log('🔄 TOPIC SUBMISSION - Current project slug:', props.project.slug);
+            console.log('🔄 TOPIC SUBMISSION - Target route:', route('projects.show', props.project.slug));
+            
+            // Let the middleware handle the redirect to the appropriate next step
+            // The middleware will redirect to topic-approval based on the updated project status
+            router.visit(route('projects.show', props.project.slug), {
+                method: 'get',
+                replace: true
+            });
         } else {
-            const errorData = await response.text();
-            console.error('❌ TOPIC SUBMISSION - Error response:', errorData);
-            throw new Error(`HTTP ${response.status}: ${errorData}`);
+            console.error('❌ TOPIC SUBMISSION - Request failed');
+            console.error('❌ TOPIC SUBMISSION - Status:', response.status);
+            console.error('❌ TOPIC SUBMISSION - StatusText:', response.statusText);
+            
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                console.error('❌ TOPIC SUBMISSION - Error JSON:', errorData);
+                errorMessage = errorData.message || errorMessage;
+            } catch (e) {
+                // Response is not JSON, likely HTML error page
+                const errorText = await response.text();
+                console.error('❌ TOPIC SUBMISSION - Error HTML (first 500 chars):', errorText.substring(0, 500));
+                
+                if (response.status === 419) {
+                    errorMessage = 'Session expired. Please refresh the page and try again.';
+                } else if (errorText.includes('<!DOCTYPE')) {
+                    errorMessage = 'Server returned an error page instead of data. Please try again.';
+                }
+            }
+            throw new Error(errorMessage);
         }
     } catch (error) {
         console.error('💥 TOPIC SUBMISSION - Exception:', error);
@@ -359,13 +562,7 @@ const goBackToWizard = async () => {
     }
 };
 
-// Cleanup on unmount
-onUnmounted(() => {
-    if (eventSource.value) {
-        eventSource.value.close();
-        eventSource.value = null;
-    }
-});
+// Cleanup on unmount - no longer needed for fetch streaming
 </script>
 
 <template>
@@ -534,6 +731,9 @@ onUnmounted(() => {
                                 <h4 class="flex items-center gap-2 text-sm font-medium">
                                     Choose a topic that interests you:
                                     <Badge variant="secondary" class="text-xs">Sorted by feasibility</Badge>
+                                    <Badge v-if="props.savedTopics && props.savedTopics.length > 0" variant="outline" class="text-xs">
+                                        Previously Generated
+                                    </Badge>
                                 </h4>
                                 <div class="max-h-[600px] space-y-4 overflow-y-auto">
                                     <div
@@ -622,18 +822,60 @@ onUnmounted(() => {
                                 </div>
                             </div>
 
-                            <!-- Loading State -->
-                            <div v-else-if="isGenerating" class="space-y-4 py-12 text-center">
-                                <Loader2 class="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
-                                <div class="space-y-2">
-                                    <p class="text-sm font-medium text-foreground">
+                            <!-- Enhanced Loading State with Progress Stages -->
+                            <div v-else-if="isGenerating" class="space-y-6 py-12 text-center">
+                                <div class="relative">
+                                    <Loader2 class="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+                                    <!-- Pulsing background circle for better visual effect -->
+                                    <div class="absolute inset-0 mx-auto mb-4 h-12 w-12 animate-pulse rounded-full bg-primary/20"></div>
+                                </div>
+                                
+                                <div class="space-y-4">
+                                    <h3 class="text-lg font-semibold text-foreground">Generating Research Topics</h3>
+                                    
+                                    <!-- Progress Message -->
+                                    <p class="text-sm font-medium text-primary">
                                         {{ generationProgress || 'AI is generating personalized topics for your project...' }}
                                     </p>
-
-                                    <!-- Show streaming content if available -->
-                                    <div v-if="streamingContent" class="mx-auto max-w-2xl rounded-lg bg-muted/50 p-4 text-left">
-                                        <p class="mb-2 text-xs text-muted-foreground">Live Generation Preview:</p>
-                                        <p class="text-sm whitespace-pre-wrap text-foreground">{{ streamingContent }}</p>
+                                    
+                                    <!-- Process Steps Indicator -->
+                                    <div class="mx-auto max-w-md space-y-3">
+                                        <div class="flex items-center justify-between text-xs text-muted-foreground">
+                                            <div class="flex items-center space-x-2">
+                                                <div :class="getStepIndicatorClass('connecting')"></div>
+                                                <span>Connecting</span>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <div :class="getStepIndicatorClass('analyzing')"></div>
+                                                <span>Analyzing</span>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <div :class="getStepIndicatorClass('generating')"></div>
+                                                <span>Generating</span>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <div :class="getStepIndicatorClass('enriching')"></div>
+                                                <span>Enriching</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Progress Bar -->
+                                        <div class="w-full bg-muted rounded-full h-2">
+                                            <div 
+                                                class="bg-primary h-2 rounded-full transition-all duration-500 ease-out"
+                                                :style="`width: ${getProgressPercentage()}%`"
+                                            ></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Additional Context -->
+                                    <div class="text-xs text-muted-foreground max-w-md mx-auto">
+                                        <p>Our AI is analyzing your field of study and academic level to create personalized research topics tailored to your requirements.</p>
+                                    </div>
+                                    
+                                    <!-- Estimated Time -->
+                                    <div class="text-xs text-muted-foreground">
+                                        <p>⏱️ Estimated time: 30-60 seconds</p>
                                     </div>
                                 </div>
                             </div>
