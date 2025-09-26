@@ -1,3 +1,4 @@
+<!-- /resources/js/components/chapter-editor/WritingToolbar.vue -->
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';

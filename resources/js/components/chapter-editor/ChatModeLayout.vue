@@ -1,3 +1,4 @@
+<!-- /resources/js/components/chapter-editor/ChatModeLayout.vue -->
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import axios from 'axios';
 import { CheckCircle, Eye, MessageSquare, PenTool, Save, X } from 'lucide-vue-next';
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 import ChatAssistant from '@/components/chapter-editor/ChatAssistant.vue';
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue';
@@ -53,27 +54,34 @@ const chatInput = ref('');
 const isTyping = ref(false);
 const currentSessionId = ref(null);
 const isLoadingHistory = ref(false);
+const currentStreamReader = ref(null);
 
 // Content editor state (edit mode as default for chat mode)
 const showContentPreview = ref(false);
 
-// Default welcome message
-const getWelcomeMessage = () => ({
-    id: 1,
-    type: 'ai',
-    content: `Hi! I'm your AI writing assistant. I can help you with:
-• Improving your arguments and structure
-• Finding gaps in your logic
-• Suggesting better phrasing
-• Checking citation formats
-• Reviewing chapter coherence
-
-What would you like to work on in this chapter?`,
-    timestamp: new Date(),
-});
+// Chat now starts empty - no auto-generated welcome messages
 
 // Chat UI state
 const isChatMinimized = ref(false);
+const currentChatMode = ref('review');
+
+// Mobile detection
+const isMobileView = ref(false);
+const screenWidth = ref(0);
+
+const checkMobileView = () => {
+    screenWidth.value = window.innerWidth;
+    isMobileView.value = window.innerWidth < 768; // md breakpoint
+
+    // Auto-minimize chat on mobile for better UX
+    if (isMobileView.value && !isChatMinimized.value) {
+        // Don't auto-minimize, let user decide
+    }
+};
+
+const handleResize = () => {
+    checkMobileView();
+};
 
 // Load chat history from backend
 const loadChatHistory = async () => {
@@ -98,13 +106,13 @@ const loadChatHistory = async () => {
             }));
             currentSessionId.value = current_session_id;
         } else {
-            // No history, show welcome message
-            chatMessages.value = [getWelcomeMessage()];
+            // No history, start with empty chat
+            chatMessages.value = [];
         }
     } catch (error) {
         console.warn('Failed to load chat history:', error);
-        // Fallback to welcome message
-        chatMessages.value = [getWelcomeMessage()];
+        // Fallback to empty chat
+        chatMessages.value = [];
     } finally {
         isLoadingHistory.value = false;
     }
@@ -113,35 +121,37 @@ const loadChatHistory = async () => {
 // Initialize chat on mount
 onMounted(() => {
     loadChatHistory();
+    checkMobileView();
+    window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize);
 });
 
 // Methods
-const handleSendMessage = async () => {
-    if (!chatInput.value.trim()) return;
+const handleSendMessage = async (quickAction?: string) => {
+    if (!chatInput.value.trim() && !quickAction) return;
 
-    const userMessage = chatInput.value;
+    const userMessage = quickAction ? '' : chatInput.value;
+    const originalInput = chatInput.value; // Store original input for retry
     chatInput.value = '';
 
-    // Add user message
-    chatMessages.value.push({
-        id: Date.now(),
-        type: 'user',
-        content: userMessage,
-        timestamp: new Date(),
-    });
+    // Add user message (only if not a quick action)
+    if (!quickAction) {
+        chatMessages.value.push({
+            id: Date.now(),
+            type: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+        });
+    }
 
     // Show typing indicator
     isTyping.value = true;
 
-    // Prepare AI response placeholder
+    // Prepare AI response placeholder ID but don't add message yet
     const aiMessageId = Date.now() + 1;
-    chatMessages.value.push({
-        id: aiMessageId,
-        type: 'ai',
-        content: '',
-        timestamp: new Date(),
-        isStreaming: true,
-    });
 
     try {
         // Use fetch with POST for streaming instead of EventSource
@@ -162,6 +172,8 @@ const handleSendMessage = async () => {
                     chapter_content: props.chapterContent || '',
                     selected_text: props.selectedText || '',
                     session_id: currentSessionId.value,
+                    task_type: currentChatMode.value,
+                    quick_action: quickAction || null,
                 }),
             },
         );
@@ -174,6 +186,9 @@ const handleSendMessage = async () => {
         if (!reader) {
             throw new Error('No response body reader available');
         }
+
+        // Store reader for potential cancellation
+        currentStreamReader.value = reader;
 
         // Read the streaming response
         const decoder = new TextDecoder();
@@ -216,8 +231,24 @@ const handleSendMessage = async () => {
                     break;
 
                 case 'content':
+                    // Stop typing indicator as soon as we start receiving content
+                    if (isTyping.value) {
+                        isTyping.value = false;
+                    }
+
+                    // Find existing message or create it if this is the first content
                     const messageIndex = chatMessages.value.findIndex((msg) => msg.id === aiMessageId);
-                    if (messageIndex !== -1) {
+                    if (messageIndex === -1) {
+                        // First content chunk - add the AI message now
+                        chatMessages.value.push({
+                            id: aiMessageId,
+                            type: 'ai',
+                            content: data.content,
+                            timestamp: new Date(),
+                            isStreaming: true,
+                        });
+                    } else {
+                        // Append to existing message
                         chatMessages.value[messageIndex].content += data.content;
                     }
                     break;
@@ -240,12 +271,27 @@ const handleSendMessage = async () => {
                     isTyping.value = false;
                     const errorMessageIndex = chatMessages.value.findIndex((msg) => msg.id === aiMessageId);
                     if (errorMessageIndex !== -1) {
+                        // Mark existing AI message as failed
                         chatMessages.value[errorMessageIndex] = {
-                            id: Date.now(),
-                            type: 'system',
-                            content: data.message || '⚠️ Sorry, I encountered an error processing your message. Please try again.',
+                            id: chatMessages.value[errorMessageIndex].id,
+                            type: 'ai',
+                            content: data.message || '⚠️ Sorry, I encountered an error processing your message.',
                             timestamp: new Date(),
+                            failed: true,
+                            lastPrompt: originalInput,
+                            lastQuickAction: quickAction,
                         };
+                    } else {
+                        // No AI message exists yet, add failed message
+                        chatMessages.value.push({
+                            id: Date.now(),
+                            type: 'ai',
+                            content: data.message || '⚠️ Sorry, I encountered an error processing your message.',
+                            timestamp: new Date(),
+                            failed: true,
+                            lastPrompt: originalInput,
+                            lastQuickAction: quickAction,
+                        });
                     }
                     break;
 
@@ -259,44 +305,159 @@ const handleSendMessage = async () => {
             isTyping.value = false;
             const errorMessageIndex = chatMessages.value.findIndex((msg) => msg.id === aiMessageId);
             if (errorMessageIndex !== -1) {
+                // Mark existing AI message as failed
                 chatMessages.value[errorMessageIndex] = {
-                    id: Date.now(),
-                    type: 'system',
+                    id: chatMessages.value[errorMessageIndex].id,
+                    type: 'ai',
                     content: '⚠️ Connection error. Please check your internet and try again.',
                     timestamp: new Date(),
+                    failed: true,
+                    lastPrompt: originalInput,
+                    lastQuickAction: quickAction,
                 };
+            } else {
+                // No AI message exists yet, add failed message
+                chatMessages.value.push({
+                    id: Date.now(),
+                    type: 'ai',
+                    content: '⚠️ Connection error. Please check your internet and try again.',
+                    timestamp: new Date(),
+                    failed: true,
+                    lastPrompt: originalInput,
+                    lastQuickAction: quickAction,
+                });
             }
         };
 
         // Start reading the stream
-        await readStream();
+        try {
+            await readStream();
+        } finally {
+            // Clear the reader reference
+            currentStreamReader.value = null;
+        }
     } catch (error) {
         console.error('Chat streaming error:', error);
         isTyping.value = false;
 
-        // Replace AI message with error message
+        // Add failed message (AI message may not exist yet)
         const errorMessageIndex = chatMessages.value.findIndex((msg) => msg.id === aiMessageId);
         if (errorMessageIndex !== -1) {
+            // Mark existing AI message as failed
             chatMessages.value[errorMessageIndex] = {
-                id: Date.now(),
-                type: 'system',
+                id: chatMessages.value[errorMessageIndex].id,
+                type: 'ai',
                 content: '⚠️ Failed to start conversation. Please try again.',
                 timestamp: new Date(),
+                failed: true,
+                lastPrompt: originalInput,
+                lastQuickAction: quickAction,
             };
+        } else {
+            // No AI message exists yet, add failed message
+            chatMessages.value.push({
+                id: Date.now(),
+                type: 'ai',
+                content: '⚠️ Failed to start conversation. Please try again.',
+                timestamp: new Date(),
+                failed: true,
+                lastPrompt: originalInput,
+                lastQuickAction: quickAction,
+            });
         }
     }
 };
 
 const handleQuickAction = (action: string) => {
-    const actions: Record<string, string> = {
-        analyze: "Can you analyze my chapter content and give me specific feedback on what I've written so far?",
-        improve: 'What specific improvements can you suggest for this chapter? Please reference parts of my text.',
-        structure: 'How can I improve the structure and flow of this chapter?',
-        citations: 'Can you help me check and improve my citations and references?',
-    };
+    // Send the action directly as a quick action
+    handleSendMessage(action);
+};
 
-    chatInput.value = actions[action] || '';
-    handleSendMessage();
+const handleModeChange = (mode: 'review' | 'assist') => {
+    currentChatMode.value = mode;
+    console.log('Chat mode changed to:', mode);
+
+    // No need to update messages when mode changes - let user start conversation naturally
+};
+
+const handleCopyMessage = (message: any) => {
+    console.log('Message copied:', message);
+    // You could show a toast notification here
+};
+
+const handleRateMessage = (messageId: number, rating: number) => {
+    console.log('Message rated:', messageId, rating);
+    // You could send the rating to the backend here
+};
+
+const handleNewSession = () => {
+    console.log('Starting new chat session...');
+
+    // Clear current chat messages
+    chatMessages.value = [];
+
+    // Reset session ID to null so a new one will be generated on next message
+    currentSessionId.value = null;
+
+    // Clear input
+    chatInput.value = '';
+
+    // Start with empty chat - no auto-generated messages
+    console.log('New chat session started');
+};
+
+const handleChatDeleted = () => {
+    console.log('Chat deleted - refreshing main chat');
+    // Reload chat history to reflect the deletion
+    loadChatHistory();
+};
+
+const handleChatCleared = () => {
+    console.log('Chat cleared - refreshing main chat');
+    // Clear messages and reload history
+    chatMessages.value = [];
+    currentSessionId.value = null;
+    loadChatHistory();
+};
+
+const handleRetryMessage = (message: any) => {
+    console.log('Retrying failed message:', message);
+
+    // Remove the failed message
+    const messageIndex = chatMessages.value.findIndex(msg => msg.id === message.id);
+    if (messageIndex !== -1) {
+        chatMessages.value.splice(messageIndex, 1);
+    }
+
+    // Retry the original prompt or quick action
+    if (message.lastQuickAction) {
+        handleSendMessage(message.lastQuickAction);
+    } else if (message.lastPrompt) {
+        chatInput.value = message.lastPrompt;
+        handleSendMessage();
+    }
+};
+
+const handleStopGeneration = () => {
+    console.log('Stopping generation...');
+
+    if (currentStreamReader.value) {
+        try {
+            currentStreamReader.value.cancel();
+        } catch (error) {
+            console.warn('Error cancelling stream:', error);
+        }
+        currentStreamReader.value = null;
+    }
+
+    isTyping.value = false;
+
+    // Find the last AI message and mark it as stopped
+    const lastMessage = chatMessages.value[chatMessages.value.length - 1];
+    if (lastMessage && lastMessage.type === 'ai' && lastMessage.isStreaming) {
+        lastMessage.isStreaming = false;
+        lastMessage.content += '\n\n*[Generation stopped by user]*';
+    }
 };
 
 // Note: Text selection handling for rich text editor may need different implementation
@@ -340,6 +501,21 @@ const toggleContentPreview = () => {
             </div>
 
             <div class="flex items-center gap-2">
+                <!-- Mobile Chat Toggle -->
+                <Button
+                    v-if="isMobileView"
+                    @click="toggleChatMinimize"
+                    variant="outline"
+                    size="sm"
+                    class="flex items-center gap-1"
+                >
+                    <MessageSquare class="h-4 w-4" />
+                    <span class="text-xs">Chat</span>
+                    <Badge v-if="chatMessages.length > 1" variant="secondary" class="ml-1 text-xs">
+                        {{ chatMessages.length - 1 }}
+                    </Badge>
+                </Button>
+
                 <Badge :variant="chapter.status === 'approved' ? 'default' : 'secondary'">
                     {{ chapter.status.replace('_', ' ') }}
                 </Badge>
@@ -358,6 +534,34 @@ const toggleContentPreview = () => {
 
         <!-- Main Split Content -->
         <div class="flex flex-1 overflow-hidden">
+            <!-- Mobile Chat Overlay -->
+            <div v-if="isMobileView && !isChatMinimized" class="absolute inset-0 z-50 bg-background md:hidden">
+                <ChatAssistant
+                    :is-minimized="false"
+                    :messages="chatMessages"
+                    :is-typing="isTyping"
+                    :selected-text="selectedText"
+                    :chapter-content="chapterContent"
+                    :chapter-number="chapter.chapter_number"
+                    :current-mode="currentChatMode"
+                    :project-slug="project.slug"
+                    :session-id="currentSessionId || 'temp-session'"
+                    :is-mobile="true"
+                    @send-message="handleSendMessage"
+                    @quick-action="handleQuickAction"
+                    @retry-message="handleRetryMessage"
+                    @stop-generation="handleStopGeneration"
+                    @toggle-minimize="toggleChatMinimize"
+                    @change-mode="handleModeChange"
+                    @copy-message="handleCopyMessage"
+                    @rate-message="handleRateMessage"
+                    @new-session="handleNewSession"
+                    @chat-deleted="handleChatDeleted"
+                    @chat-cleared="handleChatCleared"
+                    v-model:input="chatInput"
+                    class="mobile-chat-overlay"
+                />
+            </div>
             <!-- Left Panel - Editor -->
             <div class="flex min-h-0 flex-1 flex-col border-r">
                 <Card class="flex min-h-0 flex-1 flex-col rounded-none border-0 bg-transparent shadow-none">
@@ -443,8 +647,8 @@ const toggleContentPreview = () => {
                 </Card>
             </div>
 
-            <!-- Right Panel - Chat Assistant -->
-            <div :class="['flex min-h-0 flex-1 flex-col bg-muted/20', isChatMinimized ? 'w-16' : '']">
+            <!-- Right Panel - Chat Assistant (Desktop) -->
+            <div v-if="!isMobileView" :class="['flex min-h-0 flex-1 flex-col bg-muted/20', isChatMinimized ? 'w-16' : '']">
                 <ChatAssistant
                     :is-minimized="isChatMinimized"
                     :messages="chatMessages"
@@ -452,9 +656,20 @@ const toggleContentPreview = () => {
                     :selected-text="selectedText"
                     :chapter-content="chapterContent"
                     :chapter-number="chapter.chapter_number"
+                    :current-mode="currentChatMode"
+                    :project-slug="project.slug"
+                    :session-id="currentSessionId || 'temp-session'"
                     @send-message="handleSendMessage"
                     @quick-action="handleQuickAction"
+                    @retry-message="handleRetryMessage"
+                    @stop-generation="handleStopGeneration"
                     @toggle-minimize="toggleChatMinimize"
+                    @change-mode="handleModeChange"
+                    @copy-message="handleCopyMessage"
+                    @rate-message="handleRateMessage"
+                    @new-session="handleNewSession"
+                    @chat-deleted="handleChatDeleted"
+                    @chat-cleared="handleChatCleared"
                     v-model:input="chatInput"
                 />
             </div>
