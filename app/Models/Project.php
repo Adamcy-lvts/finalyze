@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Enums\ProjectStatus;
 use App\Enums\ProjectTopicStatus;
-use App\Enums\ChapterStatus;
 use App\Services\UniversityService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,9 +16,11 @@ class Project extends Model
 {
     protected $fillable = [
         'user_id', 'project_category_id', 'title', 'slug', 'topic', 'description', 'type', 'status', 'topic_status',
-        'mode', 'field_of_study', 'university', 'course',
+        'mode', 'field_of_study', 'university', 'faculty', 'course',
         'supervisor_name', 'current_chapter', 'is_active', 'settings',
         'setup_step', 'setup_data', 'last_activity_at',
+        'paper_collection_status', 'paper_collection_message', 'paper_collection_count',
+        'paper_collection_completed_at', 'citation_guaranteed',
     ];
 
     protected $casts = [
@@ -29,6 +30,8 @@ class Project extends Model
         'setup_data' => 'array',
         'is_active' => 'boolean',
         'last_activity_at' => 'datetime',
+        'paper_collection_completed_at' => 'datetime',
+        'citation_guaranteed' => 'boolean',
     ];
 
     public function user(): BelongsTo
@@ -36,9 +39,19 @@ class Project extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function chapterGuidances(): HasMany
+    {
+        return $this->hasMany(ProjectChapterGuidance::class);
+    }
+
     public function chapters(): HasMany
     {
         return $this->hasMany(Chapter::class)->orderBy('chapter_number');
+    }
+
+    public function outlines(): HasMany
+    {
+        return $this->hasMany(ProjectOutline::class)->orderBy('display_order');
     }
 
     public function metadata(): HasOne
@@ -51,6 +64,42 @@ class Project extends Model
         return $this->belongsTo(ProjectCategory::class, 'project_category_id');
     }
 
+    public function documentCitations()
+    {
+        return $this->hasMany(DocumentCitation::class, 'document_id');
+    }
+
+    public function collectedPapers(): HasMany
+    {
+        return $this->hasMany(CollectedPaper::class);
+    }
+
+    public function getAllCitations()
+    {
+        return $this->documentCitations()->with('citation');
+    }
+
+    public function getVerifiedCitationsCount()
+    {
+        return $this->documentCitations()
+            ->whereHas('citation', function ($query) {
+                $query->where('verification_status', 'verified');
+            })
+            ->count();
+    }
+
+    public function getUnverifiedCitationsCount()
+    {
+        return $this->documentCitations()
+            ->where(function ($query) {
+                $query->whereDoesntHave('citation')
+                    ->orWhereHas('citation', function ($subQuery) {
+                        $subQuery->where('verification_status', '!=', 'verified');
+                    });
+            })
+            ->count();
+    }
+
     public function getCurrentChapter()
     {
         return $this->chapters()->where('chapter_number', $this->current_chapter)->first();
@@ -58,10 +107,36 @@ class Project extends Model
 
     public function getProgressPercentage()
     {
+        // Use structured outlines if available, fallback to old method
+        if ($this->outlines()->exists()) {
+            return $this->getStructuredProgressPercentage();
+        }
+
+        // Fallback to old method
         $totalChapters = 5;
         $completedChapters = $this->chapters()->where('status', 'approved')->count();
 
         return ($completedChapters / $totalChapters) * 100;
+    }
+
+    /**
+     * Calculate progress based on structured outlines
+     */
+    public function getStructuredProgressPercentage(): float
+    {
+        $totalOutlines = $this->outlines()->where('is_required', true)->count();
+
+        if ($totalOutlines === 0) {
+            return 0;
+        }
+
+        $completedOutlines = $this->outlines()
+            ->where('is_required', true)
+            ->get()
+            ->filter(fn ($outline) => $outline->is_complete)
+            ->count();
+
+        return round(($completedOutlines / $totalOutlines) * 100, 2);
     }
 
     public function scopeActive($query)
@@ -153,15 +228,15 @@ class Project extends Model
         // Convert enum values to strings for comparison
         $status = $this->status instanceof \BackedEnum ? $this->status->value : $this->status;
         $topicStatus = $this->topic_status instanceof \BackedEnum ? $this->topic_status->value : $this->topic_status;
-        
+
         // If setup is not complete, continue wizard
         if ($status === 'setup' && $this->setup_step < 4) {
             return 'wizard';
         }
 
         // If setup complete but no topic selected, go to topic selection
-        if (($status === 'setup' || $status === 'planning') && 
-            ($topicStatus === 'not_started' || $topicStatus === 'topic_selection') && 
+        if (($status === 'setup' || $status === 'topic_selection') &&
+            ($topicStatus === 'not_started' || $topicStatus === 'topic_selection') &&
             empty($this->topic)) {
             return 'topic-selection';
         }
@@ -171,9 +246,14 @@ class Project extends Model
             return 'topic-approval';
         }
 
+        // If topic approved and project is in guidance phase, go to guidance page
+        if ($topicStatus === 'topic_approved' && $status === 'guidance') {
+            return 'guidance';
+        }
+
         // If topic approved and project is in writing phase, go to writing dashboard
-        if ($topicStatus === 'topic_approved' && 
-            in_array($status, ['planning', 'writing'])) {
+        if ($topicStatus === 'topic_approved' &&
+            in_array($status, ['writing', 'completed'])) {
             return 'writing';
         }
 
@@ -271,17 +351,18 @@ class Project extends Model
         }
 
         $this->update([
-            'status' => 'topic_selection',
+            'status' => 'setup',
+            'topic_status' => 'topic_selection',
             'setup_step' => 4,
             'type' => $allData['projectType'],
             'project_category_id' => $allData['projectCategoryId'],
             'university' => $universityValue,
+            'faculty' => $allData['faculty'],
             'course' => $allData['course'],
             'field_of_study' => $allData['fieldOfStudy'],
             'supervisor_name' => $allData['supervisorName'] ?? null,
             'mode' => $allData['workingMode'],
             'settings' => array_merge($this->settings ?? [], [
-                'faculty' => $allData['faculty'],
                 'department' => $allData['department'],
                 'matric_number' => $allData['matricNumber'] ?? null,
                 'academic_session' => $allData['academicSession'],
@@ -398,11 +479,11 @@ class Project extends Model
                 'projectType' => $this->type,
                 'projectCategoryId' => $this->project_category_id,
                 'university' => $this->university,
+                'faculty' => $this->faculty,
                 'course' => $this->course,
                 'fieldOfStudy' => $this->field_of_study,
                 'supervisorName' => $this->supervisor_name,
                 'workingMode' => $this->mode,
-                'faculty' => $this->settings['faculty'] ?? null,
                 'department' => $this->settings['department'] ?? null,
                 'matricNumber' => $this->settings['matric_number'] ?? null,
                 'academicSession' => $this->settings['academic_session'] ?? null,
@@ -415,7 +496,8 @@ class Project extends Model
     {
         // Reset topic but keep project setup data
         $this->update([
-            'status' => 'topic_selection',
+            'status' => 'setup',
+            'topic_status' => 'topic_selection',
             'topic' => null,
             'title' => null,
         ]);

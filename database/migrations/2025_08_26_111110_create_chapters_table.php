@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('project_id')->constrained()->onDelete('cascade');
             $table->integer('chapter_number');
             $table->string('title');
+            $table->string('slug');
             $table->longText('content')->nullable();
             $table->enum('status', ['not_started', 'draft', 'in_review', 'approved'])->default('not_started');
             $table->integer('word_count')->default(0);
@@ -26,7 +27,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['project_id', 'chapter_number']);
-            $table->index('status');
+            $table->index('status', 'slug');
         });
     }
 

@@ -19,5 +19,11 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        // Seed faculty structures first (required for faculty chapters)
+        $this->call([
+            FacultyStructureSeeder::class,
+            FacultyChapterSeeder::class,
+        ]);
     }
 }

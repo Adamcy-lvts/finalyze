@@ -22,6 +22,40 @@ class Chapter extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function documentCitations()
+    {
+        return $this->hasMany(DocumentCitation::class);
+    }
+
+    public function verifiedCitations()
+    {
+        return $this->documentCitations()
+            ->whereHas('citation', function ($query) {
+                $query->where('verification_status', 'verified');
+            });
+    }
+
+    public function unverifiedCitations()
+    {
+        return $this->documentCitations()
+            ->where(function ($query) {
+                $query->whereDoesntHave('citation')
+                    ->orWhereHas('citation', function ($subQuery) {
+                        $subQuery->where('verification_status', '!=', 'verified');
+                    });
+            });
+    }
+
+    public function analysisResults()
+    {
+        return $this->hasMany(ChapterAnalysisResult::class);
+    }
+
+    public function latestAnalysis()
+    {
+        return $this->hasOne(ChapterAnalysisResult::class)->latest('analyzed_at');
+    }
+
     public function updateWordCount()
     {
         $this->word_count = str_word_count(strip_tags($this->content));
@@ -48,6 +82,26 @@ class Chapter extends Model
     public function getRouteKeyName(): string
     {
         return 'slug';
+    }
+
+    /**
+     * Retrieve the model for a bound value.
+     * This ensures chapters are resolved within the context of their project.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        // Get the project from the route parameters
+        $project = request()->route('project');
+
+        if ($project instanceof Project) {
+            // Find the chapter by slug within this specific project
+            return $this->where('project_id', $project->id)
+                        ->where($field ?? $this->getRouteKeyName(), $value)
+                        ->first();
+        }
+
+        // Fallback to default behavior if no project context
+        return parent::resolveRouteBinding($value, $field);
     }
 
     /**
