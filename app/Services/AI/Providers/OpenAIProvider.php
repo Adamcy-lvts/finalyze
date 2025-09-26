@@ -33,7 +33,7 @@ class OpenAIProvider implements AIProviderInterface
                 'messages' => [
                     [
                         'role' => 'system',
-                        'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Write comprehensive, well-structured academic content with proper citations, formal academic language, and logical flow.',
+                        'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Use consistent markdown formatting: **bold** for emphasis, *italic* for emphasis, ## for headings, ### for subheadings, - for bullet points, 1. for numbered lists. Always use proper markdown syntax.',
                     ],
                     [
                         'role' => 'user',
@@ -82,7 +82,7 @@ class OpenAIProvider implements AIProviderInterface
                 'messages' => [
                     [
                         'role' => 'system',
-                        'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Write comprehensive, well-structured academic content with proper citations, formal academic language, and logical flow. Structure your writing with clear headings and subheadings.',
+                        'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Use consistent markdown formatting: **bold** for emphasis, *italic* for emphasis, ## for headings, ### for subheadings, - for bullet points, 1. for numbered lists. Always use proper markdown syntax.',
                     ],
                     [
                         'role' => 'user',
@@ -127,15 +127,36 @@ class OpenAIProvider implements AIProviderInterface
                 'final_word_count' => str_word_count($totalContent),
             ]);
 
+        } catch (\OpenAI\Exceptions\RateLimitException $e) {
+            Log::warning('OpenAI Provider - Rate limit exceeded during streaming', [
+                'error' => $e->getMessage(),
+                'model' => $model,
+            ]);
+
+            // Yield rate limit message to client with retry suggestion
+            yield "\n\n❌ **Rate Limit Exceeded**\n\nOpenAI API usage limit has been reached. Please try again in a few minutes or check your OpenAI usage limits.\n\n";
+            throw $e;
+
+        } catch (\OpenAI\Exceptions\UnauthorizedException $e) {
+            Log::error('OpenAI Provider - Unauthorized during streaming', [
+                'error' => $e->getMessage(),
+                'model' => $model,
+            ]);
+
+            // Yield authorization error message
+            yield "\n\n❌ **Authentication Error**\n\nOpenAI API key is invalid or expired. Please check your API configuration.\n\n";
+            throw $e;
+
         } catch (\Exception $e) {
             Log::error('OpenAI Provider - Stream generation failed', [
                 'error' => $e->getMessage(),
+                'error_class' => get_class($e),
                 'model' => $model,
                 'trace' => $e->getTraceAsString(),
             ]);
 
             // Yield error message to client
-            yield 'Error generating content with OpenAI: '.$e->getMessage();
+            yield "\n\n❌ **Generation Error**\n\nError generating content with OpenAI: ".$e->getMessage()."\n\n";
             throw $e;
         }
     }
@@ -143,6 +164,12 @@ class OpenAIProvider implements AIProviderInterface
     public function isAvailable(): bool
     {
         try {
+            // Check if API key is configured
+            if (empty(config('openai.api_key'))) {
+                Log::warning('OpenAI Provider - API key not configured');
+                return false;
+            }
+
             // Simple test to check if OpenAI is working
             $response = OpenAI::chat()->create([
                 'model' => 'gpt-4o-mini',
@@ -153,12 +180,26 @@ class OpenAIProvider implements AIProviderInterface
             ]);
 
             Log::info('OpenAI Provider - Availability check passed');
-
             return true;
+
+        } catch (\OpenAI\Exceptions\RateLimitException $e) {
+            // Rate limit doesn't mean the service is unavailable, just temporarily limited
+            Log::info('OpenAI Provider - Rate limited but service is available', [
+                'error' => $e->getMessage(),
+            ]);
+            return true; // Return true because the service is working, just rate limited
+
+        } catch (\OpenAI\Exceptions\UnauthorizedException $e) {
+            // Invalid API key
+            Log::error('OpenAI Provider - Invalid API key', [
+                'error' => $e->getMessage(),
+            ]);
+            return false;
 
         } catch (\Exception $e) {
             Log::warning('OpenAI Provider - Availability check failed', [
                 'error' => $e->getMessage(),
+                'error_class' => get_class($e),
             ]);
 
             return false;

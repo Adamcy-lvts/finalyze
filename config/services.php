@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'semantic_scholar' => [
+        'api_key' => env('SEMANTIC_SCHOLAR_API_KEY'),
+    ],
+
 ];

@@ -21,8 +21,8 @@ class AIContentGenerator
         // Register providers in priority order (configurable via environment)
         $this->providers = $this->getConfiguredProviders();
 
-        // Select the best available provider
-        $this->selectProvider();
+        // Select the best available provider - but don't throw on failure
+        $this->selectProviderSafely();
     }
 
     /**
@@ -55,6 +55,35 @@ class AIContentGenerator
         }
 
         return $providers;
+    }
+
+    /**
+     * Select the best available provider - safe version that doesn't throw
+     */
+    private function selectProviderSafely(): void
+    {
+        foreach ($this->providers as $provider) {
+            if ($provider->isAvailable()) {
+                $this->activeProvider = $provider;
+                $this->providerHistory[] = [
+                    'provider' => $provider->getName(),
+                    'selected_at' => now(),
+                    'cost_per_1k' => $provider->getCostPer1KTokens(),
+                ];
+
+                Log::info('AI Provider selected', [
+                    'provider' => $provider->getName(),
+                    'cost_per_1k_tokens' => $provider->getCostPer1KTokens(),
+                    'capabilities' => $provider->getCapabilities(),
+                ]);
+
+                return;
+            }
+        }
+
+        // No providers available - log but don't throw
+        Log::warning('No AI providers are currently available - service will operate in offline mode');
+        $this->activeProvider = null;
     }
 
     /**
@@ -94,7 +123,15 @@ class AIContentGenerator
     public function streamGenerate(string $prompt, array $options = []): Generator
     {
         if (! $this->activeProvider) {
-            throw new \Exception('No AI provider available');
+            // Gracefully handle offline state
+            Log::warning('AI generation attempted while offline', [
+                'prompt_length' => strlen($prompt),
+                'options' => $options,
+            ]);
+
+            yield 'AI services are currently unavailable. Please check your internet connection and try again.';
+
+            return;
         }
 
         $maxRetries = count($this->providers);
@@ -183,13 +220,33 @@ class AIContentGenerator
     public function generate(string $prompt, array $options = []): string
     {
         if (! $this->activeProvider) {
-            throw new \Exception('No AI provider available');
+            // Gracefully handle offline state
+            Log::warning('AI generation attempted while offline', [
+                'prompt_length' => strlen($prompt),
+                'options' => $options,
+            ]);
+
+            return 'AI services are currently unavailable. Please check your internet connection and try again.';
+        }
+
+        // Check if we have any providers at all
+        if (! $this->activeProvider) {
+            throw new \Exception('No AI providers are available for content generation');
         }
 
         $maxRetries = count($this->providers);
         $attempt = 0;
 
         while ($attempt < $maxRetries) {
+            // Check if we have an active provider after potential failures
+            if (! $this->activeProvider) {
+                Log::error('AI Content Generation - No active provider available', [
+                    'attempt' => $attempt + 1,
+                    'providers_checked' => count($this->providers),
+                ]);
+                break;
+            }
+
             try {
                 Log::info('AI Content Generation - Starting synchronous generation', [
                     'provider' => $this->activeProvider->getName(),
@@ -263,8 +320,16 @@ class AIContentGenerator
 - Well-organized sections with appropriate headings
 - Comprehensive content with proper depth
 - Logical flow and transitions between sections
-- Academic citations where appropriate
+- Academic citations in APA format where appropriate
 - Professional conclusion that ties to the next chapter
+
+CITATION REQUIREMENTS:
+- Use only REAL, VERIFIABLE sources - never cite fake or fabricated references
+- Format all citations in proper APA style: (Author, Year) for in-text citations
+- If you're unsure about a source's accuracy or existence, mark it as [UNVERIFIED] instead of creating a fake citation
+- Example of proper in-text citation: (Smith, 2020) or (Johnson & Brown, 2019)
+- When making claims that need support, either cite real sources you're confident about, or clearly indicate the statement is general knowledge
+- It's better to have fewer citations that are real than many citations that are questionable
 
 Maintain formal academic tone throughout.";
 
@@ -313,6 +378,14 @@ Maintain formal academic tone throughout.";
     public function withHighQualityModel(): self
     {
         return (clone $this)->setModel('gpt-4o');
+    }
+
+    /**
+     * Check if AI service is currently available
+     */
+    public function isAvailable(): bool
+    {
+        return $this->activeProvider !== null;
     }
 
     /**

@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\GenerateProjectOutline;
 use App\Models\Project;
 use App\Models\ProjectTopic;
 use App\Services\AIContentGenerator;
+use App\Services\ProjectOutlineService;
 use Illuminate\Support\Facades\DB;
 
 // Add request logging
@@ -25,44 +27,92 @@ use Spatie\LaravelPdf\Facades\Pdf;
 
 class TopicController extends Controller
 {
-    public function __construct(private AIContentGenerator $aiGenerator)
-    {
+    public function __construct(
+        private AIContentGenerator $aiGenerator,
+        private ProjectOutlineService $outlineService
+    ) {
         //
     }
 
-    public function generate(Request $request)
+    public function generate(Request $request, Project $project)
     {
         $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
             'regenerate' => 'boolean',
         ]);
 
-        $project = Project::with('category')->findOrFail($validated['project_id']);
+        // Load the category relationship
+        $project->load('category');
 
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
 
-        $topics = $this->generateTopicsWithAI($project);
+        // Set a longer execution time limit for topic generation
+        set_time_limit(300); // 5 minutes
 
-        // Add metadata to topics
-        $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
+        try {
+            $topics = $this->generateTopicsWithAI($project);
 
-        return response()->json([
-            'topics' => $enrichedTopics,
-        ]);
+            // Add metadata to topics
+            $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
+
+            return response()->json([
+                'topics' => $enrichedTopics,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Topic generation failed', [
+                'project_id' => $project->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to generate topics',
+                'message' => 'Please try again in a moment. If the problem persists, try refreshing the page.',
+            ], 500);
+        }
     }
 
-    public function stream(Request $request)
+    public function stream(Request $request, Project $project)
     {
-        $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'regenerate' => 'boolean',
+        Log::info('🎯 TOPIC STREAM - Method reached', [
+            'project_id' => $project->id,
+            'project_slug' => $project->slug,
+            'user_id' => auth()->id(),
+            'request_params' => $request->all(),
         ]);
 
-        $project = Project::with('category')->findOrFail($validated['project_id']);
+        try {
+            Log::info('✅ TOPIC STREAM - Starting validation');
+            $validated = $request->validate([
+                'regenerate' => 'nullable|in:true,false,1,0',
+            ]);
+            Log::info('✅ TOPIC STREAM - Validation passed', $validated);
 
-        // Ensure user owns the project
-        abort_if($project->user_id !== auth()->id(), 403);
+            // Load the category relationship
+            Log::info('📚 TOPIC STREAM - Loading project category');
+            $project->load('category');
+            Log::info('📚 TOPIC STREAM - Category loaded', [
+                'has_category' => $project->category !== null,
+            ]);
+
+            // Ensure user owns the project
+            Log::info('🔐 TOPIC STREAM - Checking project ownership', [
+                'project_user_id' => $project->user_id,
+                'auth_user_id' => auth()->id(),
+                'owns_project' => $project->user_id === auth()->id(),
+            ]);
+            abort_if($project->user_id !== auth()->id(), 403);
+            Log::info('✅ TOPIC STREAM - Ownership verified');
+
+        } catch (\Exception $e) {
+            Log::error('💥 TOPIC STREAM - Early validation failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            throw $e;
+        }
 
         // Set up Server-Sent Events headers
         $headers = [
@@ -72,116 +122,253 @@ class TopicController extends Controller
             'X-Accel-Buffering' => 'no', // Disable nginx buffering
         ];
 
-        return response()->stream(function () use ($project) {
-            // Disable output buffering
-            if (ob_get_level() > 0) {
-                ob_end_clean();
-            }
+        Log::info('🚀 TOPIC STREAM - Starting streaming response', [
+            'project_id' => $project->id,
+            'headers' => $headers,
+        ]);
 
-            // Send connection established event
-            $this->sendSSEMessage('start', [
-                'message' => 'Connected to AI service - preparing topic generation...',
-            ]);
+        try {
+            // Increase execution time limit for AI generation
+            set_time_limit(300); // 5 minutes
+            ini_set('max_execution_time', 300);
 
-            try {
-                // Check for cached topics first
-                $cachedTopics = $this->getCachedTopicsForAcademicContext($project);
-                $recentTopicRequest = $this->hasRecentTopicRequest($project);
+            Log::info('🔄 TOPIC STREAM - About to create streaming response');
 
-                if (! $recentTopicRequest && count($cachedTopics) >= 8) {
-                    $this->sendSSEMessage('content', [
-                        'message' => 'Using cached topics for faster response...',
-                        'topics' => collect($cachedTopics)->pluck('topic')->toArray(),
-                        'from_cache' => true,
-                    ]);
+            $streamingResponse = response()->stream(function () use ($project) {
+                Log::info('🚀 TOPIC STREAM - Inside stream function', [
+                    'project_id' => $project->id,
+                    'ob_level' => ob_get_level(),
+                ]);
 
-                    $this->sendSSEMessage('complete', [
-                        'message' => 'Topics loaded from cache',
-                        'total_topics' => count($cachedTopics),
-                    ]);
-
-                    $this->trackTopicRequest($project);
-
-                    return;
+                // Disable output buffering
+                if (ob_get_level() > 0) {
+                    ob_end_clean();
+                    Log::info('🧹 TOPIC STREAM - Output buffering cleared');
                 }
 
-                // Generate fresh topics with streaming
-                $this->sendSSEMessage('progress', [
-                    'message' => 'Generating fresh topics with AI...',
+                // Set proper headers for SSE in the stream
+                header('Content-Type: text/event-stream');
+                header('Cache-Control: no-cache');
+                header('Connection: keep-alive');
+                header('X-Accel-Buffering: no');
+
+                Log::info('📤 TOPIC STREAM - Sending start message');
+                // Send connection established event
+                $this->sendSSEMessage('start', [
+                    'message' => 'Connected to AI service - preparing topic generation...',
                 ]);
 
-                // Build academic context for intelligent model selection
-                $academicContext = [
-                    'field_of_study' => $project->field_of_study,
-                    'academic_level' => $project->type,
-                    'faculty' => $project->settings['faculty'] ?? '',
-                    'university' => $project->university,
-                ];
-
+                // Send a test message immediately
                 $this->sendSSEMessage('progress', [
-                    'message' => 'Using intelligent model selection based on your academic context...',
-                    'context' => $academicContext,
+                    'message' => 'Stream connection established successfully!',
                 ]);
 
-                $systemPrompt = $this->buildSystemPrompt($project);
-                $userPrompt = $this->buildContextualPrompt($project);
-                $fullPrompt = $systemPrompt."\n\n".$userPrompt;
+                try {
+                    Log::info('🔍 TOPIC STREAM - Checking for cached topics');
+                    // Check for cached topics first
+                    $cachedTopics = $this->getCachedTopicsForAcademicContext($project);
+                    Log::info('📦 TOPIC STREAM - Cached topics found', [
+                        'count' => count($cachedTopics),
+                    ]);
 
-                // Stream the AI generation
-                $generatedContent = '';
-                $wordCount = 0;
+                    Log::info('⏰ TOPIC STREAM - Checking for recent requests');
+                    $recentTopicRequest = $this->hasRecentTopicRequest($project);
+                    Log::info('⏰ TOPIC STREAM - Recent request check result', [
+                        'has_recent' => $recentTopicRequest,
+                    ]);
 
-                foreach ($this->aiGenerator->generateTopicsOptimized($fullPrompt, $academicContext) as $chunk) {
-                    $generatedContent .= $chunk;
-                    $wordCount = str_word_count($generatedContent);
+                    if (! $recentTopicRequest && count($cachedTopics) >= 8) {
+                        Log::info('📦 TOPIC STREAM - Using cached topics', [
+                            'count' => count($cachedTopics),
+                        ]);
 
-                    // Send content chunks to client
-                    $this->sendSSEMessage('content', [
-                        'chunk' => $chunk,
-                        'content' => $generatedContent,
+                        // Convert cached topics to enriched format
+                        $enrichedCachedTopics = collect($cachedTopics)
+                            ->map(function ($topic, $index) {
+                                return [
+                                    'id' => $index + 1,
+                                    'title' => $topic['topic'] ?? $topic['title'] ?? $topic,
+                                    'description' => $topic['description'] ?? 'Research topic in your field of study',
+                                    'difficulty' => 'Intermediate',
+                                    'timeline' => '6-9 months',
+                                    'resource_level' => 'Medium',
+                                    'feasibility_score' => 75,
+                                    'keywords' => [],
+                                    'research_type' => 'Applied Research',
+                                ];
+                            })
+                            ->toArray();
+
+                        $this->sendSSEMessage('content', [
+                            'message' => 'Using cached topics for faster response...',
+                            'topics' => $enrichedCachedTopics,
+                            'from_cache' => true,
+                        ]);
+
+                        $this->sendSSEMessage('complete', [
+                            'message' => 'Topics loaded from cache',
+                            'topics' => $enrichedCachedTopics,
+                            'total_topics' => count($enrichedCachedTopics),
+                        ]);
+
+                        $this->trackTopicRequest($project);
+                        Log::info('✅ TOPIC STREAM - Cached flow completed');
+
+                        // Send end event before returning
+                        $this->sendSSEMessage('end', []);
+                        Log::info('✅ TOPIC STREAM - Stream completed');
+
+                        return;
+                    }
+
+                    // Generate fresh topics with streaming
+                    Log::info('🤖 TOPIC STREAM - Starting AI generation');
+                    $this->sendSSEMessage('progress', [
+                        'message' => 'Generating fresh topics with AI...',
+                    ]);
+
+                    // Build academic context for intelligent model selection
+                    Log::info('🎓 TOPIC STREAM - Building academic context');
+                    $academicContext = [
+                        'field_of_study' => $project->field_of_study,
+                        'academic_level' => $project->type,
+                        'faculty' => $project->faculty ?? '',
+                        'university' => $project->university,
+                    ];
+
+                    Log::info('🎓 TOPIC STREAM - Academic context built', $academicContext);
+
+                    $this->sendSSEMessage('progress', [
+                        'message' => 'Using intelligent model selection based on your academic context...',
+                        'context' => $academicContext,
+                    ]);
+
+                    Log::info('📝 TOPIC STREAM - Building prompts');
+                    $systemPrompt = $this->buildSystemPrompt($project);
+                    $userPrompt = $this->buildContextualPrompt($project);
+                    $fullPrompt = $systemPrompt."\n\n".$userPrompt;
+
+                    Log::info('📝 TOPIC STREAM - Prompts built', [
+                        'system_prompt_length' => strlen($systemPrompt),
+                        'user_prompt_length' => strlen($userPrompt),
+                        'full_prompt_length' => strlen($fullPrompt),
+                    ]);
+
+                    // Stream the AI generation
+                    Log::info('🔄 TOPIC STREAM - Starting AI streaming generation');
+                    $generatedContent = '';
+                    $wordCount = 0;
+                    $chunkCount = 0;
+
+                    foreach ($this->aiGenerator->generateTopicsOptimized($fullPrompt, $academicContext) as $chunk) {
+                        $chunkCount++;
+                        $generatedContent .= $chunk;
+                        $wordCount = str_word_count($generatedContent);
+
+                        if ($chunkCount % 10 == 0) { // Log every 10 chunks to avoid spam
+                            Log::info('📝 TOPIC STREAM - AI generation progress', [
+                                'chunks_received' => $chunkCount,
+                                'word_count' => $wordCount,
+                                'content_length' => strlen($generatedContent),
+                            ]);
+                        }
+
+                        // Send content chunks to client
+                        $this->sendSSEMessage('content', [
+                            'chunk' => $chunk,
+                            'content' => $generatedContent,
+                            'word_count' => $wordCount,
+                        ]);
+
+                        // Small delay to ensure smooth streaming
+                        usleep(10000); // 10ms delay
+                    }
+
+                    Log::info('✅ TOPIC STREAM - AI generation completed', [
+                        'total_chunks' => $chunkCount,
+                        'final_word_count' => $wordCount,
+                        'final_content_length' => strlen($generatedContent),
+                    ]);
+
+                    // Parse and process the generated topics
+                    Log::info('⚙️ TOPIC STREAM - Processing generated topics');
+                    $this->sendSSEMessage('progress', [
+                        'message' => 'Processing and enriching generated topics...',
+                    ]);
+
+                    $topics = $this->parseAndValidateTopics($generatedContent, $project);
+                    Log::info('📋 TOPIC STREAM - Topics parsed', [
+                        'count' => count($topics),
+                    ]);
+
+                    $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
+                    Log::info('✨ TOPIC STREAM - Topics enriched', [
+                        'count' => count($enrichedTopics),
+                    ]);
+
+                    // Cache the generated topics
+                    Log::info('💾 TOPIC STREAM - Caching topics');
+                    $this->storeTopicsInDatabase($topics, $project);
+                    $this->trackTopicRequest($project);
+
+                    // Send final result
+                    Log::info('🎉 TOPIC STREAM - Sending final result');
+                    $this->sendSSEMessage('complete', [
+                        'message' => 'Topics generated successfully!',
+                        'topics' => $enrichedTopics,
+                        'total_topics' => count($enrichedTopics),
                         'word_count' => $wordCount,
                     ]);
 
-                    // Small delay to ensure smooth streaming
-                    usleep(10000); // 10ms delay
+                    Log::info('✅ TOPIC STREAM - Generation flow completed successfully');
+
+                } catch (\Exception $e) {
+                    Log::error('💥 TOPIC STREAM - Exception in generation', [
+                        'project_id' => $project->id,
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+
+                    $this->sendSSEMessage('error', [
+                        'message' => 'Failed to generate topics: '.$e->getMessage(),
+                    ]);
                 }
 
-                // Parse and process the generated topics
-                $this->sendSSEMessage('progress', [
-                    'message' => 'Processing and enriching generated topics...',
-                ]);
+                // Send end event
+                Log::info('🏁 TOPIC STREAM - Sending end event');
+                $this->sendSSEMessage('end', []);
+                Log::info('✅ TOPIC STREAM - Stream completed');
 
-                $topics = $this->parseTopicsFromAIResponse($generatedContent);
-                $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
+            }, 200, $headers);
 
-                // Cache the generated topics
-                $this->cacheGeneratedTopics($topics, $project);
-                $this->trackTopicRequest($project);
+            Log::info('🎉 TOPIC STREAM - Streaming response created, returning');
 
-                // Send final result
-                $this->sendSSEMessage('complete', [
-                    'message' => 'Topics generated successfully!',
-                    'topics' => $enrichedTopics,
-                    'total_topics' => count($enrichedTopics),
-                    'word_count' => $wordCount,
-                ]);
+            return $streamingResponse;
 
-            } catch (\Exception $e) {
-                Log::error('Topic streaming generation failed', [
-                    'project_id' => $project->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
+        } catch (\Exception $e) {
+            Log::error('💥 TOPIC STREAM - Exception occurred', [
+                'project_id' => $project->id,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-                $this->sendSSEMessage('error', [
-                    'message' => 'Failed to generate topics: '.$e->getMessage(),
-                ]);
-            }
-
-            // Send end event
-            $this->sendSSEMessage('end', []);
-
-        }, 200, $headers);
+            // Return error response with proper headers
+            return response()->stream(function () use ($e) {
+                echo 'data: '.json_encode([
+                    'type' => 'error',
+                    'message' => 'Stream failed: '.$e->getMessage(),
+                ])."\n\n";
+                flush();
+            }, 500, [
+                'Content-Type' => 'text/event-stream',
+                'Cache-Control' => 'no-cache',
+                'Connection' => 'keep-alive',
+            ]);
+        }
     }
 
     /**
@@ -195,19 +382,37 @@ class TopicController extends Controller
             ...$data,
         ];
 
-        echo 'data: '.json_encode($message)."\n\n";
+        $jsonMessage = json_encode($message);
+        $sseData = 'data: '.$jsonMessage."\n\n";
+
+        Log::debug('📤 SSE MESSAGE', [
+            'type' => $type,
+            'message_size' => strlen($jsonMessage),
+            'ob_level' => ob_get_level(),
+        ]);
+
+        echo $sseData;
 
         // Ensure data is sent immediately
         if (ob_get_level() > 0) {
             ob_flush();
         }
         flush();
+
+        Log::debug('📤 SSE MESSAGE SENT', [
+            'type' => $type,
+            'flushed' => true,
+        ]);
     }
 
-    public function select(Request $request)
+    public function select(Request $request, Project $project)
     {
         Log::info('🚀 TOPIC SELECTION - Request received', [
             'user_id' => auth()->id(),
+            'project_id' => $project->id,
+            'project_slug' => $project->slug,
+            'project_status' => $project->status,
+            'topic_status' => $project->topic_status,
             'request_data' => $request->all(),
             'url' => $request->fullUrl(),
             'method' => $request->method(),
@@ -217,7 +422,6 @@ class TopicController extends Controller
 
         try {
             $validated = $request->validate([
-                'project_id' => 'required|exists:projects,id',
                 'topic' => 'required|string|max:500',
                 'title' => 'required|string|max:255',
                 'description' => 'nullable|string|max:2000',
@@ -235,8 +439,6 @@ class TopicController extends Controller
             ]);
             throw $e;
         }
-
-        $project = Project::findOrFail($validated['project_id']);
 
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
@@ -267,6 +469,7 @@ class TopicController extends Controller
                 'title' => $validated['title'],
                 'description' => $validated['description'],
                 'status' => 'topic_pending_approval',
+                'topic_status' => 'topic_pending_approval',
             ]);
 
             Log::info('✅ TOPIC SELECTION - Project updated successfully', [
@@ -276,6 +479,7 @@ class TopicController extends Controller
                     'title' => $validated['title'],
                     'description' => $validated['description'] ? 'Updated' : 'Null',
                     'status' => 'topic_pending_approval',
+                    'topic_status' => 'topic_pending_approval',
                 ],
             ]);
         } catch (\Exception $e) {
@@ -319,80 +523,250 @@ class TopicController extends Controller
         return response()->json($responseData);
     }
 
-    public function approve(Request $request)
+    public function approve(Request $request, Project $project)
     {
-        $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'approved' => 'required|boolean',
-        ]);
-
-        $project = Project::findOrFail($validated['project_id']);
-
-        // Ensure user owns the project
-        abort_if($project->user_id !== auth()->id(), 403);
-
-        Log::info('TOPIC APPROVAL - Processing Approval', [
+        Log::info('🏁 TOPIC APPROVAL - Starting approval process', [
             'project_id' => $project->id,
-            'approved' => $validated['approved'],
-            'before_status' => $project->status,
-            'before_title' => $project->title,
-            'before_slug' => $project->slug,
+            'project_slug' => $project->slug,
+            'user_id' => auth()->id(),
+            'request_data' => $request->all(),
+            'request_method' => $request->method(),
+            'request_url' => $request->url(),
         ]);
 
-        if ($validated['approved']) {
-            $project->update([
-                'status' => 'topic_approved',
-            ]);
+        try {
 
-            // Update slug based on current title (set during topic selection)
-            if ($project->title) {
-                $newSlug = $project->generateSlugFromText($project->title);
-                $project->update(['slug' => $newSlug]);
-
-                Log::info('TOPIC APPROVAL - Updated Slug from Title', [
-                    'project_id' => $project->id,
-                    'title' => $project->title,
-                    'new_slug' => $newSlug,
-                    'old_slug' => $project->getOriginal('slug'),
+            try {
+                $validated = $request->validate([
+                    'approved' => 'required|boolean',
                 ]);
+
+                Log::info('✅ TOPIC APPROVAL - Validation passed', [
+                    'project_id' => $project->id,
+                    'validated_data' => $validated,
+                ]);
+
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                Log::error('❌ TOPIC APPROVAL - Validation failed', [
+                    'project_id' => $project->id,
+                    'validation_errors' => $e->errors(),
+                    'request_data' => $request->all(),
+                ]);
+                throw $e;
             }
 
-            // Generate project title from topic if not already set (fallback)
-            if (! $project->title && $project->topic) {
-                $title = $this->generateTitleFromTopic($project->topic);
-                $newSlug = $project->generateSlugFromText($title);
-
-                $project->update([
-                    'title' => $title,
-                    'slug' => $newSlug,
-                ]);
-
-                Log::info('TOPIC APPROVAL - Generated Title and Slug from Topic', [
+            // Ensure user owns the project
+            if ($project->user_id !== auth()->id()) {
+                Log::error('🚫 TOPIC APPROVAL - Access denied', [
                     'project_id' => $project->id,
-                    'generated_title' => $title,
-                    'generated_slug' => $newSlug,
+                    'project_user_id' => $project->user_id,
+                    'auth_user_id' => auth()->id(),
                 ]);
+                abort(403);
             }
-        } else {
-            $project->update([
-                'status' => 'topic_selection',
-                'topic' => null,
-                'title' => null,
+
+            Log::info('🔍 TOPIC APPROVAL - Processing approval', [
+                'project_id' => $project->id,
+                'approved' => $validated['approved'],
+                'before_status' => $project->status,
+                'before_topic_status' => $project->topic_status,
+                'before_title' => $project->title,
+                'before_slug' => $project->slug,
+                'project_user_id' => $project->user_id,
+                'auth_user_id' => auth()->id(),
             ]);
+
+            if ($validated['approved']) {
+                Log::info('👍 TOPIC APPROVAL - Approving topic', [
+                    'project_id' => $project->id,
+                ]);
+
+                try {
+                    $project->update([
+                        'topic_status' => 'topic_approved',
+                        'status' => 'guidance',
+                    ]);
+
+                    Log::info('✅ TOPIC APPROVAL - Status update successful', [
+                        'project_id' => $project->id,
+                        'new_status' => 'guidance',
+                        'new_topic_status' => 'topic_approved',
+                    ]);
+
+                } catch (\Exception $e) {
+                    Log::error('❌ TOPIC APPROVAL - Status update failed', [
+                        'project_id' => $project->id,
+                        'error_message' => $e->getMessage(),
+                        'error_trace' => $e->getTraceAsString(),
+                    ]);
+                    throw $e;
+                }
+
+                // Update slug based on current title (set during topic selection)
+                if ($project->title) {
+                    Log::info('🔄 TOPIC APPROVAL - Updating slug from title', [
+                        'project_id' => $project->id,
+                        'current_title' => $project->title,
+                    ]);
+
+                    try {
+                        $newSlug = $project->generateSlugFromText($project->title);
+                        $project->update(['slug' => $newSlug]);
+
+                        Log::info('✅ TOPIC APPROVAL - Slug updated from title', [
+                            'project_id' => $project->id,
+                            'title' => $project->title,
+                            'new_slug' => $newSlug,
+                            'old_slug' => $project->getOriginal('slug'),
+                        ]);
+
+                    } catch (\Exception $e) {
+                        Log::error('❌ TOPIC APPROVAL - Slug update failed', [
+                            'project_id' => $project->id,
+                            'title' => $project->title,
+                            'error_message' => $e->getMessage(),
+                        ]);
+                        throw $e;
+                    }
+                }
+
+                // Generate project title from topic if not already set (fallback)
+                if (! $project->title && $project->topic) {
+                    Log::info('🔄 TOPIC APPROVAL - Generating title from topic', [
+                        'project_id' => $project->id,
+                        'topic' => $project->topic,
+                    ]);
+
+                    try {
+                        $title = $this->generateTitleFromTopic($project->topic);
+                        $newSlug = $project->generateSlugFromText($title);
+
+                        $project->update([
+                            'title' => $title,
+                            'slug' => $newSlug,
+                        ]);
+
+                        Log::info('✅ TOPIC APPROVAL - Title and slug generated from topic', [
+                            'project_id' => $project->id,
+                            'generated_title' => $title,
+                            'generated_slug' => $newSlug,
+                        ]);
+
+                    } catch (\Exception $e) {
+                        Log::error('❌ TOPIC APPROVAL - Title generation failed', [
+                            'project_id' => $project->id,
+                            'topic' => $project->topic,
+                            'error_message' => $e->getMessage(),
+                        ]);
+                        throw $e;
+                    }
+                }
+
+                // Dispatch outline generation job to background queue
+                Log::info('🚀 TOPIC APPROVAL - Dispatching outline generation job', [
+                    'project_id' => $project->id,
+                ]);
+
+                try {
+                    GenerateProjectOutline::dispatch($project->fresh());
+
+                    Log::info('✅ TOPIC APPROVAL - Outline generation job dispatched', [
+                        'project_id' => $project->id,
+                    ]);
+
+                } catch (\Exception $e) {
+                    Log::error('❌ TOPIC APPROVAL - Failed to dispatch outline job', [
+                        'project_id' => $project->id,
+                        'error_message' => $e->getMessage(),
+                    ]);
+                    // Don't throw here - approval can still succeed without outline generation
+                }
+
+            } else {
+                Log::info('👎 TOPIC APPROVAL - Rejecting topic', [
+                    'project_id' => $project->id,
+                ]);
+
+                try {
+                    $project->update([
+                        'topic_status' => 'not_started',
+                        'status' => 'topic_selection',
+                        'topic' => null,
+                        'title' => null,
+                    ]);
+
+                    Log::info('✅ TOPIC APPROVAL - Topic rejected successfully', [
+                        'project_id' => $project->id,
+                        'new_status' => 'topic_selection',
+                        'new_topic_status' => 'not_started',
+                    ]);
+
+                } catch (\Exception $e) {
+                    Log::error('❌ TOPIC APPROVAL - Topic rejection failed', [
+                        'project_id' => $project->id,
+                        'error_message' => $e->getMessage(),
+                        'error_trace' => $e->getTraceAsString(),
+                    ]);
+                    throw $e;
+                }
+            }
+
+            // Refresh project to get latest values
+            $freshProject = $project->fresh();
+
+            Log::info('🏆 TOPIC APPROVAL - Processing completed successfully', [
+                'project_id' => $project->id,
+                'after_status' => $freshProject->status,
+                'after_topic_status' => $freshProject->topic_status,
+                'after_title' => $freshProject->title,
+                'after_slug' => $freshProject->slug,
+            ]);
+
+            try {
+                $response = response()->json([
+                    'success' => true,
+                    'status' => $freshProject->status,
+                    'topic_status' => $freshProject->topic_status,
+                    'slug' => $freshProject->slug, // Return updated slug for correct redirects
+                ]);
+
+                Log::info('✅ TOPIC APPROVAL - Response prepared successfully', [
+                    'project_id' => $project->id,
+                    'response_data' => [
+                        'success' => true,
+                        'status' => $freshProject->status,
+                        'topic_status' => $freshProject->topic_status,
+                        'slug' => $freshProject->slug,
+                    ],
+                ]);
+
+                return $response;
+
+            } catch (\Exception $e) {
+                Log::error('❌ TOPIC APPROVAL - Response preparation failed', [
+                    'project_id' => $project->id,
+                    'error_message' => $e->getMessage(),
+                    'error_trace' => $e->getTraceAsString(),
+                ]);
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('💥 TOPIC APPROVAL - Unexpected error occurred', [
+                'project_id' => $project->id,
+                'error_message' => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'error_trace' => $e->getTraceAsString(),
+                'request_data' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to update approval status',
+                'message' => 'An unexpected error occurred while processing the topic approval.',
+            ], 500);
         }
-
-        Log::info('TOPIC APPROVAL - After Processing', [
-            'project_id' => $project->id,
-            'after_status' => $project->fresh()->status,
-            'after_title' => $project->fresh()->title,
-            'after_slug' => $project->fresh()->slug,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'status' => $project->status,
-            'slug' => $project->fresh()->slug, // Return updated slug for correct redirects
-        ]);
     }
 
     /**
@@ -659,7 +1033,7 @@ class TopicController extends Controller
             $academicContext = [
                 'field_of_study' => $project->field_of_study,
                 'academic_level' => $project->type,
-                'faculty' => $project->settings['faculty'] ?? '',
+                'faculty' => $project->faculty ?? '',
                 'university' => $project->university,
             ];
 
@@ -675,10 +1049,24 @@ class TopicController extends Controller
 
             $aiStartTime = microtime(true);
 
-            // Collect all chunks from the generator into a single string
+            // Collect all chunks from the generator into a single string with timeout protection
             $generatedContent = '';
+            $chunkCount = 0;
+            $timeout = 180; // 3 minutes max for AI generation
+
             foreach ($this->aiGenerator->generateTopicsOptimized($fullPrompt, $academicContext) as $chunk) {
                 $generatedContent .= $chunk;
+                $chunkCount++;
+
+                // Check if we've been running too long
+                if ((microtime(true) - $aiStartTime) > $timeout) {
+                    Log::warning('AI generation timeout, stopping early', [
+                        'project_id' => $project->id,
+                        'chunks_received' => $chunkCount,
+                        'elapsed_time' => microtime(true) - $aiStartTime,
+                    ]);
+                    break;
+                }
             }
 
             $aiEndTime = microtime(true);
@@ -1240,7 +1628,7 @@ The description should help a student understand what this topic involves and wh
             $academicContext = [
                 'field_of_study' => $project->field_of_study,
                 'academic_level' => $project->type,
-                'faculty' => $project->settings['faculty'] ?? '',
+                'faculty' => $project->faculty ?? '',
             ];
 
             $aiStartTime = microtime(true);
@@ -1284,13 +1672,60 @@ The description should help a student understand what this topic involves and wh
     }
 
     /**
+     * Get previously generated topics for this specific project's academic context
+     * Returns enriched topics with full metadata for display
+     */
+    private function getProjectGeneratedTopics(Project $project): array
+    {
+        // Get faculty and department from project
+        $faculty = $project->faculty ?? null;
+        $department = $project->settings['department'] ?? null;
+
+        // Look for topics with exact academic context match
+        $savedTopics = ProjectTopic::where('course', $project->course)
+            ->where('academic_level', $project->type)
+            ->where('university', $project->university)
+            ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
+            ->when($department, fn ($q) => $q->where('department', $department))
+            ->when($project->field_of_study, fn ($q) => $q->where('field_of_study', $project->field_of_study))
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($topic, $index) {
+                return [
+                    'id' => $index + 1,
+                    'title' => $topic->title,
+                    'description' => $topic->description ?? 'Research topic in '.$topic->field_of_study,
+                    'difficulty' => $topic->difficulty ?? 'Intermediate',
+                    'timeline' => $topic->timeline ?? '6-9 months',
+                    'resource_level' => $topic->resource_level ?? 'Medium',
+                    'feasibility_score' => $topic->feasibility_score ?? 75,
+                    'keywords' => $topic->keywords ?? [],
+                    'research_type' => $topic->research_type ?? 'Applied Research',
+                ];
+            })
+            ->toArray();
+
+        Log::info('Retrieved saved project topics', [
+            'project_id' => $project->id,
+            'course' => $project->course,
+            'university' => $project->university,
+            'faculty' => $faculty,
+            'department' => $department,
+            'saved_topics_count' => count($savedTopics),
+        ]);
+
+        return $savedTopics;
+    }
+
+    /**
      * Get cached topics for academic context
      * Returns previously generated topics for similar academic contexts to improve performance
      */
     private function getCachedTopicsForAcademicContext(Project $project): array
     {
-        // Get faculty and department from project settings
-        $faculty = $project->settings['faculty'] ?? null;
+        // Get faculty and department from project
+        $faculty = $project->faculty ?? null;
         $department = $project->settings['department'] ?? null;
 
         // Look for topics with similar academic context stored directly in ProjectTopic
@@ -1329,8 +1764,8 @@ The description should help a student understand what this topic involves and wh
     private function storeTopicsInDatabase(array $topics, Project $project): void
     {
         try {
-            // Get faculty and department from project settings
-            $faculty = $project->settings['faculty'] ?? null;
+            // Get faculty and department from project
+            $faculty = $project->faculty ?? null;
             $department = $project->settings['department'] ?? null;
 
             foreach ($topics as $topic) {
