@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ChapterSection;
+use App\Models\FacultyChapter;
 use App\Models\FacultyStructure;
 use App\Models\Project;
 use App\Models\ProjectOutline;
@@ -16,16 +17,19 @@ class FacultyStructureService
      */
     public function getProjectStructure(Project $project): array
     {
-        $cacheKey = "faculty_structure_{$project->faculty}_{$project->type}";
+        // Get faculty name from relationship (new) or string field (legacy)
+        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
 
-        return Cache::remember($cacheKey, 3600, function () use ($project) {
+        $cacheKey = "faculty_structure_{$facultyName}_{$project->type}";
+
+        return Cache::remember($cacheKey, 3600, function () use ($project, $facultyName) {
             // Get faculty structure
-            $facultyStructure = $this->getFacultyStructure($project->faculty);
+            $facultyStructure = $this->getFacultyStructure($facultyName);
 
             if (! $facultyStructure) {
                 Log::warning('Faculty structure not found, using fallback', [
                     'project_id' => $project->id,
-                    'faculty' => $project->faculty,
+                    'faculty' => $facultyName,
                 ]);
 
                 return $this->getFallbackStructure($project);
@@ -56,7 +60,52 @@ class FacultyStructureService
             return $this->getCustomChapterStructure($project);
         }
 
-        // Fallback to faculty-based structure
+        // Get faculty name from relationship (new) or string field (legacy)
+        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+
+        // Try to get from FacultyChapter table first (Database Driven)
+        $facultyStructure = $this->getFacultyStructure($facultyName);
+        if ($facultyStructure) {
+            $academicLevel = $this->determineAcademicLevel($project);
+
+            $chapters = $facultyStructure->chapters()
+                ->where(function ($query) use ($academicLevel) {
+                    $query->where('academic_level', $academicLevel)
+                        ->orWhere('academic_level', 'all');
+                })
+                ->where(function ($query) use ($project) {
+                    $query->where('project_type', 'thesis') // Default
+                        ->orWhere('project_type', 'all')
+                        ->orWhere('project_type', $project->type);
+                })
+                ->with('sections')
+                ->orderBy('sort_order')
+                ->get();
+
+            if ($chapters->isNotEmpty()) {
+                return $chapters->map(function (FacultyChapter $chapter) {
+                    return [
+                        'number' => $chapter->chapter_number,
+                        'title' => $chapter->chapter_title,
+                        'word_count' => $chapter->target_word_count,
+                        'completion_threshold' => $chapter->completion_threshold,
+                        'description' => $chapter->description,
+                        'is_required' => $chapter->is_required,
+                        'sections' => $chapter->sections->map(function ($section) {
+                            return [
+                                'number' => $section->section_number,
+                                'title' => $section->section_title,
+                                'description' => $section->section_description,
+                                'word_count' => $section->target_word_count,
+                                'is_required' => $section->is_required,
+                            ];
+                        })->toArray(),
+                    ];
+                })->toArray();
+            }
+        }
+
+        // Fallback to legacy JSON structure if no chapters found in table
         $structure = $this->getProjectStructure($project);
         $academicLevel = $this->determineAcademicLevel($project);
 
@@ -102,7 +151,10 @@ class FacultyStructureService
      */
     public function getGuidanceTemplates(Project $project): array
     {
-        $facultyStructure = $this->getFacultyStructure($project->faculty);
+        // Get faculty name from relationship (new) or string field (legacy)
+        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+
+        $facultyStructure = $this->getFacultyStructure($facultyName);
         $academicLevel = $this->determineAcademicLevel($project);
 
         if (! $facultyStructure) {
@@ -117,7 +169,10 @@ class FacultyStructureService
      */
     public function getTerminology(Project $project): array
     {
-        $facultyStructure = $this->getFacultyStructure($project->faculty);
+        // Get faculty name from relationship (new) or string field (legacy)
+        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+
+        $facultyStructure = $this->getFacultyStructure($facultyName);
         $academicLevel = $this->determineAcademicLevel($project);
 
         if (! $facultyStructure) {
@@ -132,7 +187,10 @@ class FacultyStructureService
      */
     public function getTimelineRecommendations(Project $project): array
     {
-        $facultyStructure = $this->getFacultyStructure($project->faculty);
+        // Get faculty name from relationship (new) or string field (legacy)
+        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+
+        $facultyStructure = $this->getFacultyStructure($facultyName);
         $academicLevel = $this->determineAcademicLevel($project);
 
         if (! $facultyStructure) {
@@ -148,6 +206,9 @@ class FacultyStructureService
     public function createProjectOutlines(Project $project): void
     {
         $chapterStructure = $this->getChapterStructure($project);
+
+        // Get faculty name from relationship (new) or string field (legacy)
+        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
 
         foreach ($chapterStructure as $index => $chapterData) {
             $outline = ProjectOutline::create([
@@ -169,7 +230,7 @@ class FacultyStructureService
 
         Log::info('Project outlines created from faculty structure', [
             'project_id' => $project->id,
-            'faculty' => $project->faculty,
+            'faculty' => $facultyName,
             'outline_count' => count($chapterStructure),
         ]);
     }
@@ -199,8 +260,12 @@ class FacultyStructureService
     /**
      * Private helper methods
      */
-    private function getFacultyStructure(string $facultyName): ?FacultyStructure
+    private function getFacultyStructure(?string $facultyName): ?FacultyStructure
     {
+        if (! $facultyName) {
+            return null;
+        }
+
         return FacultyStructure::active()
             ->forFaculty($facultyName)
             ->first();

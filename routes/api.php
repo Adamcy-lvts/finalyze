@@ -11,6 +11,19 @@ use Illuminate\Support\Facades\Route;
 
 // API routes - using sanctum for SPA authentication
 Route::middleware(['auth:sanctum'])->group(function () {
+    // University, Faculty, and Department endpoints
+    Route::get('/universities', [\App\Http\Controllers\Api\UniversityController::class, 'index'])
+        ->name('api.universities.index');
+
+    Route::get('/faculties', [\App\Http\Controllers\Api\FacultyController::class, 'index'])
+        ->name('api.faculties.index');
+
+    Route::get('/faculties/{faculty}/departments', [\App\Http\Controllers\Api\DepartmentController::class, 'byFaculty'])
+        ->name('api.faculties.departments');
+
+    Route::get('/departments', [\App\Http\Controllers\Api\DepartmentController::class, 'index'])
+        ->name('api.departments.index');
+
     // Citation verification routes
     Route::post('/projects/{project}/chapters/{chapter}/verify-citations', [CitationController::class, 'verifyCitations'])
         ->name('api.projects.chapters.verify-citations')
@@ -123,6 +136,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         ->name('api.projects.stream-bulk-generation');
 
     // Bulk project generation
-    Route::get('/projects/{project}/bulk-generate/stream', [ProjectController::class, 'streamBulkGeneration'])
-        ->name('api.projects.bulk-generate.stream');
+    Route::post('/projects/{project}/bulk-generate/start', [ProjectController::class, 'startBulkGeneration'])
+        ->name('api.projects.bulk-generate.start');
+
+    Route::get('/projects/{project}/bulk-generate/status', [ProjectController::class, 'checkBulkGenerationStatus'])
+        ->name('api.projects.bulk-generate.status');
+
+    Route::post('/projects/{project}/bulk-generate/cancel', [ProjectController::class, 'cancelBulkGeneration'])
+        ->name('api.projects.bulk-generate.cancel');
 });

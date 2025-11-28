@@ -30,7 +30,15 @@ class FacultyStructure extends Model
     ];
 
     /**
-     * Get all projects using this faculty structure
+     * Get all faculties using this structure template
+     */
+    public function faculties(): HasMany
+    {
+        return $this->hasMany(Faculty::class, 'faculty_structure_id');
+    }
+
+    /**
+     * Get all projects using this faculty structure (legacy)
      */
     public function projects(): HasMany
     {
@@ -124,8 +132,13 @@ class FacultyStructure extends Model
         return $query->where('is_active', true);
     }
 
-    public function scopeForFaculty($query, string $facultyName)
+    public function scopeForFaculty($query, ?string $facultyName)
     {
+        // If no faculty name provided, return query without filtering
+        if (empty($facultyName)) {
+            return $query;
+        }
+
         $normalizedName = strtolower(trim($facultyName));
 
         return $query->where(function ($q) use ($facultyName, $normalizedName) {
