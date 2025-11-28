@@ -4,34 +4,31 @@ namespace App\Enums;
 
 enum ChapterStatus: string
 {
+    case NotStarted = 'not_started';
     case Draft = 'draft';
-    case InProgress = 'in_progress';
-    case PendingReview = 'pending_review';
-    case UnderReview = 'under_review';
-    case NeedsRevision = 'needs_revision';
+    case InReview = 'in_review';
     case Approved = 'approved';
+    case Completed = 'completed';
 
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
+            self::NotStarted => 'Not Started',
             self::Draft => 'Draft',
-            self::InProgress => 'In Progress',
-            self::PendingReview => 'Pending Review',
-            self::UnderReview => 'Under Review',
-            self::NeedsRevision => 'Needs Revision',
+            self::InReview => 'In Review',
             self::Approved => 'Approved',
+            self::Completed => 'Completed',
         };
     }
 
     public function color(): string
     {
-        return match($this) {
-            self::Draft => 'bg-gray-500/10 text-gray-700',
-            self::InProgress => 'bg-blue-500/10 text-blue-700',
-            self::PendingReview => 'bg-yellow-500/10 text-yellow-700',
-            self::UnderReview => 'bg-purple-500/10 text-purple-700',
-            self::NeedsRevision => 'bg-orange-500/10 text-orange-700',
+        return match ($this) {
+            self::NotStarted => 'bg-gray-500/10 text-gray-700',
+            self::Draft => 'bg-blue-500/10 text-blue-700',
+            self::InReview => 'bg-yellow-500/10 text-yellow-700',
             self::Approved => 'bg-green-500/10 text-green-700',
+            self::Completed => 'bg-green-500/10 text-green-700',
         };
     }
 
@@ -42,8 +39,8 @@ enum ChapterStatus: string
 
     public static function options(): array
     {
-        return collect(self::cases())->mapWithKeys(fn($case) => [
-            $case->value => $case->label()
+        return collect(self::cases())->mapWithKeys(fn ($case) => [
+            $case->value => $case->label(),
         ])->toArray();
     }
 }

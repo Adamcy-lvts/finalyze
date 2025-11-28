@@ -13,15 +13,18 @@ return new class extends Migration
     public function up(): void
     {
         // Add indexes using raw SQL with IF NOT EXISTS logic
-        $indexes = [
-            'projects_user_id_status_index' => '(user_id, status)',
-            'projects_user_id_status_is_active_index' => '(user_id, status, is_active)',
-        ];
+        // Skip for SQLite (testing) as it doesn't support SHOW INDEX
+        if (DB::getDriverName() !== 'sqlite') {
+            $indexes = [
+                'projects_user_id_status_index' => '(user_id, status)',
+                'projects_user_id_status_is_active_index' => '(user_id, status, is_active)',
+            ];
 
-        foreach ($indexes as $indexName => $columns) {
-            $exists = DB::select('SHOW INDEX FROM projects WHERE Key_name = ?', [$indexName]);
-            if (empty($exists)) {
-                DB::statement("ALTER TABLE projects ADD INDEX {$indexName} {$columns}");
+            foreach ($indexes as $indexName => $columns) {
+                $exists = DB::select('SHOW INDEX FROM projects WHERE Key_name = ?', [$indexName]);
+                if (empty($exists)) {
+                    DB::statement("ALTER TABLE projects ADD INDEX {$indexName} {$columns}");
+                }
             }
         }
 
@@ -49,15 +52,18 @@ return new class extends Migration
     public function down(): void
     {
         // Drop indexes using raw SQL
-        $indexes = [
-            'projects_user_id_status_index',
-            'projects_user_id_status_is_active_index',
-        ];
+        // Drop indexes using raw SQL
+        if (DB::getDriverName() !== 'sqlite') {
+            $indexes = [
+                'projects_user_id_status_index',
+                'projects_user_id_status_is_active_index',
+            ];
 
-        foreach ($indexes as $indexName) {
-            $exists = DB::select('SHOW INDEX FROM projects WHERE Key_name = ?', [$indexName]);
-            if (! empty($exists)) {
-                DB::statement("DROP INDEX {$indexName} ON projects");
+            foreach ($indexes as $indexName => $columns) {
+                $exists = DB::select('SHOW INDEX FROM projects WHERE Key_name = ?', [$indexName]);
+                if (! empty($exists)) {
+                    DB::statement("DROP INDEX {$indexName} ON projects");
+                }
             }
         }
 

@@ -15,7 +15,7 @@ class ProjectController extends Controller
     public function index()
     {
         $projects = auth()->user()->projects()
-            ->with('chapters')
+            ->with(['chapters', 'category', 'outlines', 'universityRelation', 'facultyRelation', 'departmentRelation'])
             ->latest()
             ->get();
 
@@ -32,7 +32,10 @@ class ProjectController extends Controller
                     'created_at' => $project->created_at->toISOString(),
                     'is_active' => $project->is_active,
                     'current_chapter' => $project->current_chapter,
-                    'university' => $project->university,
+                    'university' => $project->universityRelation?->name,
+                    'full_university_name' => $project->full_university_name,
+                    'faculty' => $project->faculty_name,
+                    'department' => $project->department_name,
                 ];
             }),
         ]);
@@ -128,9 +131,9 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'project_category_id' => 'required|exists:project_categories,id',
             'type' => 'required|in:undergraduate,postgraduate,hnd,nd',
-            'university' => 'required|string',
-            'faculty' => 'required|string',
-            'department' => 'required|string',
+            'university_id' => 'required|exists:universities,id',
+            'faculty_id' => 'required|exists:faculties,id',
+            'department_id' => 'required|exists:departments,id',
             'course' => 'required|string',
             'field_of_study' => 'nullable|string',
             'supervisor_name' => 'nullable|string',
@@ -197,7 +200,9 @@ class ProjectController extends Controller
             $project = auth()->user()->projects()->create([
                 'project_category_id' => $validated['project_category_id'],
                 'type' => $validated['type'],
-                'university' => $validated['university'],
+                'university_id' => $validated['university_id'],
+                'faculty_id' => $validated['faculty_id'],
+                'department_id' => $validated['department_id'],
                 'course' => $validated['course'],
                 'field_of_study' => $validated['field_of_study'],
                 'supervisor_name' => $validated['supervisor_name'],
@@ -207,8 +212,6 @@ class ProjectController extends Controller
                 'is_active' => true,
                 'current_chapter' => 0,
                 'settings' => [
-                    'faculty' => $validated['faculty'],
-                    'department' => $validated['department'],
                     'matric_number' => $validated['matric_number'] ?? null,
                     'academic_session' => $validated['academic_session'],
                     'ai_assistance_level' => $validated['ai_assistance_level'] ?? 'moderate',
@@ -219,8 +222,6 @@ class ProjectController extends Controller
             $project->metadata()->create([
                 'academic_session' => $validated['academic_session'],
                 'matriculation_number' => $validated['matric_number'] ?? null,
-                'department' => $validated['department'],
-                'faculty' => $validated['faculty'],
             ]);
 
             // Initialize chapters based on category template
@@ -450,6 +451,9 @@ class ProjectController extends Controller
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
 
+        // Load relationships
+        $project->load(['universityRelation', 'facultyRelation', 'departmentRelation']);
+
         // Load previously generated topics for this project context
         $savedTopics = $this->getProjectGeneratedTopics($project);
 
@@ -459,10 +463,14 @@ class ProjectController extends Controller
                 'slug' => $project->slug,
                 'title' => $project->title,
                 'topic' => $project->topic,
+                'description' => $project->description,
                 'type' => $project->type,
                 'status' => $project->status,
                 'field_of_study' => $project->field_of_study,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
+                'full_university_name' => $project->full_university_name,
+                'faculty' => $project->faculty_name,
+                'department' => $project->department_name,
                 'course' => $project->course,
             ],
             'savedTopics' => $savedTopics,
@@ -479,6 +487,9 @@ class ProjectController extends Controller
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
 
+        // Load relationships
+        $project->load(['universityRelation', 'facultyRelation', 'departmentRelation']);
+
         return Inertia::render('projects/TopicApproval', [
             'project' => [
                 'id' => $project->id,
@@ -489,6 +500,11 @@ class ProjectController extends Controller
                 'type' => $project->type,
                 'status' => $project->status,
                 'field_of_study' => $project->field_of_study,
+                'course' => $project->course,
+                'university' => $project->universityRelation?->name,
+                'full_university_name' => $project->full_university_name,
+                'faculty' => $project->faculty_name,
+                'department' => $project->department_name,
                 'supervisor_name' => $project->supervisor_name,
             ],
         ]);
@@ -505,7 +521,7 @@ class ProjectController extends Controller
         abort_if($project->user_id !== auth()->id(), 403);
 
         // Load project with chapters, category, and outlines for word count calculations
-        $project->load(['chapters', 'category', 'outlines.sections']);
+        $project->load(['chapters', 'category', 'outlines.sections', 'universityRelation', 'facultyRelation', 'departmentRelation']);
 
         return Inertia::render('projects/Writing', [
             'project' => [
@@ -517,8 +533,11 @@ class ProjectController extends Controller
                 'status' => $project->status,
                 'mode' => $project->mode,
                 'field_of_study' => $project->field_of_study,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
+                'faculty' => $project->faculty_name,
+                'department' => $project->department_name,
                 'course' => $project->course,
+                'progress' => $project->getProgressPercentage(),
                 'chapters' => $project->chapters->map(function ($chapter) {
                     return [
                         'id' => $chapter->id,
@@ -586,6 +605,93 @@ class ProjectController extends Controller
                 }),
             ],
         ]);
+    }
+
+    /**
+     * Show the form for editing the specified project
+     */
+    public function edit(Project $project)
+    {
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        // Load relationships
+        $project->load(['universityRelation', 'facultyRelation', 'departmentRelation']);
+
+        return Inertia::render('projects/Edit', [
+            'project' => [
+                'id' => $project->id,
+                'slug' => $project->slug,
+                'title' => $project->title,
+                'topic' => $project->topic,
+                'description' => $project->description,
+                'type' => $project->type,
+                'status' => $project->status,
+                'field_of_study' => $project->field_of_study,
+                'mode' => $project->mode,
+                'university' => $project->universityRelation?->name,
+                'full_university_name' => $project->full_university_name,
+                'faculty' => $project->faculty_name,
+                'department' => $project->department_name,
+                'course' => $project->course,
+                'supervisor_name' => $project->supervisor_name,
+                'settings' => $project->settings ?? [],
+                'dedication' => $project->dedication,
+                'acknowledgements' => $project->acknowledgements,
+                'abstract' => $project->abstract,
+                'certification_signatories' => $project->certification_signatories ?? [],
+                'tables' => $project->tables ?? [],
+                'abbreviations' => $project->abbreviations ?? [],
+                'created_at' => $project->created_at->toISOString(),
+            ],
+        ]);
+    }
+
+    /**
+     * Update the specified project in storage
+     */
+    public function update(\App\Http\Requests\UpdateProjectRequest $request, Project $project)
+    {
+        // Authorization is handled in UpdateProjectRequest
+
+        $validated = $request->validated();
+
+        Log::info('Project update requested', [
+            'project_id' => $project->id,
+            'user_id' => auth()->id(),
+            'validated_data' => $validated,
+        ]);
+
+        try {
+            // Merge settings if provided (preserve existing settings)
+            if (isset($validated['settings'])) {
+                $validated['settings'] = array_merge(
+                    $project->settings ?? [],
+                    $validated['settings']
+                );
+            }
+
+            $project->update($validated);
+
+            Log::info('Project updated successfully', [
+                'project_id' => $project->id,
+                'updated_fields' => array_keys($validated),
+            ]);
+
+            return redirect()->route('projects.show', $project->slug)
+                ->with('success', 'Project details updated successfully');
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update project', [
+                'project_id' => $project->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return back()
+                ->withErrors(['error' => 'Failed to update project. Please try again.'])
+                ->withInput();
+        }
     }
 
     public function setActive(Project $project)
@@ -861,14 +967,18 @@ class ProjectController extends Controller
      */
     private function getProjectGeneratedTopics(Project $project): array
     {
-        // Get faculty and department from project
-        $faculty = $project->faculty ?? null;
-        $department = $project->settings['department'] ?? null;
+        // Load relationships if not already loaded
+        $project->loadMissing(['universityRelation', 'facultyRelation', 'departmentRelation']);
+
+        // Get faculty and department from project relationships
+        $faculty = $project->facultyRelation?->name ?? null;
+        $department = $project->departmentRelation?->name ?? null;
+        $university = $project->universityRelation?->name ?? null;
 
         // Look for topics with exact academic context match
         $savedTopics = ProjectTopic::where('course', $project->course)
             ->where('academic_level', $project->type)
-            ->where('university', $project->university)
+            ->when($university, fn ($q) => $q->where('university', $university))
             ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
             ->when($department, fn ($q) => $q->where('department', $department))
             ->when($project->field_of_study, fn ($q) => $q->where('field_of_study', $project->field_of_study))
@@ -965,7 +1075,7 @@ class ProjectController extends Controller
         abort_if(! in_array($project->status->value, $allowedStatuses), 400, 'Project topic must be approved before bulk generation');
 
         // Get project with necessary relationships
-        $project->load(['chapters', 'category']);
+        $project->load(['chapters', 'category', 'universityRelation', 'facultyRelation', 'departmentRelation']);
 
         return Inertia::render('projects/BulkGeneration', [
             'project' => [
@@ -977,1442 +1087,132 @@ class ProjectController extends Controller
                 'status' => $project->status,
                 'mode' => $project->mode,
                 'field_of_study' => $project->field_of_study,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
+                'faculty' => $project->faculty_name,
+                'department' => $project->department_name,
+                'full_university_name' => $project->full_university_name,
                 'course' => $project->course,
-                'faculty' => $project->faculty,
-                'chapters' => $project->chapters,
+                'chapters' => $project->chapters->map(function ($chapter) {
+                    return [
+                        'id' => $chapter->id,
+                        'chapter_number' => $chapter->chapter_number,
+                        'title' => $chapter->title,
+                        'target_word_count' => $chapter->target_word_count,
+                        'word_count' => $chapter->word_count,
+                        'status' => $chapter->status,
+                    ];
+                }),
                 'category' => $project->category,
             ],
         ]);
     }
 
     /**
-     * Stream bulk generation progress with Server-Sent Events
+     * Start bulk generation process
      */
-    public function streamBulkGeneration(Project $project)
+    /**
+     * Start bulk generation process
+     */
+    public function startBulkGeneration(Request $request, Project $project)
     {
-        // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
 
-        // Set headers for Server-Sent Events
-        return response()->stream(function () use ($project) {
-            // Initialize output buffering
-            if (ob_get_level() == 0) {
-                ob_start();
-            }
+        $validated = $request->validate([
+            'resume' => 'nullable|boolean',
+        ]);
 
-            // Send initial start event
-            echo 'data: '.json_encode([
-                'type' => 'start',
-                'message' => 'Starting comprehensive project generation...',
-                'stage' => 'initializing',
-                'progress' => 0,
-            ])."\n\n";
+        $resume = $validated['resume'] ?? false;
 
-            if (ob_get_level() > 0) {
-                ob_flush();
-            }
-            flush();
+        // Check if there's already a pending/processing generation
+        $existingGeneration = \App\Models\ProjectGeneration::where('project_id', $project->id)
+            ->whereIn('status', ['pending', 'processing'])
+            ->first();
 
-            try {
-                // Stage 1: Literature Mining (0-20%)
-                $this->streamStage1LiteratureMining($project);
+        if ($existingGeneration) {
+            return response()->json([
+                'message' => 'Generation already in progress',
+                'generation_id' => $existingGeneration->id,
+            ]);
+        }
 
-                // Stage 2: Chapter Generation (20-70%)
-                $this->streamStage2ChapterGeneration($project);
+        // Create new generation record
+        $generation = \App\Models\ProjectGeneration::create([
+            'project_id' => $project->id,
+            'status' => 'pending',
+            'current_stage' => $resume ? 'resuming' : 'initializing',
+            'progress' => $resume ? ($project->getLatestGenerationProgress() ?? 0) : 0,
+            'message' => $resume ? 'Resuming generation process...' : 'Initializing generation process...',
+        ]);
 
-                // Stage 3: Preliminary Pages (70-85%)
-                $this->streamStage3PreliminaryPages($project);
+        // Dispatch job
+        \App\Jobs\BulkGenerateProject::dispatch($generation, $resume);
 
-                // Stage 4: Appendices (85-95%)
-                $this->streamStage4Appendices($project);
-
-                // Stage 5: Document Assembly (95-99%)
-                $this->streamStage5DocumentAssembly($project);
-
-                // Stage 6: Defense Preparation (99-100%)
-                $this->streamStage6DefensePrep($project);
-
-                // Send completion event
-                echo 'data: '.json_encode([
-                    'type' => 'complete',
-                    'message' => 'Project generation completed successfully!',
-                    'progress' => 100,
-                    'download_links' => [
-                        'word' => route('export.project.word', $project),
-                        // 'pdf' => route('export.project.pdf', $project)
-                    ],
-                ])."\n\n";
-
-            } catch (\Exception $e) {
-                Log::error('Bulk generation failed', [
-                    'project_id' => $project->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-
-                echo 'data: '.json_encode([
-                    'type' => 'error',
-                    'message' => 'Generation failed: '.$e->getMessage(),
-                    'stage' => 'error',
-                ])."\n\n";
-            }
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            }
-            flush();
-
-        }, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
+        return response()->json([
+            'message' => 'Generation started',
+            'generation_id' => $generation->id,
         ]);
     }
 
     /**
-     * Stage 1: Literature Mining (0-20%)
+     * Check bulk generation status
      */
-    private function streamStage1LiteratureMining(Project $project)
+    public function checkBulkGenerationStatus(Project $project)
     {
-        echo 'data: '.json_encode([
-            'type' => 'stage_start',
-            'stage' => 'literature_mining',
-            'stage_name' => 'Literature Mining',
-            'message' => 'Starting literature collection...',
-            'progress' => 0,
-        ])."\n\n";
+        abort_if($project->user_id !== auth()->id(), 403);
 
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
+        $generation = \App\Models\ProjectGeneration::where('project_id', $project->id)
+            ->latest()
+            ->first();
 
-        try {
-            $paperCollectionService = app(\App\Services\PaperCollectionService::class);
-
-            // Step 1: Search Semantic Scholar (0-5%)
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => 'Searching Semantic Scholar for high-quality papers...',
-                'progress' => 2,
-                'detail' => 'Connecting to Semantic Scholar API',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            $semanticPapers = $paperCollectionService->collectFromSemanticScholar($project->topic);
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => "Found {$semanticPapers->count()} papers from Semantic Scholar",
-                'progress' => 5,
-                'detail' => "✓ Semantic Scholar: {$semanticPapers->count()} papers",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Step 2: Search OpenAlex (5-10%)
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => 'Searching OpenAlex for additional sources...',
-                'progress' => 7,
-                'detail' => 'Connecting to OpenAlex API',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            $openAlexPapers = $paperCollectionService->collectFromOpenAlex($project->topic);
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => "Found {$openAlexPapers->count()} papers from OpenAlex",
-                'progress' => 10,
-                'detail' => "✓ OpenAlex: {$openAlexPapers->count()} papers",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Step 3: Check for medical field and search PubMed if needed (10-15%)
-            $allPapers = $semanticPapers->merge($openAlexPapers);
-            $pubMedPapers = collect();
-
-            if ($this->isMedicalField($project->field_of_study)) {
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'literature_mining',
-                    'message' => 'Medical field detected - searching PubMed...',
-                    'progress' => 12,
-                    'detail' => 'Connecting to PubMed API',
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-
-                $pubMedPapers = $paperCollectionService->collectFromPubMed($project->topic);
-                $allPapers = $allPapers->merge($pubMedPapers);
-
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'literature_mining',
-                    'message' => "Found {$pubMedPapers->count()} papers from PubMed",
-                    'progress' => 15,
-                    'detail' => "✓ PubMed: {$pubMedPapers->count()} papers",
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-            }
-
-            // Step 4: Search CrossRef for validation (15-17%)
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => 'Searching CrossRef for additional validation...',
-                'progress' => 16,
-                'detail' => 'Connecting to CrossRef API',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            $crossRefPapers = $paperCollectionService->collectFromCrossRef($project->topic);
-            $allPapers = $allPapers->merge($crossRefPapers);
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => "Found {$crossRefPapers->count()} papers from CrossRef",
-                'progress' => 17,
-                'detail' => "✓ CrossRef: {$crossRefPapers->count()} papers",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Step 5: Deduplicate and rank papers (17-19%)
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => 'Deduplicating and ranking papers by quality...',
-                'progress' => 18,
-                'detail' => "Processing {$allPapers->count()} total papers found",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            $finalPapers = $paperCollectionService->deduplicateAndRank($allPapers);
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'literature_mining',
-                'message' => 'Storing papers in database...',
-                'progress' => 19,
-                'detail' => "Selected top {$finalPapers->count()} high-quality papers",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Step 6: Store papers in database (19-20%)
-            $paperCollectionService->storePapersForProject($project, $finalPapers);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_complete',
-                'stage' => 'literature_mining',
-                'message' => "Literature mining completed - {$finalPapers->count()} high-quality papers collected",
-                'progress' => 20,
-                'papers_collected' => $finalPapers->count(),
-                'details' => [
-                    "✓ Semantic Scholar: {$semanticPapers->count()} papers",
-                    "✓ OpenAlex: {$openAlexPapers->count()} papers",
-                    "✓ PubMed: {$pubMedPapers->count()} papers",
-                    "✓ CrossRef: {$crossRefPapers->count()} papers",
-                    "✓ Final selection: {$finalPapers->count()} papers after deduplication",
-                ],
-            ])."\n\n";
-
-        } catch (\Exception $e) {
-            Log::error('Literature mining failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_error',
-                'stage' => 'literature_mining',
-                'message' => 'Literature mining failed: '.$e->getMessage(),
-                'progress' => 20,
-                'error' => true,
-            ])."\n\n";
+        if (! $generation) {
+            return response()->json(['status' => 'not_started']);
         }
 
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-    }
-
-    /**
-     * Check if field is medical/health related
-     */
-    private function isMedicalField(string $field): bool
-    {
-        $medicalFields = [
-            'medicine', 'health', 'biology', 'biochemistry', 'pharmacology',
-            'nursing', 'public health', 'epidemiology', 'medical',
-        ];
-
-        return collect($medicalFields)->contains(function ($medField) use ($field) {
-            return stripos($field, $medField) !== false;
-        });
-    }
-
-    /**
-     * Stage 2: Chapter Generation (20-70%)
-     */
-    private function streamStage2ChapterGeneration(Project $project)
-    {
-        echo 'data: '.json_encode([
-            'type' => 'stage_start',
-            'stage' => 'chapter_generation',
-            'stage_name' => 'Chapter Generation',
-            'message' => 'Generating chapters with citations...',
-            'progress' => 20,
-        ])."\n\n";
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-
-        try {
-            // Get collected papers for this project
-            $collectedPapers = \App\Models\CollectedPaper::forProject($project->id)->get();
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'chapter_generation',
-                'message' => "Preparing chapter generation with {$collectedPapers->count()} collected papers...",
-                'progress' => 22,
-                'detail' => "Using {$collectedPapers->count()} high-quality papers for citations",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Get faculty structure for chapter planning
-            $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-            $chapterStructure = $facultyStructureService->getChapterStructure($project);
-            $chapterCount = count($chapterStructure);
-            $progressPerChapter = 50 / $chapterCount; // 50% progress span (20% to 70%)
-            $chaptersGenerated = 0;
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'chapter_generation',
-                'message' => "Starting generation of {$chapterCount} chapters using {$project->faculty} structure...",
-                'progress' => 25,
-                'detail' => "Target: {$chapterCount} chapters with faculty-specific structure",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Generate each chapter using faculty structure
-            foreach ($chapterStructure as $chapterData) {
-                $chapterNumber = $chapterData['number'];
-                $chapterTitle = $chapterData['title'];
-                $targetWordCount = $chapterData['word_count'] ?? 3000;
-                $currentProgress = 25 + ($chaptersGenerated * $progressPerChapter);
-
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'chapter_generation',
-                    'message' => "Generating Chapter {$chapterNumber}: {$chapterTitle}",
-                    'progress' => $currentProgress,
-                    'detail' => "📖 Chapter {$chapterNumber}: {$chapterTitle} (Target: {$targetWordCount} words)",
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-
-                try {
-                    // Generate the chapter with citations using faculty structure
-                    Log::info('Starting chapter generation', [
-                        'project_id' => $project->id,
-                        'chapter_number' => $chapterNumber,
-                        'chapter_title' => $chapterTitle,
-                        'papers_available' => $collectedPapers->count(),
-                    ]);
-
-                    $chapterResult = $this->generateChapterWithCitations($project, $chapterNumber, $collectedPapers, $chapterTitle, $targetWordCount);
-                    $chaptersGenerated++;
-
-                    $chapterProgress = 25 + ($chaptersGenerated * $progressPerChapter);
-
-                    echo 'data: '.json_encode([
-                        'type' => 'progress',
-                        'stage' => 'chapter_generation',
-                        'message' => "✅ Chapter {$chapterNumber} generated ({$chapterResult['word_count']} words)",
-                        'progress' => $chapterProgress,
-                        'detail' => "✓ Chapter {$chapterNumber}: {$chapterResult['word_count']} words, {$chapterResult['citation_count']} citations",
-                    ])."\n\n";
-
-                    if (ob_get_level() > 0) {
-                        ob_flush();
-                    } flush();
-
-                    Log::info('Chapter generated successfully', [
-                        'project_id' => $project->id,
-                        'chapter_number' => $chapterNumber,
-                        'word_count' => $chapterResult['word_count'],
-                    ]);
-
-                } catch (\Exception $e) {
-                    Log::error('Chapter generation failed', [
-                        'project_id' => $project->id,
-                        'chapter_number' => $chapterNumber,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-
-                    // Send error message but continue with next chapter
-                    echo 'data: '.json_encode([
-                        'type' => 'progress',
-                        'stage' => 'chapter_generation',
-                        'message' => "❌ Chapter {$chapterNumber} generation failed: {$e->getMessage()}",
-                        'progress' => 25 + ($chaptersGenerated * $progressPerChapter),
-                        'detail' => "Error generating Chapter {$chapterNumber}, continuing with next chapter...",
-                    ])."\n\n";
-
-                    if (ob_get_level() > 0) {
-                        ob_flush();
-                    } flush();
-
-                    // Continue with next chapter instead of failing completely
-                    continue;
-                }
-            }
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_complete',
-                'stage' => 'chapter_generation',
-                'message' => "All {$chaptersGenerated} chapters generated successfully using {$project->faculty} structure",
-                'progress' => 70,
-                'chapters_generated' => $chaptersGenerated,
-                'details' => [
-                    "✓ Generated {$chaptersGenerated} chapters using {$project->faculty} structure",
-                    "✓ Used {$collectedPapers->count()} research papers",
-                    '✓ Added real citations throughout',
-                    '✓ Maintained faculty-specific academic standards',
-                    '✓ Progressive context building with proper structure',
-                ],
-            ])."\n\n";
-
-        } catch (\Exception $e) {
-            Log::error('Chapter generation failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_error',
-                'stage' => 'chapter_generation',
-                'message' => 'Chapter generation failed: '.$e->getMessage(),
-                'progress' => 70,
-                'error' => true,
-            ])."\n\n";
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-    }
-
-    /**
-     * Generate a single chapter with real citations from collected papers
-     */
-    private function generateChapterWithCitations(Project $project, int $chapterNumber, $collectedPapers, ?string $chapterTitle = null, ?int $targetWordCount = 3000): array
-    {
-        try {
-            Log::info('Calling ChapterController for chapter generation', [
-                'project_id' => $project->id,
-                'chapter_number' => $chapterNumber,
-                'chapter_title' => $chapterTitle,
-            ]);
-
-            $chapterController = app(\App\Http\Controllers\ChapterController::class);
-
-            // Check if the method exists
-            if (! method_exists($chapterController, 'generateProgressiveChapter')) {
-                throw new \Exception('generateProgressiveChapter method not found in ChapterController');
-            }
-
-            // Use existing chapter generation but enhanced with collected papers
-            $chapter = $chapterController->generateProgressiveChapter($project, $chapterNumber, $collectedPapers, $chapterTitle, $targetWordCount);
-
-            if (! $chapter) {
-                throw new \Exception('Chapter generation returned null');
-            }
-
-            Log::info('Chapter generated successfully by ChapterController', [
-                'project_id' => $project->id,
-                'chapter_number' => $chapterNumber,
-                'chapter_id' => $chapter->id ?? null,
-                'word_count' => $chapter->word_count ?? 0,
-            ]);
-
-            return [
-                'chapter_number' => $chapterNumber,
-                'title' => $chapter->title ?? "Chapter {$chapterNumber}",
-                'word_count' => $chapter->word_count ?? 0,
-                'citation_count' => substr_count($chapter->content ?? '', '('), // Rough citation count
-                'status' => $chapter->status ?? 'draft',
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error in generateChapterWithCitations', [
-                'project_id' => $project->id,
-                'chapter_number' => $chapterNumber,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // Re-throw the exception to be caught by the calling method
-            throw $e;
-        }
-    }
-
-    /**
-     * Get project chapter count based on category or default
-     */
-    private function getProjectChapterCount(Project $project): int
-    {
-        return $project->category->default_chapter_count ?? 6;
-    }
-
-    /**
-     * Get default chapter titles
-     */
-    private function getDefaultChapterTitle(int $chapterNumber): string
-    {
-        $titles = [
-            1 => 'Introduction',
-            2 => 'Literature Review',
-            3 => 'Methodology',
-            4 => 'Design and Implementation',
-            5 => 'Results and Analysis',
-            6 => 'Conclusion and Recommendations',
-        ];
-
-        return $titles[$chapterNumber] ?? "Chapter {$chapterNumber}";
-    }
-
-    /**
-     * Stage 3: Preliminary Pages (70-85%)
-     */
-    private function streamStage3PreliminaryPages(Project $project)
-    {
-        echo 'data: '.json_encode([
-            'type' => 'stage_start',
-            'stage' => 'preliminary_pages',
-            'stage_name' => 'Preliminary Pages',
-            'message' => 'Creating title page, abstract, table of contents...',
-            'progress' => 70,
-        ])."\n\n";
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-
-        try {
-            // Get faculty structure for preliminary pages
-            $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-            $preliminaryPages = $facultyStructureService->getPreliminaryPages($project);
-
-            if (empty($preliminaryPages)) {
-                // Fallback to standard preliminary pages
-                $preliminaryPages = [
-                    ['type' => 'title_page', 'name' => 'Title Page'],
-                    ['type' => 'abstract', 'name' => 'Abstract'],
-                    ['type' => 'table_of_contents', 'name' => 'Table of Contents'],
-                    ['type' => 'list_of_figures', 'name' => 'List of Figures'],
-                    ['type' => 'acknowledgments', 'name' => 'Acknowledgments'],
-                ];
-            }
-
-            $totalPages = count($preliminaryPages);
-            $progressPerPage = 15 / $totalPages; // 15% progress span (70% to 85%)
-            $pagesGenerated = 0;
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'preliminary_pages',
-                'message' => "Generating {$totalPages} preliminary pages using {$project->faculty} structure...",
-                'progress' => 72,
-                'detail' => "Target: {$totalPages} preliminary pages",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Generate each preliminary page
-            foreach ($preliminaryPages as $pageType => $pageConfig) {
-                $pageName = $pageConfig['title'] ?? ucfirst(str_replace('_', ' ', $pageType));
-                $currentProgress = 72 + ($pagesGenerated * $progressPerPage);
-
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'preliminary_pages',
-                    'message' => "Generating {$pageName}...",
-                    'progress' => $currentProgress,
-                    'detail' => "📄 {$pageName}",
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-
-                // Generate the preliminary page content
-                $pageContent = $this->generatePreliminaryPage($project, $pageType, $pageConfig);
-                $pagesGenerated++;
-
-                $pageProgress = 72 + ($pagesGenerated * $progressPerPage);
-
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'preliminary_pages',
-                    'message' => "✅ {$pageName} generated",
-                    'progress' => $pageProgress,
-                    'detail' => "✓ {$pageName}: {$pageContent['word_count']} words",
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-            }
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_complete',
-                'stage' => 'preliminary_pages',
-                'message' => "All {$pagesGenerated} preliminary pages created using {$project->faculty} standards",
-                'progress' => 85,
-                'pages_generated' => $pagesGenerated,
-                'details' => [
-                    "✓ Generated {$pagesGenerated} preliminary pages",
-                    "✓ Used {$project->faculty} faculty structure",
-                    '✓ Maintained academic formatting standards',
-                    '✓ Applied faculty-specific requirements',
-                    '✓ Proper document organization',
-                ],
-            ])."\n\n";
-
-        } catch (\Exception $e) {
-            Log::error('Preliminary pages generation failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_error',
-                'stage' => 'preliminary_pages',
-                'message' => 'Preliminary pages generation failed: '.$e->getMessage(),
-                'progress' => 85,
-                'error' => true,
-            ])."\n\n";
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-    }
-
-    /**
-     * Generate a single preliminary page with faculty-specific formatting
-     */
-    private function generatePreliminaryPage(Project $project, string $pageType, array $pageConfig): array
-    {
-        // Get faculty structure for context
-        $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-        $terminology = $facultyStructureService->getTerminology($project);
-
-        $content = '';
-        $wordCount = 0;
-
-        switch ($pageType) {
-            case 'title_page':
-                $content = $this->generateTitlePage($project);
-                $wordCount = 50; // Title pages have minimal word count
-                break;
-            case 'abstract':
-                $content = $this->generateAbstract($project, $terminology);
-                $wordCount = str_word_count(strip_tags($content));
-                break;
-            case 'table_of_contents':
-                $content = $this->generateTableOfContents($project);
-                $wordCount = 100; // TOC has structured content
-                break;
-            case 'acknowledgments':
-                $content = $this->generateAcknowledments($project);
-                $wordCount = str_word_count(strip_tags($content));
-                break;
-            case 'list_of_figures':
-                $content = $this->generateListOfFigures($project);
-                $wordCount = 50;
-                break;
-            default:
-                $content = "<!-- {$pageType} placeholder -->";
-                $wordCount = 10;
-        }
-
-        return [
-            'type' => $pageType,
-            'content' => $content,
-            'word_count' => $wordCount,
-        ];
-    }
-
-    /**
-     * Generate title page based on faculty requirements
-     */
-    private function generateTitlePage(Project $project): string
-    {
-        return "
-        <div class='title-page'>
-            <h1>{$project->title}</h1>
-            <p>A {$project->type} submitted to the {$project->faculty}</p>
-            <p>{$project->university}</p>
-            <p>By: {$project->user->name}</p>
-            <p>Course: {$project->course}</p>
-            <p>Field of Study: {$project->field_of_study}</p>
-            <p>Date: ".now()->format('F Y').'</p>
-        </div>';
-    }
-
-    /**
-     * Generate abstract using AI with faculty-specific context
-     */
-    private function generateAbstract(Project $project, array $terminology): string
-    {
-        // Get existing chapters to create abstract from
-        $chapters = Chapter::where('project_id', $project->id)
+        // Load chapter statuses for better UI sync
+        $chapterStatuses = $project->chapters()
             ->orderBy('chapter_number')
-            ->get();
-
-        if ($chapters->isEmpty()) {
-            return '<p>Abstract will be generated after chapter completion.</p>';
-        }
-
-        $prompt = "Generate a comprehensive abstract for this {$project->type} project:
-
-Project Details:
-- Title: {$project->title}
-- Topic: {$project->topic}
-- Faculty: {$project->faculty}
-- Field of Study: {$project->field_of_study}
-
-Chapter Summaries:";
-
-        foreach ($chapters as $chapter) {
-            $summary = substr(strip_tags($chapter->content), 0, 200);
-            $prompt .= "\n- {$chapter->title}: {$summary}...";
-        }
-
-        if (! empty($terminology)) {
-            $prompt .= "\n\nFaculty-Specific Terminology to use appropriately:";
-            foreach (array_slice($terminology, 0, 5) as $term => $definition) {
-                $prompt .= "\n- {$term}: {$definition}";
-            }
-        }
-
-        $prompt .= "\n\nRequirements:
-- Write a 150-250 word abstract
-- Follow {$project->faculty} faculty standards
-- Include background, methodology, key findings, and conclusions
-- Use formal academic language appropriate for {$project->field_of_study}
-- Ensure the abstract accurately reflects the project's scope and contributions";
-
-        $aiContent = $this->callAiService($prompt);
-
-        return "<div class='abstract'>".$aiContent.'</div>';
-    }
-
-    /**
-     * Generate table of contents from existing chapters
-     */
-    private function generateTableOfContents(Project $project): string
-    {
-        $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-        $chapterStructure = $facultyStructureService->getChapterStructure($project);
-
-        $toc = "<div class='table-of-contents'>";
-        $toc .= '<h2>Table of Contents</h2>';
-        $toc .= '<ul>';
-
-        foreach ($chapterStructure as $chapter) {
-            $chapterNumber = $chapter['number'];
-            $chapterTitle = $chapter['title'];
-            $toc .= "<li>Chapter {$chapterNumber}: {$chapterTitle}</li>";
-        }
-
-        $toc .= '</ul></div>';
-
-        return $toc;
-    }
-
-    /**
-     * Generate acknowledgments
-     */
-    private function generateAcknowledments(Project $project): string
-    {
-        $prompt = "Generate professional acknowledgments for this {$project->type} project:
-
-Project Details:
-- Title: {$project->title}
-- Faculty: {$project->faculty}
-- University: {$project->university}
-- Field of Study: {$project->field_of_study}
-
-Requirements:
-- Write 100-150 words
-- Thank supervisors, faculty, family, and contributors appropriately
-- Maintain professional and respectful tone
-- Follow {$project->faculty} faculty conventions
-- Be sincere but not overly personal";
-
-        $aiContent = $this->callAiService($prompt);
-
-        return "<div class='acknowledgments'>".$aiContent.'</div>';
-    }
-
-    /**
-     * Generate list of figures placeholder
-     */
-    private function generateListOfFigures(Project $project): string
-    {
-        return "<div class='list-of-figures'>
-            <h2>List of Figures</h2>
-            <p><em>Figures will be automatically indexed when added to chapters.</em></p>
-        </div>";
-    }
-
-    /**
-     * Call AI service for content generation - matches ChapterController implementation
-     */
-    private function callAiService(string $prompt): string
-    {
-        try {
-            $aiService = app(\App\Services\AIContentGenerator::class);
-            $response = $aiService->generate($prompt, [
-                'model' => 'gpt-4',
-                'temperature' => 0.7,
-                'max_tokens' => 2000,
-            ]);
-
-            return $response;
-        } catch (\Exception $e) {
-            Log::error('AI service call failed', [
-                'error' => $e->getMessage(),
-                'prompt_length' => strlen($prompt),
-            ]);
-
-            return '<p><em>Content generation temporarily unavailable. Please try again later.</em></p>';
-        }
-    }
-
-    /**
-     * Stage 4: Appendices (85-95%)
-     */
-    private function streamStage4Appendices(Project $project)
-    {
-        echo 'data: '.json_encode([
-            'type' => 'stage_start',
-            'stage' => 'appendices',
-            'stage_name' => 'Appendices & Supplements',
-            'message' => 'Generating appendices and supplementary materials...',
-            'progress' => 85,
-        ])."\n\n";
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-
-        try {
-            // Get faculty structure for appendices
-            $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-            $appendices = $facultyStructureService->getAppendices($project);
-
-            if (empty($appendices)) {
-                // Fallback to standard appendices
-                $appendices = [
-                    ['type' => 'bibliography', 'name' => 'Bibliography'],
-                    ['type' => 'glossary', 'name' => 'Glossary'],
-                    ['type' => 'data_tables', 'name' => 'Data Tables'],
-                    ['type' => 'survey_instruments', 'name' => 'Survey Instruments'],
+            ->get(['chapter_number', 'title', 'status', 'word_count', 'target_word_count'])
+            ->map(function ($chapter) {
+                return [
+                    'chapter_number' => $chapter->chapter_number,
+                    'title' => $chapter->title,
+                    'status' => $chapter->status,
+                    'word_count' => $chapter->word_count,
+                    'target_word_count' => $chapter->target_word_count,
+                    'is_completed' => $chapter->status === 'completed',
                 ];
-            }
+            });
 
-            $totalAppendices = count($appendices);
-            $progressPerAppendix = 10 / $totalAppendices; // 10% progress span (85% to 95%)
-            $appendicesGenerated = 0;
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'appendices',
-                'message' => "Generating {$totalAppendices} appendices using {$project->faculty} structure...",
-                'progress' => 87,
-                'detail' => "Target: {$totalAppendices} supplementary sections",
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Generate each appendix
-            foreach ($appendices as $appendixType => $appendixConfig) {
-                $appendixName = $appendixConfig['title'] ?? ucfirst(str_replace('_', ' ', $appendixType));
-                $currentProgress = 87 + ($appendicesGenerated * $progressPerAppendix);
-
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'appendices',
-                    'message' => "Generating {$appendixName}...",
-                    'progress' => $currentProgress,
-                    'detail' => "📋 {$appendixName}",
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-
-                // Generate the appendix content
-                $appendixContent = $this->generateAppendix($project, $appendixType, $appendixConfig);
-                $appendicesGenerated++;
-
-                $appendixProgress = 87 + ($appendicesGenerated * $progressPerAppendix);
-
-                echo 'data: '.json_encode([
-                    'type' => 'progress',
-                    'stage' => 'appendices',
-                    'message' => "✅ {$appendixName} generated",
-                    'progress' => $appendixProgress,
-                    'detail' => "✓ {$appendixName}: {$appendixContent['word_count']} words",
-                ])."\n\n";
-
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                } flush();
-            }
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_complete',
-                'stage' => 'appendices',
-                'message' => "All {$appendicesGenerated} appendices created using {$project->faculty} standards",
-                'progress' => 95,
-                'appendices_generated' => $appendicesGenerated,
-                'details' => [
-                    "✓ Generated {$appendicesGenerated} appendices",
-                    "✓ Used {$project->faculty} faculty structure",
-                    '✓ Created comprehensive bibliography',
-                    '✓ Added faculty-specific supplementary materials',
-                    '✓ Proper academic formatting',
-                ],
-            ])."\n\n";
-
-        } catch (\Exception $e) {
-            Log::error('Appendices generation failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_error',
-                'stage' => 'appendices',
-                'message' => 'Appendices generation failed: '.$e->getMessage(),
-                'progress' => 95,
-                'error' => true,
-            ])."\n\n";
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
+        return response()->json([
+            'status' => $generation->status,
+            'current_stage' => $generation->current_stage,
+            'progress' => $generation->progress,
+            'message' => $generation->message,
+            'details' => $generation->details,
+            'metadata' => $generation->metadata,
+            'chapter_statuses' => $chapterStatuses,
+        ]);
     }
 
     /**
-     * Generate a single appendix with faculty-specific content
+     * Cancel bulk generation
      */
-    private function generateAppendix(Project $project, string $appendixType, array $appendixConfig): array
+    public function cancelBulkGeneration(Project $project)
     {
-        // Get faculty structure and collected papers for context
-        $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-        $terminology = $facultyStructureService->getTerminology($project);
-        $collectedPapers = \App\Models\CollectedPaper::forProject($project->id)->get();
-
-        $content = '';
-        $wordCount = 0;
-
-        switch ($appendixType) {
-            case 'bibliography':
-                $content = $this->generateBibliography($project, $collectedPapers);
-                $wordCount = $collectedPapers->count() * 25; // Rough estimate
-                break;
-            case 'glossary':
-                $content = $this->generateGlossary($project, $terminology);
-                $wordCount = count($terminology) * 15; // Rough estimate
-                break;
-            case 'data_tables':
-                $content = $this->generateDataTables($project);
-                $wordCount = 200;
-                break;
-            case 'survey_instruments':
-                $content = $this->generateSurveyInstruments($project);
-                $wordCount = str_word_count(strip_tags($content));
-                break;
-            default:
-                $content = $this->generateGenericAppendix($project, $appendixType);
-                $wordCount = str_word_count(strip_tags($content));
-        }
-
-        return [
-            'type' => $appendixType,
-            'content' => $content,
-            'word_count' => $wordCount,
-        ];
-    }
-
-    /**
-     * Generate bibliography from collected papers
-     */
-    private function generateBibliography(Project $project, $collectedPapers): string
-    {
-        $bibliography = "<div class='bibliography'>";
-        $bibliography .= '<h2>Bibliography</h2>';
-        $bibliography .= "<p><em>All references used in this {$project->type} project:</em></p>";
-        $bibliography .= "<ul class='reference-list'>";
-
-        foreach ($collectedPapers as $paper) {
-            $authors = $paper->authors ?: 'Unknown Authors';
-            $year = $paper->year ?: 'n.d.';
-            $title = $paper->title;
-
-            // Format APA style reference
-            $bibliography .= "<li>{$authors} ({$year}). <em>{$title}</em>";
-
-            if ($paper->journal) {
-                $bibliography .= ". {$paper->journal}";
-            }
-
-            if ($paper->doi) {
-                $bibliography .= ". https://doi.org/{$paper->doi}";
-            } elseif ($paper->url) {
-                $bibliography .= ". Retrieved from {$paper->url}";
-            }
-
-            $bibliography .= '.</li>';
-        }
-
-        $bibliography .= '</ul></div>';
-
-        return $bibliography;
-    }
-
-    /**
-     * Generate glossary from faculty terminology
-     */
-    private function generateGlossary(Project $project, array $terminology): string
-    {
-        if (empty($terminology)) {
-            return "<div class='glossary'>
-                <h2>Glossary</h2>
-                <p><em>Technical terms will be added as they are identified in the project content.</em></p>
-            </div>";
-        }
-
-        $glossary = "<div class='glossary'>";
-        $glossary .= '<h2>Glossary</h2>';
-        $glossary .= "<p><em>Key terms and definitions used in this {$project->faculty} {$project->type}:</em></p>";
-        $glossary .= '<dl>';
-
-        ksort($terminology); // Sort alphabetically
-
-        foreach ($terminology as $term => $definition) {
-            $glossary .= "<dt><strong>{$term}</strong></dt>";
-            $glossary .= "<dd>{$definition}</dd>";
-        }
-
-        $glossary .= '</dl></div>';
-
-        return $glossary;
-    }
-
-    /**
-     * Generate data tables appendix
-     */
-    private function generateDataTables(Project $project): string
-    {
-        return "<div class='data-tables'>
-            <h2>Appendix C: Data Tables</h2>
-            <p><em>Detailed data tables and statistical analyses will be included here based on research findings.</em></p>
-            <table border='1' style='width:100%; border-collapse: collapse;'>
-                <thead>
-                    <tr>
-                        <th>Variable</th>
-                        <th>N</th>
-                        <th>Mean</th>
-                        <th>Std. Deviation</th>
-                        <th>Min</th>
-                        <th>Max</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colspan='6'><em>Data will be populated during analysis phase</em></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>";
-    }
-
-    /**
-     * Generate survey instruments appendix
-     */
-    private function generateSurveyInstruments(Project $project): string
-    {
-        $prompt = "Generate a sample survey instrument for this {$project->type} research project:
-
-Project Details:
-- Title: {$project->title}
-- Topic: {$project->topic}
-- Faculty: {$project->faculty}
-- Field of Study: {$project->field_of_study}
-
-Requirements:
-- Create 10-15 relevant survey questions
-- Include both quantitative (Likert scale) and qualitative (open-ended) questions
-- Ensure questions are appropriate for {$project->field_of_study} research
-- Follow ethical research guidelines
-- Use professional, clear language";
-
-        $aiContent = $this->callAiService($prompt);
-
-        return "<div class='survey-instruments'>
-            <h2>Appendix D: Survey Instruments</h2>
-            <p><em>Research instruments used for data collection in this study:</em></p>
-            {$aiContent}
-        </div>";
-    }
-
-    /**
-     * Generate generic appendix
-     */
-    private function generateGenericAppendix(Project $project, string $appendixType): string
-    {
-        $prompt = "Generate content for a {$appendixType} appendix for this {$project->type} project:
-
-Project Details:
-- Title: {$project->title}
-- Faculty: {$project->faculty}
-- Field of Study: {$project->field_of_study}
-
-Requirements:
-- Create appropriate content for a {$appendixType} section
-- Follow {$project->faculty} faculty standards
-- Maintain academic quality and relevance
-- Keep content between 200-400 words";
-
-        $aiContent = $this->callAiService($prompt);
-
-        return "<div class='appendix-{$appendixType}'>
-            <h2>Appendix: {$appendixType}</h2>
-            {$aiContent}
-        </div>";
-    }
-
-    /**
-     * Stage 5: Document Assembly (95-99%)
-     */
-    private function streamStage5DocumentAssembly(Project $project)
-    {
-        echo 'data: '.json_encode([
-            'type' => 'stage_start',
-            'stage' => 'document_assembly',
-            'stage_name' => 'Document Assembly',
-            'message' => 'Assembling final document...',
-            'progress' => 95,
-        ])."\n\n";
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-
-        try {
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'document_assembly',
-                'message' => 'Organizing document structure...',
-                'progress' => 96,
-                'detail' => 'Assembling components in proper order',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Update project status to indicate generation is complete
-            $project->update([
-                'status' => 'writing',
-                'updated_at' => now(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'document_assembly',
-                'message' => 'Finalizing document formatting...',
-                'progress' => 97,
-                'detail' => 'Applying faculty-specific formatting',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Generate table of contents and cross-references
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'document_assembly',
-                'message' => 'Updating cross-references and page numbers...',
-                'progress' => 98,
-                'detail' => 'Synchronizing document references',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_complete',
-                'stage' => 'document_assembly',
-                'message' => 'Document assembled successfully using '.$project->faculty.' standards',
-                'progress' => 99,
-                'details' => [
-                    '✓ All components organized properly',
-                    '✓ Faculty-specific formatting applied',
-                    '✓ Cross-references synchronized',
-                    '✓ Document ready for review and export',
-                    '✓ Project status updated to writing phase',
-                ],
-            ])."\n\n";
-
-        } catch (\Exception $e) {
-            Log::error('Document assembly failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_error',
-                'stage' => 'document_assembly',
-                'message' => 'Document assembly failed: '.$e->getMessage(),
-                'progress' => 99,
-                'error' => true,
-            ])."\n\n";
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-    }
-
-    /**
-     * Stage 6: Defense Preparation (99-100%)
-     */
-    private function streamStage6DefensePrep(Project $project)
-    {
-        echo 'data: '.json_encode([
-            'type' => 'stage_start',
-            'stage' => 'defense_prep',
-            'stage_name' => 'Defense Preparation',
-            'message' => 'Preparing defense materials and summaries...',
-            'progress' => 99,
-        ])."\n\n";
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-
-        try {
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'defense_prep',
-                'message' => 'Generating defense presentation slides...',
-                'progress' => 99.2,
-                'detail' => 'Creating key points and summaries',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Generate defense questions based on project content
-            $this->generateDefenseQuestions($project);
-
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'defense_prep',
-                'message' => 'Preparing potential defense questions...',
-                'progress' => 99.5,
-                'detail' => 'Analyzing project for likely questions',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            // Create project summary for defense
-            echo 'data: '.json_encode([
-                'type' => 'progress',
-                'stage' => 'defense_prep',
-                'message' => 'Creating defense summary and talking points...',
-                'progress' => 99.7,
-                'detail' => 'Highlighting key contributions and findings',
-            ])."\n\n";
-
-            if (ob_get_level() > 0) {
-                ob_flush();
-            } flush();
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_complete',
-                'stage' => 'defense_prep',
-                'message' => 'Defense materials ready - comprehensive project generated successfully!',
-                'progress' => 100,
-                'details' => [
-                    '✓ Defense presentation slides generated',
-                    '✓ Potential questions identified and prepared',
-                    '✓ Defense summary and talking points created',
-                    '✓ Project ready for academic review',
-                    '✓ All materials available for download',
-                ],
-            ])."\n\n";
-
-        } catch (\Exception $e) {
-            Log::error('Defense preparation failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            echo 'data: '.json_encode([
-                'type' => 'stage_error',
-                'stage' => 'defense_prep',
-                'message' => 'Defense preparation failed: '.$e->getMessage(),
-                'progress' => 100,
-                'error' => true,
-            ])."\n\n";
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-        flush();
-    }
-
-    /**
-     * Generate defense questions based on project content
-     */
-    private function generateDefenseQuestions(Project $project): void
-    {
-        // Get project chapters for context
-        $chapters = Chapter::where('project_id', $project->id)
-            ->orderBy('chapter_number')
-            ->get();
-
-        $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-        $terminology = $facultyStructureService->getTerminology($project);
-
-        $prompt = "Generate 15-20 potential defense questions for this {$project->type} project:
-
-Project Details:
-- Title: {$project->title}
-- Topic: {$project->topic}
-- Faculty: {$project->faculty}
-- Field of Study: {$project->field_of_study}
-
-Chapter Overview:";
-
-        foreach ($chapters as $chapter) {
-            $summary = substr(strip_tags($chapter->content), 0, 150);
-            $prompt .= "\n- Chapter {$chapter->chapter_number}: {$chapter->title} - {$summary}...";
-        }
-
-        if (! empty($terminology)) {
-            $prompt .= "\n\nKey Terms Used:";
-            foreach (array_slice($terminology, 0, 8) as $term => $definition) {
-                $prompt .= "\n- {$term}";
-            }
-        }
-
-        $prompt .= "\n\nRequirements:
-- Generate questions appropriate for {$project->faculty} faculty standards
-- Include both technical and conceptual questions
-- Cover methodology, findings, implications, and limitations
-- Range from basic understanding to critical analysis
-- Follow academic defense question conventions for {$project->field_of_study}";
-
-        try {
-            $aiContent = $this->callAiService($prompt);
-
-            // Store defense questions in database if model exists
-            if (class_exists('\App\Models\DefenseQuestion')) {
-                \App\Models\DefenseQuestion::create([
-                    'project_id' => $project->id,
-                    'questions' => $aiContent,
-                    'generated_at' => now(),
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::error('Defense questions generation failed', [
-                'project_id' => $project->id,
-                'error' => $e->getMessage(),
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $generation = \App\Models\ProjectGeneration::where('project_id', $project->id)
+            ->whereIn('status', ['pending', 'processing'])
+            ->latest()
+            ->first();
+
+        if ($generation) {
+            $generation->update([
+                'status' => 'cancelled',
+                'message' => 'Generation cancelled by user',
             ]);
         }
+
+        return response()->json(['message' => 'Generation cancelled']);
     }
 }

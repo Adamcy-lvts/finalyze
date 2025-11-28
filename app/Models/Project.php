@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Enums\ProjectStatus;
 use App\Enums\ProjectTopicStatus;
-use App\Services\UniversityService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,12 +14,15 @@ use Illuminate\Support\Str;
 class Project extends Model
 {
     protected $fillable = [
-        'user_id', 'project_category_id', 'title', 'slug', 'topic', 'description', 'type', 'status', 'topic_status',
-        'mode', 'field_of_study', 'university', 'faculty', 'course',
-        'supervisor_name', 'current_chapter', 'is_active', 'settings',
+        'user_id', 'student_id', 'project_category_id',
+        'university_id', 'faculty_id', 'department_id', // New foreign keys
+        'title', 'slug', 'topic', 'description', 'type', 'degree', 'degree_abbreviation', 'status', 'topic_status',
+        'mode', 'field_of_study', 'university', 'faculty', 'course', // Keep old string fields for backwards compatibility
+        'supervisor_name', 'certification_signatories', 'current_chapter', 'is_active', 'settings',
         'setup_step', 'setup_data', 'last_activity_at',
         'paper_collection_status', 'paper_collection_message', 'paper_collection_count',
         'paper_collection_completed_at', 'citation_guaranteed',
+        'dedication', 'acknowledgements', 'abstract', 'declaration', 'certification', 'references', 'appendices', 'tables', 'abbreviations',
     ];
 
     protected $casts = [
@@ -32,6 +34,9 @@ class Project extends Model
         'last_activity_at' => 'datetime',
         'paper_collection_completed_at' => 'datetime',
         'citation_guaranteed' => 'boolean',
+        'certification_signatories' => 'array',
+        'tables' => 'array',
+        'abbreviations' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -74,6 +79,30 @@ class Project extends Model
         return $this->hasMany(CollectedPaper::class);
     }
 
+    /**
+     * Get the university this project belongs to
+     */
+    public function universityRelation(): BelongsTo
+    {
+        return $this->belongsTo(University::class, 'university_id');
+    }
+
+    /**
+     * Get the faculty this project belongs to
+     */
+    public function facultyRelation(): BelongsTo
+    {
+        return $this->belongsTo(Faculty::class, 'faculty_id');
+    }
+
+    /**
+     * Get the department this project belongs to
+     */
+    public function departmentRelation(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'department_id');
+    }
+
     public function getAllCitations()
     {
         return $this->documentCitations()->with('citation');
@@ -105,18 +134,74 @@ class Project extends Model
         return $this->chapters()->where('chapter_number', $this->current_chapter)->first();
     }
 
-    public function getProgressPercentage()
+    public function getProgressPercentage(): float
     {
-        // Use structured outlines if available, fallback to old method
-        if ($this->outlines()->exists()) {
-            return $this->getStructuredProgressPercentage();
+        $chapters = $this->relationLoaded('chapters')
+            ? $this->chapters
+            : $this->chapters()->get();
+
+        if ($chapters->isEmpty()) {
+            return 0.0;
         }
 
-        // Fallback to old method
-        $totalChapters = 5;
-        $completedChapters = $this->chapters()->where('status', 'approved')->count();
+        // 1. Check if all chapters are marked as completed/approved
+        $totalChapters = $chapters->count();
+        $completedChapters = $chapters->whereIn('status', ['completed', 'approved'])->count();
 
-        return ($completedChapters / $totalChapters) * 100;
+        if ($completedChapters === $totalChapters) {
+            return 100.0;
+        }
+
+        // 2. Calculate Target Word Count
+        // Prefer sum of chapter targets if they exist and are significant
+        $chapterTargetSum = (int) $chapters->sum('target_word_count');
+
+        $outlines = $this->relationLoaded('outlines')
+            ? $this->outlines
+            : $this->outlines()->get();
+
+        $outlineTargetSum = (int) $outlines
+            ->where('is_required', true)
+            ->sum('target_word_count');
+
+        // Fallback to category default if outline target is 0
+        if ($outlineTargetSum <= 0) {
+            $category = $this->relationLoaded('category')
+                ? $this->category
+                : $this->category()->select('id', 'target_word_count')->first();
+            $outlineTargetSum = (int) ($category?->target_word_count ?? 0);
+        }
+
+        // Use the larger of the two targets to avoid underestimation
+        // But if chapter targets are 0 (not set), we rely on outline
+        $targetWordCount = max($chapterTargetSum, $outlineTargetSum);
+
+        // Final fallback
+        if ($targetWordCount <= 0) {
+            $targetWordCount = max($totalChapters, 1) * 2500;
+        }
+
+        // 3. Calculate Effective Words
+        $effectiveWords = 0;
+        $avgTargetPerChapter = $targetWordCount / max($totalChapters, 1);
+
+        foreach ($chapters as $chapter) {
+            if (in_array($chapter->status, ['completed', 'approved'])) {
+                // If chapter has a specific target, use it.
+                // If not, use the average share of the TOTAL target.
+                $contribution = $chapter->target_word_count > 0
+                    ? $chapter->target_word_count
+                    : $avgTargetPerChapter;
+
+                $effectiveWords += $contribution;
+            } else {
+                $effectiveWords += $chapter->word_count;
+            }
+        }
+
+        $progress = ($effectiveWords / $targetWordCount) * 100;
+
+        return round(min($progress, 100), 2);
     }
 
     /**
@@ -317,9 +402,9 @@ class Project extends Model
         $mappedData = [
             'projectType' => $finalData['type'] ?? $setupData['projectType'],
             'projectCategoryId' => $finalData['project_category_id'] ?? $setupData['projectCategoryId'],
-            'university' => $finalData['university'] ?? $setupData['university'],
-            'faculty' => $finalData['faculty'] ?? $setupData['faculty'],
-            'department' => $finalData['department'] ?? $setupData['department'],
+            'universityId' => $finalData['university_id'] ?? $setupData['universityId'],
+            'facultyId' => $finalData['faculty_id'] ?? $setupData['facultyId'],
+            'departmentId' => $finalData['department_id'] ?? $setupData['departmentId'],
             'course' => $finalData['course'] ?? $setupData['course'],
             'fieldOfStudy' => $finalData['field_of_study'] ?? $setupData['fieldOfStudy'],
             'academicSession' => $finalData['academic_session'] ?? $setupData['academicSession'],
@@ -333,8 +418,8 @@ class Project extends Model
 
         // Validate that all required data is present
         $requiredFields = [
-            'projectType', 'projectCategoryId', 'university',
-            'faculty', 'department', 'course',
+            'projectType', 'projectCategoryId', 'universityId',
+            'facultyId', 'departmentId', 'course',
             'academicSession', 'workingMode',
         ];
 
@@ -344,26 +429,20 @@ class Project extends Model
             }
         }
 
-        // Handle special case for "other" university
-        $universityValue = $allData['university'];
-        if ($universityValue === 'other' && ! empty($allData['otherUniversity'])) {
-            $universityValue = $allData['otherUniversity'];
-        }
-
         $this->update([
             'status' => 'setup',
             'topic_status' => 'topic_selection',
             'setup_step' => 4,
             'type' => $allData['projectType'],
             'project_category_id' => $allData['projectCategoryId'],
-            'university' => $universityValue,
-            'faculty' => $allData['faculty'],
+            'university_id' => $allData['universityId'],
+            'faculty_id' => $allData['facultyId'],
+            'department_id' => $allData['departmentId'],
             'course' => $allData['course'],
             'field_of_study' => $allData['fieldOfStudy'],
             'supervisor_name' => $allData['supervisorName'] ?? null,
             'mode' => $allData['workingMode'],
             'settings' => array_merge($this->settings ?? [], [
-                'department' => $allData['department'],
                 'matric_number' => $allData['matricNumber'] ?? null,
                 'academic_session' => $allData['academicSession'],
                 'ai_assistance_level' => $allData['aiAssistanceLevel'] ?? 'moderate',
@@ -378,7 +457,9 @@ class Project extends Model
             'after_slug' => $this->fresh()->slug,
             'after_title' => $this->fresh()->title,
             'final_type' => $allData['projectType'],
-            'university' => $universityValue,
+            'university_id' => $allData['universityId'],
+            'faculty_id' => $allData['facultyId'],
+            'department_id' => $allData['departmentId'],
             'setup_data_cleared' => $this->fresh()->setup_data === null,
         ]);
     }
@@ -394,7 +475,7 @@ class Project extends Model
 
         $requiredFields = [
             1 => ['projectType', 'projectCategoryId'],
-            2 => ['university', 'faculty', 'department', 'course'],
+            2 => ['universityId', 'facultyId', 'departmentId', 'course'],
             3 => ['fieldOfStudy', 'academicSession', 'workingMode'],
         ];
 
@@ -562,7 +643,7 @@ class Project extends Model
     {
         $requiredFields = [
             1 => ['projectType', 'projectCategoryId'],
-            2 => ['university', 'faculty', 'department', 'course'],
+            2 => ['universityId', 'facultyId', 'departmentId', 'course'],
             3 => ['fieldOfStudy', 'academicSession', 'workingMode'],
         ];
 
@@ -599,7 +680,23 @@ class Project extends Model
      */
     public function getFullUniversityNameAttribute(): string
     {
-        return UniversityService::getFullName($this->university);
+        return $this->universityRelation?->name ?? 'TBD';
+    }
+
+    /**
+     * Get the faculty name
+     */
+    public function getFacultyNameAttribute(): string
+    {
+        return $this->facultyRelation?->name ?? 'TBD';
+    }
+
+    /**
+     * Get the department name
+     */
+    public function getDepartmentNameAttribute(): string
+    {
+        return $this->departmentRelation?->name ?? 'TBD';
     }
 
     /**
@@ -634,5 +731,15 @@ class Project extends Model
             // Delete project metadata (also handled by DB constraint)
             $project->metadata()->delete();
         });
+    }
+
+    /**
+     * Get the progress of the latest generation attempt
+     */
+    public function getLatestGenerationProgress(): ?int
+    {
+        return \App\Models\ProjectGeneration::where('project_id', $this->id)
+            ->latest()
+            ->value('progress');
     }
 }

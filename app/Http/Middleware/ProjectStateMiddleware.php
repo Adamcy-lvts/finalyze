@@ -15,12 +15,14 @@ class ProjectStateMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Processing request', [
-            'url' => $request->url(),
-            'route_name' => $request->route()?->getName(),
-            'path' => $request->path(),
-            'is_stream_pattern' => $request->is('projects/*/topics/stream'),
-        ]);
+        if (config('app.debug')) {
+            \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Processing request', [
+                'url' => $request->url(),
+                'route_name' => $request->route()?->getName(),
+                'path' => $request->path(),
+                'is_stream_pattern' => $request->is('projects/*/topics/stream'),
+            ]);
+        }
 
         // Skip citation verification routes entirely
         if ($request->is('api/chapters/*/verify-citations')) {
@@ -50,39 +52,60 @@ class ProjectStateMiddleware
             return $next($request);
         }
 
+        // Skip university, faculty, and department API routes entirely
+        if ($request->is('api/universities') ||
+            $request->is('api/faculties') ||
+            $request->is('api/faculties/*/departments') ||
+            $request->is('api/departments')) {
+            return $next($request);
+        }
+
+        // Skip manual editor routes entirely
+        if ($request->is('projects/*/manual-editor/*') ||
+            $request->is('projects/*/manual-editor/*/mark-complete') ||
+            str_starts_with($request->route()->getName() ?? '', 'projects.manual-editor.')) {
+            return $next($request);
+        }
+
         // Skip topic streaming routes entirely
         if ($request->is('projects/*/topics/stream') || $request->route()->getName() === 'topics.stream') {
-            \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for topics.stream route', [
-                'url' => $request->url(),
-                'route_name' => $request->route()?->getName(),
-                'is_stream_route' => $request->is('projects/*/topics/stream'),
-            ]);
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for topics.stream route', [
+                    'url' => $request->url(),
+                    'route_name' => $request->route()?->getName(),
+                    'is_stream_route' => $request->is('projects/*/topics/stream'),
+                ]);
+            }
 
             return $next($request);
         }
 
         // Skip guidance streaming routes entirely
         if ($request->is('api/projects/*/guidance/stream-bulk-generation')) {
-            \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for guidance.stream route', [
-                'url' => $request->url(),
-                'route_name' => $request->route()?->getName(),
-                'is_guidance_stream_route' => $request->is('api/projects/*/guidance/stream-bulk-generation'),
-            ]);
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for guidance.stream route', [
+                    'url' => $request->url(),
+                    'route_name' => $request->route()?->getName(),
+                    'is_guidance_stream_route' => $request->is('api/projects/*/guidance/stream-bulk-generation'),
+                ]);
+            }
 
             return $next($request);
         }
 
-        // Skip bulk generation routes entirely
+        // Skip bulk generation routes entirely (including API endpoints)
         if ($request->is('projects/*/bulk-generate') ||
-            $request->is('api/projects/*/bulk-generate/stream') ||
+            $request->is('api/projects/*/bulk-generate/*') ||
             $request->route()->getName() === 'projects.bulk-generate' ||
-            $request->route()->getName() === 'api.projects.bulk-generate.stream') {
-            \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for bulk generation routes', [
-                'url' => $request->url(),
-                'route_name' => $request->route()?->getName(),
-                'is_bulk_generate_route' => $request->is('projects/*/bulk-generate'),
-                'is_bulk_stream_route' => $request->is('api/projects/*/bulk-generate/stream'),
-            ]);
+            str_starts_with($request->route()->getName() ?? '', 'api.projects.bulk-generate.')) {
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for bulk generation routes', [
+                    'url' => $request->url(),
+                    'route_name' => $request->route()?->getName(),
+                    'is_bulk_generate_route' => $request->is('projects/*/bulk-generate'),
+                    'is_bulk_api_route' => $request->is('api/projects/*/bulk-generate/*'),
+                ]);
+            }
 
             return $next($request);
         }
@@ -126,17 +149,19 @@ class ProjectStateMiddleware
         $requiredStep = $project->getNextRequiredStep();
         $projectSlug = $project->slug;
 
-        \Illuminate\Support\Facades\Log::info('🔍 MIDDLEWARE - Project state analysis', [
-            'project_id' => $project->id,
-            'project_slug' => $projectSlug,
-            'current_route' => $currentRoute,
-            'project_status' => $project->status,
-            'topic_status' => $project->topic_status,
-            'has_topic' => ! empty($project->topic),
-            'required_step' => $requiredStep,
-            'url' => $request->url(),
-            'is_guidance_route' => $currentRoute === 'projects.guidance',
-        ]);
+        if (config('app.debug')) {
+            \Illuminate\Support\Facades\Log::info('🔍 MIDDLEWARE - Project state analysis', [
+                'project_id' => $project->id,
+                'project_slug' => $projectSlug,
+                'current_route' => $currentRoute,
+                'project_status' => $project->status,
+                'topic_status' => $project->topic_status,
+                'has_topic' => ! empty($project->topic),
+                'required_step' => $requiredStep,
+                'url' => $request->url(),
+                'is_guidance_route' => $currentRoute === 'projects.guidance',
+            ]);
+        }
 
         // Allow access to chapter editing routes when project is in writing mode
         $projectStatus = $project->status instanceof \BackedEnum ? $project->status->value : $project->status;
@@ -150,35 +175,43 @@ class ProjectStateMiddleware
             'chapters.chat-message-delete', 'chapters.chat-clear',
             'projects.guidance', 'projects.guidance-chapter', 'projects.writing-guidelines',
             'projects.bulk-generate', 'api.projects.bulk-generate.stream',
+            'api.projects.bulk-generate.start', 'api.projects.bulk-generate.status', 'api.projects.bulk-generate.cancel',
+
         ];
 
         $isAllowedRoute = in_array($currentRoute, $allowedRoutes);
         $hasWritingStatus = in_array($projectStatus, ['guidance', 'writing', 'completed']);
         $hasApprovedTopic = $topicStatus === 'topic_approved';
 
-        \Illuminate\Support\Facades\Log::info('🔐 MIDDLEWARE - Route check', [
-            'current_route' => $currentRoute,
-            'is_allowed_route' => $isAllowedRoute,
-            'project_status' => $projectStatus,
-            'has_writing_status' => $hasWritingStatus,
-            'topic_status' => $topicStatus,
-            'has_approved_topic' => $hasApprovedTopic,
-            'will_allow' => $isAllowedRoute && $hasWritingStatus && $hasApprovedTopic,
-        ]);
+        if (config('app.debug')) {
+            \Illuminate\Support\Facades\Log::info('🔐 MIDDLEWARE - Route check', [
+                'current_route' => $currentRoute,
+                'is_allowed_route' => $isAllowedRoute,
+                'project_status' => $projectStatus,
+                'has_writing_status' => $hasWritingStatus,
+                'topic_status' => $topicStatus,
+                'has_approved_topic' => $hasApprovedTopic,
+                'will_allow' => $isAllowedRoute && $hasWritingStatus && $hasApprovedTopic,
+            ]);
+        }
 
         if ($isAllowedRoute && $hasWritingStatus && $hasApprovedTopic) {
-            \Illuminate\Support\Facades\Log::info('✅ MIDDLEWARE - Allowing guidance route');
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::info('✅ MIDDLEWARE - Allowing guidance route');
+            }
 
             return $next($request);
         }
 
         // Allow PDF export and topic approval when in topic approval stage
         if (in_array($currentRoute, ['topics.export-pdf', 'topics.approve']) && $topicStatus === 'topic_pending_approval') {
-            \Illuminate\Support\Facades\Log::info('🔓 MIDDLEWARE - Allowing topic approval action', [
-                'project_id' => $project->id,
-                'current_route' => $currentRoute,
-                'topic_status' => $topicStatus,
-            ]);
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::info('🔓 MIDDLEWARE - Allowing topic approval action', [
+                    'project_id' => $project->id,
+                    'current_route' => $currentRoute,
+                    'topic_status' => $topicStatus,
+                ]);
+            }
 
             return $next($request);
         }
@@ -210,13 +243,15 @@ class ProjectStateMiddleware
 
         // If user is not on the correct route for their project state, redirect
         if ($currentRoute !== $targetRoute && $requiredStep !== 'project') {
-            \Illuminate\Support\Facades\Log::info('🔄 MIDDLEWARE - Redirecting user', [
-                'project_id' => $project->id,
-                'from_route' => $currentRoute,
-                'to_route' => $targetRoute,
-                'required_step' => $requiredStep,
-                'reason' => 'User not on correct route for project state',
-            ]);
+            if (config('app.debug')) {
+                \Illuminate\Support\Facades\Log::info('🔄 MIDDLEWARE - Redirecting user', [
+                    'project_id' => $project->id,
+                    'from_route' => $currentRoute,
+                    'to_route' => $targetRoute,
+                    'required_step' => $requiredStep,
+                    'reason' => 'User not on correct route for project state',
+                ]);
+            }
 
             if ($requiredStep === 'wizard') {
                 return redirect()->route('projects.create')->with('resume_project', $project->id);
@@ -225,12 +260,14 @@ class ProjectStateMiddleware
             }
         }
 
-        \Illuminate\Support\Facades\Log::info('✅ MIDDLEWARE - Allowing request', [
-            'project_id' => $project->id,
-            'route' => $currentRoute,
-            'required_step' => $requiredStep,
-            'reason' => 'User is on correct route or step is project',
-        ]);
+        if (config('app.debug')) {
+            \Illuminate\Support\Facades\Log::info('✅ MIDDLEWARE - Allowing request', [
+                'project_id' => $project->id,
+                'route' => $currentRoute,
+                'required_step' => $requiredStep,
+                'reason' => 'User is on correct route or step is project',
+            ]);
+        }
 
         return $next($request);
     }
