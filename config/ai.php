@@ -1,115 +1,62 @@
 <?php
 
 return [
-    /*
-    |--------------------------------------------------------------------------
-    | AI Provider Configuration
-    |--------------------------------------------------------------------------
-    |
-    | This file contains configuration for AI content generation providers.
-    | You can customize provider priority, model preferences, and fallback behavior.
-    |
-    */
 
     /*
     |--------------------------------------------------------------------------
-    | Provider Priority Order
+    | AI Generation Timeouts
     |--------------------------------------------------------------------------
     |
-    | Define the order in which AI providers should be attempted.
-    | The first available provider in this list will be used as default.
-    |
-    | Available providers: 'openai', 'claude', 'gemini', 'together'
+    | Configure timeout values for various AI generation jobs.
+    | Values are in seconds.
     |
     */
-    'provider_priority' => [
-        'openai',  // Primary - fastest and most reliable
-        'claude',  // Secondary - high quality backup
-        // 'gemini',  // Tertiary - Google's offering
-        // 'together', // Quaternary - cost-effective option
+
+    'timeouts' => [
+        'chapter_generation' => env('AI_CHAPTER_TIMEOUT', 1200), // 20 minutes
+        'bulk_generation' => env('AI_BULK_TIMEOUT', 3600), // 1 hour
+        'html_conversion' => env('AI_HTML_TIMEOUT', 600), // 10 minutes
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Default Models per Content Type
+    | Queue Configuration
     |--------------------------------------------------------------------------
     |
-    | Specify which models to use for different types of content.
-    | This allows fine-tuning cost vs quality for each content type.
+    | Configure queue names and priorities for AI jobs.
     |
     */
-    'content_models' => [
-        'introduction' => [
-            'model' => 'gpt-4o',
-            'temperature' => 0.7,
-            'max_tokens' => 3000,
-        ],
-        'conclusion' => [
-            'model' => 'gpt-4o',
-            'temperature' => 0.7,
-            'max_tokens' => 3000,
-        ],
-        'literature_review' => [
-            'model' => 'gpt-4o-mini',
-            'temperature' => 0.6,
-            'max_tokens' => 4000,
-        ],
-        'methodology' => [
-            'model' => 'gpt-4o-mini',
-            'temperature' => 0.6,
-            'max_tokens' => 4000,
-        ],
-        'general' => [
-            'model' => 'gpt-4o-mini',
-            'temperature' => 0.7,
-            'max_tokens' => 4000,
-        ],
-        'draft' => [
-            'model' => 'gpt-4o-mini',
-            'temperature' => 0.8,
-            'max_tokens' => 2000,
-        ],
+
+    'queues' => [
+        'chapter_generation' => env('AI_CHAPTER_QUEUE', 'high'),
+        'bulk_generation' => env('AI_BULK_QUEUE', 'default'),
+        'html_conversion' => env('AI_HTML_QUEUE', 'default'),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Failover Settings
+    | Retry Configuration
     |--------------------------------------------------------------------------
     |
-    | Configure how the system handles provider failures.
+    | Configure retry behavior for AI jobs.
     |
     */
-    'failover' => [
-        'max_retries' => 3,              // Maximum attempts per provider
-        'retry_delay_seconds' => 2,      // Delay between retries
-        'health_check_interval' => 300,  // Check provider health every 5 minutes
+
+    'retries' => [
+        'chapter_generation' => env('AI_CHAPTER_RETRIES', 3),
+        'bulk_generation' => env('AI_BULK_RETRIES', 2),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Cost Control
+    | Parallel Literature Mining
     |--------------------------------------------------------------------------
     |
-    | Set limits and preferences for cost management.
+    | Enable parallel API calls during literature mining for better performance.
+    | Reduces literature mining time by ~70% by executing API calls concurrently.
     |
     */
-    'cost_control' => [
-        'prefer_cheaper_models' => env('AI_PREFER_CHEAPER_MODELS', false),
-        'max_cost_per_request' => env('AI_MAX_COST_PER_REQUEST', 0.50), // $0.50 max per request
-        'monthly_budget_limit' => env('AI_MONTHLY_BUDGET', 100.00),     // $100/month limit
-    ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Quality Settings
-    |--------------------------------------------------------------------------
-    |
-    | Configure quality vs speed preferences.
-    |
-    */
-    'quality' => [
-        'high_quality_chapters' => [1, 6], // Use premium models for these chapters
-        'standard_chapters' => [2, 3, 4, 5], // Use standard models for these
-        'enable_quality_boost' => env('AI_ENABLE_QUALITY_BOOST', true),
-    ],
+    'parallel_literature_mining' => env('AI_PARALLEL_MINING', true),
+
 ];

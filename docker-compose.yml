@@ -84,14 +84,23 @@ services:
     depends_on:
       - mysql
 
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: finalyze_mailhog
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finalyze_reverb
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    volumes:
+      - .:/var/www/html
     ports:
-      - "1028:1025"
-      - "8085:8025"
+      - "8083:8080"
     networks:
       - finalyze_network
+    depends_on:
+      - mysql
+      - app
+      - redis
+
 
   queue:
     build:
