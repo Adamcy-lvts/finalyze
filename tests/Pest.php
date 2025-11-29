@@ -16,3 +16,10 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)->in('Feature', 'Unit');
 
 pest()->use(RefreshDatabase::class)->in('Feature');
+
+beforeEach(function () {
+    // Seed reference data (universities/faculties/departments, categories, etc.) for feature tests
+    if (method_exists($this, 'seed')) {
+        $this->seed();
+    }
+});

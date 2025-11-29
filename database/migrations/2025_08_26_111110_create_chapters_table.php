@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('title');
             $table->string('slug');
             $table->longText('content')->nullable();
-            $table->enum('status', ['not_started', 'draft', 'in_review', 'approved'])->default('not_started');
+            $table->enum('status', ['not_started', 'draft', 'in_review', 'approved', 'completed'])->default('not_started');
             $table->integer('word_count')->default(0);
             $table->integer('target_word_count');
             $table->json('outline')->nullable(); // Store chapter sections

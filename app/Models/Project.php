@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProjectStatus;
 use App\Enums\ProjectTopicStatus;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,8 @@ use Illuminate\Support\Str;
 
 class Project extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'user_id', 'student_id', 'project_category_id',
         'university_id', 'faculty_id', 'department_id', // New foreign keys

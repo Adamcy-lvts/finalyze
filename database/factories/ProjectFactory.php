@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Project>
@@ -19,9 +20,9 @@ class ProjectFactory extends Factory
         return [
             'user_id' => \App\Models\User::factory(),
             'title' => $this->faker->sentence(4),
-            'slug' => $this->faker->slug(3),
+            'slug' => Str::uuid()->toString(),
             'type' => $this->faker->randomElement(['undergraduate', 'postgraduate', 'hnd', 'nd']),
-            'status' => 'draft',
+            'status' => 'setup',
             'topic_status' => 'topic_selection',
             'mode' => $this->faker->randomElement(['auto', 'manual']),
             'field_of_study' => $this->faker->words(2, true),
