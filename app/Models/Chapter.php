@@ -13,7 +13,7 @@ class Chapter extends Model
 
     protected $fillable = [
         'project_id', 'chapter_number', 'title', 'slug', 'content',
-        'status', 'word_count', 'target_word_count',
+        'status', 'word_count', 'target_word_count', 'order',
         'outline', 'summary', 'version',
     ];
 

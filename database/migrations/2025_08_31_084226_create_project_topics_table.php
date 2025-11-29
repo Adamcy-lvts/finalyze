@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('project_topics', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('project_id')->nullable()->constrained()->onDelete('cascade');
             $table->string('field_of_study')->nullable(); // Allow null for students needing guidance
             $table->string('faculty');
             $table->string('department');

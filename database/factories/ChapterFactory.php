@@ -22,6 +22,7 @@ class ChapterFactory extends Factory
             'status' => 'draft',
             'word_count' => $this->faker->numberBetween(500, 1500),
             'target_word_count' => $this->faker->numberBetween(1500, 2500),
+            'order' => $this->faker->numberBetween(1, 10),
             'outline' => [],
             'summary' => $this->faker->sentence(),
             'version' => 1,

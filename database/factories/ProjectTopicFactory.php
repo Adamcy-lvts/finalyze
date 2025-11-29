@@ -14,6 +14,7 @@ class ProjectTopicFactory extends Factory
         $field = $this->faker->randomElement(['Computer Science', 'Business Administration', 'Mechanical Engineering']);
 
         return [
+            'project_id' => \App\Models\Project::factory(),
             'field_of_study' => $field,
             'faculty' => $this->faker->randomElement(['Engineering', 'Management Sciences', 'Science']),
             'department' => $this->faker->randomElement(['Computer Science', 'Mechanical Engineering', 'Business Administration']),

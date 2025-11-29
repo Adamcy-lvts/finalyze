@@ -21,6 +21,7 @@ return new class extends Migration
             $table->enum('status', ['not_started', 'draft', 'in_review', 'approved', 'completed'])->default('not_started');
             $table->integer('word_count')->default(0);
             $table->integer('target_word_count');
+            $table->integer('order')->default(1);
             $table->json('outline')->nullable(); // Store chapter sections
             $table->text('summary')->nullable(); // For context awareness
             $table->integer('version')->default(1);

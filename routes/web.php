@@ -64,7 +64,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])->name('projects.bulk-destroy');
 
     // Project deletion routes WITHOUT state middleware - allows deletion regardless of setup state
-    Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
+    Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
+        ->whereNumber('project')
+        ->name('projects.destroy');
 
     // Project edit routes WITHOUT state middleware - allows editing regardless of setup state
     Route::get('/projects/{project:slug}/edit', [ProjectController::class, 'edit'])->name('projects.edit');
