@@ -21,7 +21,11 @@ class TopicGenerationTest extends TestCase
         // Mock the AI generator to avoid actual API calls
         $this->mock(AIContentGenerator::class, function ($mock) {
             $mock->shouldReceive('generateTopicsOptimized')
-                ->andReturn(['1. Topic A', '2. Topic B', '3. Topic C']);
+                ->andReturn((function () {
+                    yield "1. Topic A\n";
+                    yield "2. Topic B\n";
+                    yield "3. Topic C\n";
+                })());
 
             $mock->shouldReceive('getActiveProvider')
                 ->andReturn(null);
