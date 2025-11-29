@@ -68,7 +68,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { usePage } from '@inertiajs/vue3'
+import { Link, usePage } from '@inertiajs/vue3'
 import {
   Sidebar,
   SidebarContent,
@@ -86,7 +86,6 @@ import {
   SidebarGroupLabel,
 } from '@/components/ui/sidebar'
 import { LayoutDashboard, Home, Users, CreditCard, BarChart3, Folder, Cpu, ToggleLeft, Settings, List, Bell } from 'lucide-vue-next'
-import { Link, usePage } from '@inertiajs/vue3'
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
 
