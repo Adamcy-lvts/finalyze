@@ -13,11 +13,293 @@ use PhpOffice\PhpWord\Shared\Html;
 class ExportService
 {
     /**
+     * Check if Pandoc is available on the system
+     */
+    private function isPandocAvailable(): bool
+    {
+        $output = [];
+        $returnCode = 0;
+        exec('pandoc --version 2>&1', $output, $returnCode);
+
+        return $returnCode === 0;
+    }
+
+    /**
+     * Convert HTML to DOCX using Pandoc for superior quality
+     */
+    private function convertWithPandoc(string $html, string $outputPath, array $metadata = []): bool
+    {
+        try {
+            // Create temp directory for conversion
+            $tempDir = storage_path('app/temp');
+            if (! is_dir($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            // Create temporary HTML file
+            $tempHtmlFile = $tempDir.'/export_'.uniqid().'.html';
+
+            // Prepare HTML with metadata and proper structure
+            $fullHtml = $this->prepareHtmlForPandoc($html, $metadata);
+
+            // Write HTML to temp file
+            file_put_contents($tempHtmlFile, $fullHtml);
+
+            // Get reference template path
+            $referenceDoc = resource_path('templates/reference.docx');
+            $referenceOption = file_exists($referenceDoc) ? '--reference-doc='.escapeshellarg($referenceDoc) : '';
+
+            // Build Pandoc command with enhanced options
+            $command = sprintf(
+                'pandoc %s -f html -t docx -o %s %s --standalone 2>&1',
+                escapeshellarg($tempHtmlFile),
+                escapeshellarg($outputPath),
+                $referenceOption
+            );
+
+            // Execute Pandoc
+            $output = [];
+            $returnCode = 0;
+            exec($command, $output, $returnCode);
+
+            // Clean up temp file
+            if (file_exists($tempHtmlFile)) {
+                unlink($tempHtmlFile);
+            }
+
+            if ($returnCode !== 0) {
+                Log::warning('Pandoc conversion failed', [
+                    'command' => $command,
+                    'output' => implode("\n", $output),
+                    'return_code' => $returnCode,
+                ]);
+
+                return false;
+            }
+
+            Log::info('Pandoc conversion successful', [
+                'output_file' => $outputPath,
+                'file_size' => filesize($outputPath),
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Pandoc conversion error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Prepare HTML for optimal Pandoc conversion
+     */
+    private function prepareHtmlForPandoc(string $html, array $metadata = []): string
+    {
+        // Build HTML document with proper structure
+        $title = $metadata['title'] ?? 'Document';
+        $author = $metadata['author'] ?? '';
+
+        $htmlDocument = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$title}</title>
+HTML;
+
+        if ($author) {
+            $htmlDocument .= "\n    <meta name=\"author\" content=\"{$author}\">";
+        }
+
+        $htmlDocument .= <<<'HTML'
+
+    <style>
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 2.0;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: bold;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+        h1 { font-size: 14pt; text-align: center; }
+        h2 { font-size: 13pt; }
+        h3 { font-size: 12pt; }
+        p {
+            text-align: justify;
+            margin-bottom: 1em;
+        }
+        blockquote {
+            margin-left: 1in;
+            margin-right: 1in;
+            font-style: italic;
+        }
+        pre, code {
+            font-family: 'Courier New', monospace;
+            font-size: 10pt;
+            background-color: #f4f4f4;
+        }
+        table {
+            border-collapse: collapse;
+            margin: 1em auto;
+        }
+        table, th, td {
+            border: 1px solid black;
+            padding: 0.5em;
+        }
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+HTML;
+
+        // Clean and enhance the content HTML
+        $cleanedHtml = $this->preprocessHtmlForPandoc($html);
+
+        $htmlDocument .= "\n{$cleanedHtml}\n</body>\n</html>";
+
+        return $htmlDocument;
+    }
+
+    /**
+     * Preprocess HTML content for better Pandoc conversion
+     */
+    private function preprocessHtmlForPandoc(string $html): string
+    {
+        // CRITICAL: Escape HTML entities first to prevent XML corruption
+        // This fixes issues with &, <, >, quotes in content
+        $html = $this->escapeHtmlEntities($html);
+
+        // Don't strip all styles - Pandoc handles them better than PHPWord
+        // Just clean up problematic patterns
+
+        // Remove data-* attributes that might confuse Pandoc
+        $html = preg_replace('/\s*data-[a-z-]+\s*=\s*["\'][^"\']*["\']/i', '', $html);
+
+        // Preserve important inline styles (colors, backgrounds)
+        // but remove position/display/width CSS that doesn't translate to Word
+        $html = preg_replace_callback('/style\s*=\s*["\']([^"\']*)["\']/', function ($matches) {
+            $style = $matches[1];
+
+            // Keep only Word-relevant CSS properties
+            $allowedProps = ['color', 'background-color', 'font-size', 'font-weight', 'font-style', 'text-align'];
+            $styleParts = explode(';', $style);
+            $filteredParts = [];
+
+            foreach ($styleParts as $part) {
+                $part = trim($part);
+                if (empty($part)) {
+                    continue;
+                }
+
+                foreach ($allowedProps as $prop) {
+                    if (stripos($part, $prop) === 0) {
+                        $filteredParts[] = $part;
+                        break;
+                    }
+                }
+            }
+
+            if (empty($filteredParts)) {
+                return '';
+            }
+
+            return 'style="'.implode('; ', $filteredParts).'"';
+        }, $html);
+
+        // Convert Tiptap-specific code blocks to standard pre/code
+        $html = preg_replace('/<pre[^>]*><code[^>]*class="language-([^"]*)"[^>]*>(.*?)<\/code><\/pre>/is', '<pre><code class="$1">$2</code></pre>', $html);
+
+        // Ensure tables have proper structure
+        $html = preg_replace('/<table[^>]*>/', '<table>', $html);
+
+        // Convert <strong> and <em> properly
+        $html = str_replace(['<strong>', '</strong>'], ['<b>', '</b>'], $html);
+        $html = str_replace(['<em>', '</em>'], ['<i>', '</i>'], $html);
+
+        return $html;
+    }
+
+    /**
+     * Properly escape HTML entities in text content while preserving HTML tags
+     * This prevents XML corruption in DOCX files from special characters like &, <, >, etc.
+     */
+    private function escapeHtmlEntities(string $html): string
+    {
+        // Strategy: Only escape text nodes, preserve HTML structure
+        // We need to handle & and other special chars WITHOUT breaking HTML tags
+
+        // First, protect HTML tags by temporarily replacing them
+        $tagPlaceholders = [];
+        $tagCounter = 0;
+
+        // Match and protect all HTML tags (opening, closing, self-closing)
+        $html = preg_replace_callback('/<[^>]+>/', function ($matches) use (&$tagPlaceholders, &$tagCounter) {
+            $placeholder = '___TAG_PLACEHOLDER_'.$tagCounter.'___';
+            $tagPlaceholders[$placeholder] = $matches[0];
+            $tagCounter++;
+
+            return $placeholder;
+        }, $html);
+
+        // Now escape special characters in the remaining text content
+        $html = str_replace('&', '&amp;', $html);
+        // Don't escape < and > as they should be protected by tag placeholders
+
+        // Restore HTML tags
+        foreach ($tagPlaceholders as $placeholder => $originalTag) {
+            $html = str_replace($placeholder, $originalTag, $html);
+        }
+
+        return $html;
+    }
+
+    /**
      * Export entire project to Word document
      */
     public function exportToWord(Project $project): string
     {
         try {
+            // Ensure exports directory exists
+            $exportDir = storage_path('app/exports');
+            if (! is_dir($exportDir)) {
+                mkdir($exportDir, 0755, true);
+            }
+
+            $filename = $exportDir.'/'.$project->slug.'_'.time().'.docx';
+
+            // Try Pandoc first for superior quality
+            if ($this->isPandocAvailable()) {
+                Log::info('Using Pandoc for full project export', ['project_id' => $project->id]);
+
+                $fullHtml = $this->buildFullProjectHtml($project);
+
+                $metadata = [
+                    'title' => $project->title,
+                    'author' => $project->user->name ?? 'Unknown',
+                ];
+
+                if ($this->convertWithPandoc($fullHtml, $filename, $metadata)) {
+                    Log::info('Pandoc full project export successful');
+
+                    return $filename;
+                }
+
+                Log::warning('Pandoc failed for full project, falling back to PHPWord');
+            }
+
+            // Fallback to PHPWord
+            Log::info('Using PHPWord for full project export (fallback)');
+
             $phpWord = $this->initializeDocument($project);
 
             // Add title page
@@ -42,7 +324,10 @@ class ExportService
                 $this->addReferences($phpWord, $project);
             }
 
-            return $this->saveDocument($phpWord, $project->slug);
+            $writer = IOFactory::createWriter($phpWord, 'Word2007');
+            $writer->save($filename);
+
+            return $filename;
         } catch (\Exception $e) {
             Log::error('Export to Word failed', [
                 'project_id' => $project->id,
@@ -54,11 +339,126 @@ class ExportService
     }
 
     /**
+     * Build complete HTML for full project export (Pandoc)
+     */
+    private function buildFullProjectHtml(Project $project): string
+    {
+        $html = '';
+
+        // Title page - escape all text content
+        $html .= '<div style="text-align: center; margin-bottom: 3em;">';
+        $html .= '<h1>'.htmlspecialchars(strtoupper($project->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
+        $html .= '<p>BY</p>';
+        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->user->name ?? 'AUTHOR NAME'), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
+
+        if ($project->abstract) {
+            $html .= '<div style="margin-top: 2em;">';
+            $html .= '<h2>ABSTRACT</h2>';
+            $html .= '<p style="text-align: justify;">'.htmlspecialchars($project->abstract, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+            $html .= '</div>';
+        }
+
+        if ($project->university) {
+            $html .= '<p>'.htmlspecialchars(strtoupper($project->university), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+        }
+
+        if ($project->field_of_study) {
+            $html .= '<p>Department of '.htmlspecialchars($project->field_of_study, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+        }
+
+        $html .= '<p>'.$project->created_at->format('F Y').'</p>';
+        $html .= '</div>';
+        $html .= '<div style="page-break-after: always;"></div>';
+
+        // Table of contents
+        $html .= '<h1 style="text-align: center;">TABLE OF CONTENTS</h1>';
+
+        $chapters = $project->chapters()->orderBy('chapter_number')->get();
+        foreach ($chapters as $chapter) {
+            if (! empty($chapter->content)) {
+                $html .= '<p>CHAPTER '.$chapter->chapter_number.': '.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+            }
+        }
+
+        if ($project->references) {
+            $html .= '<p>REFERENCES</p>';
+        }
+
+        $html .= '<div style="page-break-after: always;"></div>';
+
+        // All chapters
+        foreach ($chapters as $chapter) {
+            if (! empty($chapter->content)) {
+                $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
+                $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
+                $html .= $chapter->content; // Content is processed by preprocessHtmlForPandoc which handles escaping
+                $html .= '<div style="page-break-after: always;"></div>';
+            }
+        }
+
+        // References
+        if ($project->references) {
+            $html .= '<h1>REFERENCES</h1>';
+            $references = json_decode($project->references, true) ?? [];
+
+            if (! empty($references)) {
+                $refNumber = 1;
+                foreach ($references as $reference) {
+                    $refText = $reference['citation'] ??
+                        $reference['text'] ??
+                        $reference['title'] ??
+                        'Unknown reference';
+
+                    $html .= '<p>'.$refNumber.'. '.htmlspecialchars($refText, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+                    $refNumber++;
+                }
+            }
+        }
+
+        return $html;
+    }
+
+    /**
      * Export single chapter to Word document
      */
     public function exportChapterToWord(Project $project, $chapter): string
     {
         try {
+            // Ensure exports directory exists
+            $exportDir = storage_path('app/exports');
+            if (! is_dir($exportDir)) {
+                mkdir($exportDir, 0755, true);
+            }
+
+            // Generate filename
+            $filename = $exportDir.'/'.$project->slug.'-chapter-'.$chapter->chapter_number.'_'.time().'.docx';
+
+            // Try Pandoc first for superior quality
+            if ($this->isPandocAvailable() && ! empty($chapter->content)) {
+                Log::info('Using Pandoc for chapter export', ['chapter_id' => $chapter->id]);
+
+                // Build chapter HTML with title - escape special characters
+                $chapterHtml = '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
+                $chapterHtml .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
+                $chapterHtml .= $chapter->content; // Content is processed by preprocessHtmlForPandoc
+
+                $metadata = [
+                    'title' => htmlspecialchars($project->title.' - Chapter '.$chapter->chapter_number, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                    'author' => htmlspecialchars($project->user->name ?? 'Unknown', ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                ];
+
+                if ($this->convertWithPandoc($chapterHtml, $filename, $metadata)) {
+                    Log::info('Pandoc chapter export successful');
+
+                    return $filename;
+                }
+
+                Log::warning('Pandoc failed, falling back to PHPWord');
+            }
+
+            // Fallback to PHPWord if Pandoc not available or failed
+            Log::info('Using PHPWord for chapter export (fallback)', ['chapter_id' => $chapter->id]);
+
             $phpWord = $this->initializeDocument($project);
             $section = $phpWord->addSection();
 
@@ -80,15 +480,6 @@ class ExportService
             } else {
                 $section->addText('No content available');
             }
-
-            // Ensure exports directory exists
-            $exportDir = storage_path('app/exports');
-            if (! is_dir($exportDir)) {
-                mkdir($exportDir, 0755, true);
-            }
-
-            // Generate proper filename
-            $filename = $exportDir.'/'.$project->slug.'-chapter-'.$chapter->chapter_number.'_'.time().'.docx';
 
             $writer = IOFactory::createWriter($phpWord, 'Word2007');
             $writer->save($filename);
@@ -124,6 +515,38 @@ class ExportService
                 'chapter_numbers' => $chapterNumbers,
             ]);
 
+            // Ensure exports directory exists
+            $exportDir = storage_path('app/exports');
+            if (! is_dir($exportDir)) {
+                mkdir($exportDir, 0755, true);
+            }
+
+            $chaptersString = implode('-', $chapterNumbers);
+            $filename = $exportDir.'/'.$project->slug.'-chapters-'.$chaptersString.'_'.time().'.docx';
+
+            // Try Pandoc first
+            if ($this->isPandocAvailable()) {
+                Log::info('Using Pandoc for multiple chapters export');
+
+                $html = $this->buildMultipleChaptersHtml($project, $chapterNumbers);
+
+                $metadata = [
+                    'title' => $project->title.' (Selected Chapters)',
+                    'author' => $project->user->name ?? 'Unknown',
+                ];
+
+                if ($this->convertWithPandoc($html, $filename, $metadata)) {
+                    Log::info('Pandoc multiple chapters export successful');
+
+                    return $filename;
+                }
+
+                Log::warning('Pandoc failed for multiple chapters, falling back to PHPWord');
+            }
+
+            // Fallback to PHPWord
+            Log::info('Using PHPWord for multiple chapters export (fallback)');
+
             $phpWord = $this->initializeDocument($project);
 
             // Add title page
@@ -154,18 +577,90 @@ class ExportService
                 $this->addReferences($phpWord, $project);
             }
 
-            $chaptersString = implode('-', $chapterNumbers);
+            $writer = IOFactory::createWriter($phpWord, 'Word2007');
+            $writer->save($filename);
 
-            return $this->saveDocument($phpWord, "{$project->slug}-chapters-{$chaptersString}");
+            return $filename;
         } catch (\Exception $e) {
             Log::error('Export multiple chapters failed', [
                 'project_id' => $project->id,
-                'chapter_numbers' => $chapterNumbers,
+                'chapter_numbers' => $chapterNumbers ?? [],
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Build HTML for multiple selected chapters export (Pandoc)
+     */
+    private function buildMultipleChaptersHtml(Project $project, array $chapterNumbers): string
+    {
+        $html = '';
+
+        // Title page - escape all text content
+        $html .= '<div style="text-align: center; margin-bottom: 3em;">';
+        $html .= '<h1>'.htmlspecialchars(strtoupper($project->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
+        $html .= '<p>(Selected Chapters: '.implode(', ', $chapterNumbers).')</p>';
+        $html .= '<p>BY</p>';
+        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->user->name ?? 'AUTHOR NAME'), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
+
+        if ($project->university) {
+            $html .= '<p>'.htmlspecialchars(strtoupper($project->university), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+        }
+
+        $html .= '<p>'.$project->created_at->format('F Y').'</p>';
+        $html .= '</div>';
+        $html .= '<div style="page-break-after: always;"></div>';
+
+        // Table of contents
+        $html .= '<h1 style="text-align: center;">TABLE OF CONTENTS</h1>';
+
+        $chapters = $project->chapters()
+            ->whereIn('chapter_number', $chapterNumbers)
+            ->orderBy('chapter_number')
+            ->get();
+
+        foreach ($chapters as $chapter) {
+            if (! empty($chapter->content)) {
+                $html .= '<p>CHAPTER '.$chapter->chapter_number.': '.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+            }
+        }
+
+        $html .= '<div style="page-break-after: always;"></div>';
+
+        // Selected chapters
+        foreach ($chapters as $chapter) {
+            if (! empty($chapter->content)) {
+                $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
+                $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
+                $html .= $chapter->content; // Content is processed by preprocessHtmlForPandoc
+                $html .= '<div style="page-break-after: always;"></div>';
+            }
+        }
+
+        // Add references if applicable
+        $maxChapter = $project->chapters()->max('chapter_number');
+        if (in_array($maxChapter, $chapterNumbers) && $project->references) {
+            $html .= '<h1>REFERENCES</h1>';
+            $references = json_decode($project->references, true) ?? [];
+
+            if (! empty($references)) {
+                $refNumber = 1;
+                foreach ($references as $reference) {
+                    $refText = $reference['citation'] ??
+                        $reference['text'] ??
+                        $reference['title'] ??
+                        'Unknown reference';
+
+                    $html .= '<p>'.$refNumber.'. '.htmlspecialchars($refText, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+                    $refNumber++;
+                }
+            }
+        }
+
+        return $html;
     }
 
     /**
