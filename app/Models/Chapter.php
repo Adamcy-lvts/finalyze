@@ -3,11 +3,14 @@
 namespace App\Models;
 
 use App\Enums\ChapterStatus;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Chapter extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'project_id', 'chapter_number', 'title', 'slug', 'content',
         'status', 'word_count', 'target_word_count',

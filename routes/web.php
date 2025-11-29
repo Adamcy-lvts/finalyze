@@ -60,9 +60,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Wizard progress saving - AJAX endpoint to save progress as user fills form
     Route::post('/projects/wizard/save-progress', [ProjectController::class, 'saveWizardProgress'])->name('projects.save-wizard-progress');
 
+    // Bulk project deletion BEFORE single delete to avoid route conflicts
+    Route::delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])->name('projects.bulk-destroy');
+
     // Project deletion routes WITHOUT state middleware - allows deletion regardless of setup state
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
-    Route::delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])->name('projects.bulk-destroy');
 
     // Project edit routes WITHOUT state middleware - allows editing regardless of setup state
     Route::get('/projects/{project:slug}/edit', [ProjectController::class, 'edit'])->name('projects.edit');

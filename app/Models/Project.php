@@ -67,6 +67,11 @@ class Project extends Model
         return $this->hasOne(ProjectMetadata::class);
     }
 
+    public function generations(): HasMany
+    {
+        return $this->hasMany(ProjectGeneration::class);
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProjectCategory::class, 'project_category_id');
