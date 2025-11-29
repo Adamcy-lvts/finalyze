@@ -5,10 +5,13 @@
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg">
-              <div class="flex flex-col items-start">
-                <span class="text-sm font-semibold text-foreground">Admin</span>
-                <span class="text-xs text-muted-foreground">Project Companion</span>
-              </div>
+              <Link href="/admin" class="flex items-center gap-3">
+                <AppLogo />
+                <div class="flex flex-col items-start">
+                  <span class="text-sm font-semibold text-foreground">Admin</span>
+                  <span class="text-xs text-muted-foreground">Project Companion</span>
+                </div>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -30,11 +33,41 @@
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter class="px-4 py-3 text-xs text-muted-foreground">
-        <div class="flex items-center gap-2">
-          <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
-          <span>Online</span>
-        </div>
+      <SidebarFooter class="px-2 py-3 text-xs text-muted-foreground space-y-3">
+        <NavFooter :items="footerNavItems" />
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton size="lg" class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
+                  <UserInfo v-if="user" :user="user" />
+                  <ChevronsUpDown class="ml-auto size-4" />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent class="min-w-56 rounded-lg" side="top" align="start" :side-offset="8">
+            <DropdownMenuLabel class="p-0 font-normal">
+              <div class="flex items-center gap-2 px-2 py-2 text-left text-sm">
+                <UserInfo v-if="user" :user="user" :show-email="true" />
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem :as-child="true">
+              <Link class="block w-full" :href="route('profile.edit')" prefetch as="button">
+                <Settings class="mr-2 h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem :as-child="true">
+              <Link class="block w-full" method="post" :href="route('logout')" as="button">
+                <LogOut class="mr-2 h-4 w-4" />
+                Log out
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
@@ -86,6 +119,10 @@ import {
   SidebarGroupLabel,
 } from '@/components/ui/sidebar'
 import { LayoutDashboard, Home, Users, CreditCard, BarChart3, Folder, Cpu, ToggleLeft, Settings, List, Bell } from 'lucide-vue-next'
+import NavFooter from '@/components/NavFooter.vue'
+import NavUser from '@/components/NavUser.vue'
+import AppLogo from '@/components/AppLogo.vue'
+
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
 
@@ -100,6 +137,11 @@ const navItems = [
   { href: '/admin/system/settings', label: 'Settings', icon: Settings },
   { href: '/admin/audit', label: 'Audit Logs', icon: List },
   { href: '/admin/notifications', label: 'Notifications', icon: Bell },
+]
+
+const footerNavItems = [
+  { title: 'Github Repo', href: 'https://github.com/Adamcy-lvts/finalyze', icon: LayoutDashboard },
+  { title: 'Documentation', href: '#', icon: LayoutDashboard },
 ]
 
 const isActive = (href: string) => page.url.startsWith(href)
