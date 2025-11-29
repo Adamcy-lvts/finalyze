@@ -48,7 +48,10 @@ return new class extends Migration
 
             $table->timestamps();
             $table->index(['verification_status', 'confidence_score']);
-            $table->fullText(['title', 'abstract']);
+
+            if (DB::getDriverName() !== 'sqlite') {
+                $table->fullText(['title', 'abstract']);
+            }
 
             // Search performance indexes
             $table->index(['doi', 'verification_status'], 'citations_doi_status_idx');

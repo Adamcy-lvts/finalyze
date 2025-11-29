@@ -12,7 +12,7 @@ class OpenAIProvider implements AIProviderInterface
 
     private float $temperature = 0.7;
 
-    private int $maxTokens = 4000;
+    private int $maxTokens = 8000; // Increased for comprehensive chapter generation
 
     public function generate(string $prompt, array $options = []): string
     {
@@ -115,9 +115,21 @@ class OpenAIProvider implements AIProviderInterface
                 }
 
                 // Check if we've reached the end
-                if (isset($response->choices[0]->finish_reason) &&
-                    $response->choices[0]->finish_reason === 'stop') {
-                    break;
+                if (isset($response->choices[0]->finish_reason)) {
+                    $finishReason = $response->choices[0]->finish_reason;
+
+                    if ($finishReason === 'length') {
+                        Log::warning('OpenAI Provider - Stream stopped: hit max_tokens limit', [
+                            'total_chunks' => $totalChunks,
+                            'content_length' => strlen($totalContent),
+                            'word_count' => str_word_count($totalContent),
+                            'finish_reason' => 'length',
+                        ]);
+                    }
+
+                    if ($finishReason === 'stop' || $finishReason === 'length') {
+                        break;
+                    }
                 }
             }
 
@@ -136,7 +148,6 @@ class OpenAIProvider implements AIProviderInterface
             // Yield rate limit message to client with retry suggestion
             yield "\n\n❌ **Rate Limit Exceeded**\n\nOpenAI API usage limit has been reached. Please try again in a few minutes or check your OpenAI usage limits.\n\n";
             throw $e;
-
         } catch (\OpenAI\Exceptions\UnauthorizedException $e) {
             Log::error('OpenAI Provider - Unauthorized during streaming', [
                 'error' => $e->getMessage(),
@@ -146,7 +157,6 @@ class OpenAIProvider implements AIProviderInterface
             // Yield authorization error message
             yield "\n\n❌ **Authentication Error**\n\nOpenAI API key is invalid or expired. Please check your API configuration.\n\n";
             throw $e;
-
         } catch (\Exception $e) {
             Log::error('OpenAI Provider - Stream generation failed', [
                 'error' => $e->getMessage(),
@@ -167,6 +177,7 @@ class OpenAIProvider implements AIProviderInterface
             // Check if API key is configured
             if (empty(config('openai.api_key'))) {
                 Log::warning('OpenAI Provider - API key not configured');
+
                 return false;
             }
 
@@ -180,6 +191,7 @@ class OpenAIProvider implements AIProviderInterface
             ]);
 
             Log::info('OpenAI Provider - Availability check passed');
+
             return true;
 
         } catch (\OpenAI\Exceptions\RateLimitException $e) {
@@ -187,6 +199,7 @@ class OpenAIProvider implements AIProviderInterface
             Log::info('OpenAI Provider - Rate limited but service is available', [
                 'error' => $e->getMessage(),
             ]);
+
             return true; // Return true because the service is working, just rate limited
 
         } catch (\OpenAI\Exceptions\UnauthorizedException $e) {
@@ -194,6 +207,7 @@ class OpenAIProvider implements AIProviderInterface
             Log::error('OpenAI Provider - Invalid API key', [
                 'error' => $e->getMessage(),
             ]);
+
             return false;
 
         } catch (\Exception $e) {

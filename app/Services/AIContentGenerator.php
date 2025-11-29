@@ -136,53 +136,95 @@ class AIContentGenerator
 
         $maxRetries = count($this->providers);
         $attempt = 0;
+        $lastException = null;
 
         while ($attempt < $maxRetries) {
-            try {
-                Log::info('AI Content Generation - Starting stream', [
-                    'provider' => $this->activeProvider->getName(),
+            if (! $this->activeProvider) {
+                Log::error('AI Content Generation - No active provider available', [
                     'attempt' => $attempt + 1,
-                    'prompt_length' => strlen($prompt),
-                    'options' => $options,
-                    'timestamp' => now()->toDateTimeString(),
+                    'providers_checked' => count($this->providers),
                 ]);
+                break;
+            }
 
-                yield from $this->activeProvider->streamGenerate($prompt, $options);
+            $providerAttempts = 0;
+            $maxProviderRetries = 3;
 
-                Log::info('AI Content Generation - Stream completed successfully', [
-                    'provider' => $this->activeProvider->getName(),
-                    'attempt' => $attempt + 1,
-                ]);
+            while ($providerAttempts <= $maxProviderRetries) {
+                try {
+                    Log::info('AI Content Generation - Starting stream', [
+                        'provider' => $this->activeProvider->getName(),
+                        'attempt' => $attempt + 1,
+                        'provider_retry' => $providerAttempts,
+                        'prompt_length' => strlen($prompt),
+                        'options' => $options,
+                        'timestamp' => now()->toDateTimeString(),
+                    ]);
 
-                return; // Success, exit the retry loop
+                    $fullContent = '';
+                    foreach ($this->activeProvider->streamGenerate($prompt, $options) as $chunk) {
+                        $fullContent .= $chunk;
+                        yield $chunk;
+                    }
 
-            } catch (\Exception $e) {
-                $attempt++;
+                    Log::info('AI Content Generation - Stream completed successfully', [
+                        'provider' => $this->activeProvider->getName(),
+                        'attempt' => $attempt + 1,
+                        'content_preview' => substr($fullContent, 0, 1000).(strlen($fullContent) > 1000 ? '...' : ''),
+                    ]);
 
-                Log::error('AI Content Generation - Provider failed', [
-                    'provider' => $this->activeProvider->getName(),
-                    'attempt' => $attempt,
-                    'error' => $e->getMessage(),
-                    'will_retry' => $attempt < $maxRetries,
-                ]);
+                    return; // Success, exit the retry loop
 
-                // Try next provider if available
-                if ($attempt < $maxRetries) {
-                    $this->selectNextProvider();
+                } catch (\Exception $e) {
+                    $lastException = $e;
+                    $isRateLimit = str_contains(strtolower($e->getMessage()), 'rate limit') || $e->getCode() === 429;
 
-                    continue;
+                    if ($isRateLimit && $providerAttempts < $maxProviderRetries) {
+                        $providerAttempts++;
+                        $delay = 5 * $providerAttempts;
+
+                        Log::warning("AI Content Generation - Rate limit hit (stream), retrying in {$delay}s", [
+                            'provider' => $this->activeProvider->getName(),
+                            'attempt' => $providerAttempts,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        sleep($delay);
+
+                        continue;
+                    }
+
+                    break;
                 }
+            }
 
-                // All providers failed
-                Log::error('AI Content Generation - All providers failed', [
-                    'total_attempts' => $attempt,
-                    'last_error' => $e->getMessage(),
-                ]);
+            $attempt++;
 
-                yield 'Error: All AI providers failed. '.$e->getMessage();
-                throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$e->getMessage());
+            Log::error('AI Content Generation - Provider failed', [
+                'provider' => $this->activeProvider->getName(),
+                'attempt' => $attempt,
+                'error' => $lastException ? $lastException->getMessage() : 'Unknown error',
+                'will_retry' => $attempt < $maxRetries,
+            ]);
+
+            // Try next provider if available
+            if ($attempt < $maxRetries) {
+                $this->selectNextProvider();
+
+                continue;
             }
         }
+
+        // All providers failed
+        $errorMessage = $lastException ? $lastException->getMessage() : 'Unexpected error in streamGenerate';
+
+        Log::error('AI Content Generation - All providers failed', [
+            'total_attempts' => $attempt,
+            'last_error' => $errorMessage,
+        ]);
+
+        yield 'Error: All AI providers failed. '.$errorMessage;
+        throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$errorMessage);
     }
 
     /**
@@ -229,13 +271,9 @@ class AIContentGenerator
             return 'AI services are currently unavailable. Please check your internet connection and try again.';
         }
 
-        // Check if we have any providers at all
-        if (! $this->activeProvider) {
-            throw new \Exception('No AI providers are available for content generation');
-        }
-
         $maxRetries = count($this->providers);
         $attempt = 0;
+        $lastException = null;
 
         while ($attempt < $maxRetries) {
             // Check if we have an active provider after potential failures
@@ -247,48 +285,75 @@ class AIContentGenerator
                 break;
             }
 
-            try {
-                Log::info('AI Content Generation - Starting synchronous generation', [
-                    'provider' => $this->activeProvider->getName(),
-                    'attempt' => $attempt + 1,
-                    'prompt_length' => strlen($prompt),
-                    'options' => $options,
-                    'timestamp' => now()->toDateTimeString(),
-                ]);
+            // Inner retry loop for rate limits
+            $providerAttempts = 0;
+            $maxProviderRetries = 3;
 
-                $content = $this->activeProvider->generate($prompt, $options);
+            while ($providerAttempts <= $maxProviderRetries) {
+                try {
+                    Log::info('AI Content Generation - Starting synchronous generation', [
+                        'provider' => $this->activeProvider->getName(),
+                        'attempt' => $attempt + 1,
+                        'provider_retry' => $providerAttempts,
+                        'prompt_length' => strlen($prompt),
+                        'options' => $options,
+                        'timestamp' => now()->toDateTimeString(),
+                    ]);
 
-                Log::info('AI Content Generation - Synchronous generation completed', [
-                    'provider' => $this->activeProvider->getName(),
-                    'content_length' => strlen($content),
-                    'word_count' => str_word_count($content),
-                ]);
+                    $content = $this->activeProvider->generate($prompt, $options);
 
-                return $content;
+                    Log::info('AI Content Generation - Synchronous generation completed', [
+                        'provider' => $this->activeProvider->getName(),
+                        'content_length' => strlen($content),
+                        'word_count' => str_word_count($content),
+                        'content_preview' => substr($content, 0, 1000).(strlen($content) > 1000 ? '...' : ''),
+                    ]);
 
-            } catch (\Exception $e) {
-                $attempt++;
+                    return $content;
 
-                Log::error('AI Content Generation - Provider failed', [
-                    'provider' => $this->activeProvider->getName(),
-                    'attempt' => $attempt,
-                    'error' => $e->getMessage(),
-                    'will_retry' => $attempt < $maxRetries,
-                ]);
+                } catch (\Exception $e) {
+                    $lastException = $e;
+                    $isRateLimit = str_contains(strtolower($e->getMessage()), 'rate limit') || $e->getCode() === 429;
 
-                // Try next provider if available
-                if ($attempt < $maxRetries) {
-                    $this->selectNextProvider();
+                    if ($isRateLimit && $providerAttempts < $maxProviderRetries) {
+                        $providerAttempts++;
+                        $delay = 5 * $providerAttempts; // Linear backoff: 5s, 10s, 15s
 
-                    continue;
+                        Log::warning("AI Content Generation - Rate limit hit, retrying in {$delay}s", [
+                            'provider' => $this->activeProvider->getName(),
+                            'attempt' => $providerAttempts,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        sleep($delay);
+
+                        continue;
+                    }
+
+                    // Not a rate limit or retries exhausted - break inner loop
+                    break;
                 }
+            }
 
-                // All providers failed
-                throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$e->getMessage());
+            $attempt++;
+
+            Log::error('AI Content Generation - Provider failed', [
+                'provider' => $this->activeProvider->getName(),
+                'attempt' => $attempt,
+                'error' => $lastException ? $lastException->getMessage() : 'Unknown error',
+                'will_retry' => $attempt < $maxRetries,
+            ]);
+
+            // Try next provider if available
+            if ($attempt < $maxRetries) {
+                $this->selectNextProvider();
+
+                continue;
             }
         }
 
-        throw new \Exception('Unexpected error in generate method');
+        $errorMessage = $lastException ? $lastException->getMessage() : 'Unexpected error in generate method';
+        throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$errorMessage);
     }
 
     /**
@@ -452,22 +517,22 @@ Maintain formal academic tone throughout.";
             'introduction', 'conclusion' => [
                 'model' => 'gpt-4o', // High quality for important chapters
                 'temperature' => 0.7,
-                'max_tokens' => 3000,
+                'max_tokens' => 8000, // Increased for comprehensive chapters with long prompts
             ],
             'literature_review', 'methodology' => [
                 'model' => 'gpt-4o-mini', // Cost-effective for structured content
                 'temperature' => 0.6,
-                'max_tokens' => 4000,
+                'max_tokens' => 16000, // Increased significantly - literature reviews are longest
             ],
             'draft', 'outline' => [
                 'model' => 'gpt-4o-mini', // Fast and cheap for drafts
                 'temperature' => 0.8,
-                'max_tokens' => 2000,
+                'max_tokens' => 6000, // Increased from 2000 - was way too low
             ],
             default => [
                 'model' => 'gpt-4o-mini',
                 'temperature' => 0.7,
-                'max_tokens' => 4000,
+                'max_tokens' => 12000, // Increased significantly for complete chapters
             ]
         };
     }

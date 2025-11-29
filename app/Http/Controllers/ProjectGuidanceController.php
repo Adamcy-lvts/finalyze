@@ -20,6 +20,10 @@ class ProjectGuidanceController extends Controller
      */
     public function index(Project $project)
     {
+        if ($project->mode === 'auto') {
+            return redirect()->route('projects.writing', $project->slug);
+        }
+
         // Get complete project structure
         $structure = $this->facultyStructureService->getCompleteProjectStructure($project);
         $guidanceTemplates = $this->facultyStructureService->getGuidanceTemplates($project);
@@ -79,7 +83,7 @@ class ProjectGuidanceController extends Controller
             'guidance' => $guidanceTemplates,
             'terminology' => $terminology,
             'timeline' => $timeline,
-            'facultyName' => $project->faculty,
+            'facultyName' => $project->facultyRelation?->name,
             'hasAnyGuidance' => $hasAnyGuidance,
             'guidanceStatus' => $hasAnyGuidance ? 'loaded' : 'missing',
         ]);
@@ -120,7 +124,7 @@ class ProjectGuidanceController extends Controller
         return response()->json([
             'guidelines' => $guidanceTemplates,
             'terminology' => $terminology,
-            'faculty' => $project->faculty,
+            'faculty' => $project->facultyRelation?->name,
         ]);
     }
 
@@ -131,6 +135,8 @@ class ProjectGuidanceController extends Controller
     {
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
+
+        abort_if($project->mode === 'auto', 403, 'Guidance generation is only available for manual mode projects.');
 
         try {
             // Get chapter structure to validate chapter exists
@@ -183,6 +189,8 @@ class ProjectGuidanceController extends Controller
     {
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
+
+        abort_if($project->mode === 'auto', 403, 'Guidance generation is only available for manual mode projects.');
 
         // Set headers for Server-Sent Events
         return response()->stream(function () use ($project) {
@@ -449,6 +457,8 @@ class ProjectGuidanceController extends Controller
     {
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
+
+        abort_if($project->mode === 'auto', 403, 'Guidance generation is only available for manual mode projects.');
 
         // Ensure project is in guidance status
         $projectStatus = $project->status instanceof \BackedEnum ? $project->status->value : $project->status;
