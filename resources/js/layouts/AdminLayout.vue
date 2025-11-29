@@ -1,6 +1,6 @@
 <template>
   <SidebarProvider>
-    <Sidebar variant="inset" collapsible="icon" class="border-r bg-white">
+    <Sidebar variant="inset" collapsible="icon" class="border-r bg-white text-slate-900">
       <SidebarHeader class="px-4 py-4">
         <div>
           <h1 class="text-sm font-semibold text-slate-900">Admin</h1>
@@ -30,21 +30,28 @@
       <SidebarRail />
     </Sidebar>
     <SidebarInset class="bg-slate-50 text-slate-900 flex min-h-screen flex-col">
-      <header class="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4">
-        <div class="flex items-center gap-3">
-          <SidebarTrigger />
-          <slot name="title">
-            <h2 class="text-base font-semibold text-slate-900">Admin</h2>
-          </slot>
-        </div>
-        <div class="flex items-center gap-3 text-sm text-slate-600">
-          <span>{{ user?.name }}</span>
-          <span class="text-slate-400">•</span>
-          <a href="/dashboard" class="text-indigo-600 hover:text-indigo-700 text-xs">Back to app</a>
+      <header class="border-b border-slate-200 bg-white">
+        <div class="max-w-7xl mx-auto px-4 md:px-8 h-14 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <SidebarTrigger />
+            <slot name="title">
+              <div class="flex items-center gap-2">
+                <LayoutDashboard class="h-4 w-4 text-slate-500" />
+                <h2 class="text-base font-semibold text-slate-900">Admin</h2>
+              </div>
+            </slot>
+          </div>
+          <div class="flex items-center gap-3 text-sm text-slate-600">
+            <span>{{ user?.name }}</span>
+            <span class="text-slate-400">•</span>
+            <a href="/dashboard" class="text-indigo-600 hover:text-indigo-700 text-xs">Back to app</a>
+          </div>
         </div>
       </header>
-      <main class="flex-1 overflow-y-auto p-6">
-        <slot />
+      <main class="flex-1 overflow-y-auto">
+        <div class="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-8">
+          <slot />
+        </div>
       </main>
     </SidebarInset>
   </SidebarProvider>
@@ -68,19 +75,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
-import {
-  Home,
-  Users,
-  CreditCard,
-  BarChart3,
-  Folder,
-  Cpu,
-  ToggleLeft,
-  Settings,
-  List,
-  Bell,
-} from 'lucide-vue-next'
-
+import { LayoutDashboard, Home, Users, CreditCard, BarChart3, Folder, Cpu, ToggleLeft, Settings, List, Bell } from 'lucide-vue-next'
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
 
