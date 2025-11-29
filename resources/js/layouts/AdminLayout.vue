@@ -1,6 +1,6 @@
 <template>
   <SidebarProvider>
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar collapsible="icon" variant="inset" class="bg-sidebar text-sidebar-foreground">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -71,21 +71,21 @@
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-    <SidebarInset class="bg-slate-50 text-slate-900 flex min-h-screen flex-col">
-      <header class="border-b border-slate-200 bg-white">
+    <SidebarInset class="bg-background text-foreground flex min-h-screen flex-col">
+      <header class="border-b border-border bg-background">
         <div class="max-w-7xl mx-auto px-4 md:px-8 h-14 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <SidebarTrigger />
             <slot name="title">
               <div class="flex items-center gap-2">
-                <LayoutDashboard class="h-4 w-4 text-slate-500" />
-                <h2 class="text-base font-semibold text-slate-900">Admin</h2>
+                <LayoutDashboard class="h-4 w-4 text-muted-foreground" />
+                <h2 class="text-base font-semibold">Admin</h2>
               </div>
             </slot>
           </div>
-          <div class="flex items-center gap-3 text-sm text-slate-600">
+          <div class="flex items-center gap-3 text-sm text-muted-foreground">
             <span>{{ user?.name }}</span>
-            <span class="text-slate-400">•</span>
+            <span class="text-muted-foreground">•</span>
             <a href="/dashboard" class="text-indigo-600 hover:text-indigo-700 text-xs">Back to app</a>
           </div>
         </div>

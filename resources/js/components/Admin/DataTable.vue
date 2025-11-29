@@ -75,8 +75,8 @@ const table = useVueTable({
         @update:model-value="table.getColumn(searchKey)?.setFilterValue($event)"
       />
     </div>
-    <div class="border rounded-md bg-white">
-      <Table>
+    <div class="border border-border rounded-md bg-card text-foreground">
+      <Table class="w-full text-sm">
         <TableHeader>
           <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
             <TableHead v-for="header in headerGroup.headers" :key="header.id">
