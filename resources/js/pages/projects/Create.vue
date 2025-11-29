@@ -67,27 +67,12 @@ const formSchemas = [
     }),
 
     // Step 2: University Details
-    z
-        .object({
-            university: z.string().min(1, 'Please select your university'),
-            otherUniversity: z.string().optional(),
-            faculty: z.string().min(2, 'Faculty is required'),
-            department: z.string().min(2, 'Department is required'),
-            course: z.string().min(2, 'Course of study is required'),
-        })
-        .refine(
-            (data) => {
-                // If university is "other", otherUniversity must be provided
-                if (data.university === 'other') {
-                    return data.otherUniversity && data.otherUniversity.trim().length >= 2;
-                }
-                return true;
-            },
-            {
-                message: "University name is required when selecting 'Other'",
-                path: ['otherUniversity'],
-            },
-        ),
+    z.object({
+        universityId: z.number({ required_error: 'Please select your university' }),
+        facultyId: z.number({ required_error: 'Please select your faculty' }),
+        departmentId: z.number({ required_error: 'Please select your department' }),
+        course: z.string().min(2, 'Course of study is required'),
+    }),
 
     // Step 3: Research & Supervisor Details
     z.object({
@@ -127,6 +112,20 @@ const selectedProjectType = ref<string>('');
 // Auto-save timer
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+// API Data - Universities, Faculties, and Departments
+const universities = ref<Array<{ id: number; name: string; short_name: string; slug: string; type: string; location: string; state: string }>>([]);
+const faculties = ref<Array<{ id: number; name: string; slug: string; description: string; faculty_structure_id: number | null }>>([]);
+const departments = ref<Array<{ id: number; faculty_id: number; name: string; slug: string; code: string; description: string }>>([]);
+const isLoadingUniversities = ref(false);
+const isLoadingFaculties = ref(false);
+const isLoadingDepartments = ref(false);
+const selectedFacultyId = ref<number | null>(null);
+
+// Popover open states
+const universityPopoverOpen = ref(false);
+const facultyPopoverOpen = ref(false);
+const departmentPopoverOpen = ref(false);
+
 /**
  * GET CURRENT STEP DATA FROM WIZARD
  */
@@ -159,7 +158,7 @@ const setCurrentStepData = (step: number, data: Record<string, any>) => {
 const isStepComplete = (step: number, data: Record<string, any>): boolean => {
     const requiredFields = {
         1: ['projectType', 'projectCategoryId'],
-        2: ['university', 'faculty', 'department', 'course'],
+        2: ['universityId', 'facultyId', 'departmentId', 'course'],
         3: ['academicSession', 'workingMode'], // fieldOfStudy is now optional
     };
 
@@ -200,6 +199,12 @@ watch(currentStep, (newStep) => {
         if (stepData.projectType) {
             selectedProjectType.value = stepData.projectType;
         }
+
+        // Load departments if navigating to step 2 with existing faculty selection
+        if (newStep === 2 && stepData.facultyId) {
+            selectedFacultyId.value = stepData.facultyId;
+            fetchDepartmentsByFaculty(stepData.facultyId);
+        }
     });
 });
 
@@ -207,6 +212,10 @@ watch(currentStep, (newStep) => {
  * STEP-AWARE STATE RESTORATION
  */
 onMounted(() => {
+    // Fetch universities and faculties from API
+    fetchUniversities();
+    fetchFaculties();
+
     if (props.resumeProject) {
         console.log('📄 Resuming project setup...', props.resumeProject);
 
@@ -222,6 +231,12 @@ onMounted(() => {
         // Sync selectedProjectType for category filtering
         if (currentStepData.projectType) {
             selectedProjectType.value = currentStepData.projectType;
+        }
+
+        // Load departments if faculty is already selected (for step 2 restoration)
+        if (currentStepData.facultyId) {
+            selectedFacultyId.value = currentStepData.facultyId;
+            fetchDepartmentsByFaculty(currentStepData.facultyId);
         }
 
         // Force form re-render
@@ -248,6 +263,60 @@ onMounted(() => {
 /**
  * AUTO-SAVE SYSTEM WITH PROPER CHANGE DETECTION
  */
+
+// Fetch universities from API
+const fetchUniversities = async () => {
+    isLoadingUniversities.value = true;
+    try {
+        const response = await fetch('/api/universities');
+        const data = await response.json();
+        universities.value = data.universities;
+    } catch (error) {
+        console.error('Failed to fetch universities:', error);
+        toast('Error loading universities');
+    } finally {
+        isLoadingUniversities.value = false;
+    }
+};
+
+// Fetch faculties from API
+const fetchFaculties = async () => {
+    isLoadingFaculties.value = true;
+    try {
+        const response = await fetch('/api/faculties');
+        const data = await response.json();
+        faculties.value = data.faculties;
+    } catch (error) {
+        console.error('Failed to fetch faculties:', error);
+        toast('Error loading faculties');
+    } finally {
+        isLoadingFaculties.value = false;
+    }
+};
+
+// Fetch departments by faculty
+const fetchDepartmentsByFaculty = async (facultyId: number) => {
+    isLoadingDepartments.value = true;
+    try {
+        const response = await fetch(`/api/faculties/${facultyId}/departments`);
+        const data = await response.json();
+        departments.value = data.departments;
+    } catch (error) {
+        console.error('Failed to fetch departments:', error);
+        toast('Error loading departments');
+    } finally {
+        isLoadingDepartments.value = false;
+    }
+};
+
+// Watch for faculty changes to load departments
+watch(selectedFacultyId, (newFacultyId) => {
+    if (newFacultyId) {
+        fetchDepartmentsByFaculty(newFacultyId);
+    } else {
+        departments.value = [];
+    }
+});
 const saveProgress = async (step: number, formData: Record<string, any>) => {
     try {
         console.log('💾 Saving progress - Step:', step, 'Data:', formData);
@@ -412,252 +481,7 @@ const steps = [
     },
 ];
 
-// Nigerian Universities List
-const universities = [
-    // Federal Universities
-    { value: 'abu', label: 'Ahmadu Bello University (ABU), Zaria', fullName: 'Ahmadu Bello University, Zaria' },
-    { value: 'ui', label: 'University of Ibadan (UI)', fullName: 'University of Ibadan' },
-    { value: 'unn', label: 'University of Nigeria, Nsukka (UNN)', fullName: 'University of Nigeria, Nsukka' },
-    { value: 'oau', label: 'Obafemi Awolowo University (OAU), Ile-Ife', fullName: 'Obafemi Awolowo University, Ile-Ife' },
-    { value: 'unilag', label: 'University of Lagos (UNILAG)', fullName: 'University of Lagos' },
-    { value: 'unical', label: 'University of Calabar (UNICAL)', fullName: 'University of Calabar' },
-    { value: 'unijos', label: 'University of Jos (UNIJOS)', fullName: 'University of Jos' },
-    { value: 'unimaid', label: 'University of Maiduguri (UNIMAID)', fullName: 'University of Maiduguri' },
-    { value: 'uniben', label: 'University of Benin (UNIBEN)', fullName: 'University of Benin' },
-    { value: 'uniport', label: 'University of Port Harcourt (UNIPORT)', fullName: 'University of Port Harcourt' },
-    { value: 'buk', label: 'Bayero University, Kano (BUK)', fullName: 'Bayero University, Kano' },
-    { value: 'uniuyo', label: 'University of Uyo (UNIUYO)', fullName: 'University of Uyo' },
-    { value: 'uniilorin', label: 'University of Ilorin (UNILORIN)', fullName: 'University of Ilorin' },
-    { value: 'futminna', label: 'Federal University of Technology, Minna (FUTMINNA)', fullName: 'Federal University of Technology, Minna' },
-    { value: 'futa', label: 'Federal University of Technology, Akure (FUTA)', fullName: 'Federal University of Technology, Akure' },
-    { value: 'futo', label: 'Federal University of Technology, Owerri (FUTO)', fullName: 'Federal University of Technology, Owerri' },
-    { value: 'modibbo', label: 'Modibbo Adama University of Technology, Yola', fullName: 'Modibbo Adama University of Technology, Yola' },
-    { value: 'uniabuja', label: 'University of Abuja (UNIABUJA)', fullName: 'University of Abuja' },
-    { value: 'nda', label: 'Nigerian Defence Academy (NDA), Kaduna', fullName: 'Nigerian Defence Academy, Kaduna' },
-    { value: 'funaab', label: 'Federal University of Agriculture, Abeokuta (FUNAAB)', fullName: 'Federal University of Agriculture, Abeokuta' },
-    { value: 'fudutsinma', label: 'Federal University, Dutsin-Ma', fullName: 'Federal University, Dutsin-Ma' },
-    { value: 'fugashua', label: 'Federal University, Gashua', fullName: 'Federal University, Gashua' },
-    { value: 'fukashere', label: 'Federal University, Kashere', fullName: 'Federal University, Kashere' },
-    { value: 'fulafia', label: 'Federal University, Lafia', fullName: 'Federal University, Lafia' },
-    { value: 'fulokoja', label: 'Federal University, Lokoja', fullName: 'Federal University, Lokoja' },
-    { value: 'funai', label: 'Federal University, Ndufu-Alike (FUNAI)', fullName: 'Federal University, Ndufu-Alike' },
-    { value: 'fuotuoke', label: 'Federal University, Otuoke', fullName: 'Federal University, Otuoke' },
-    { value: 'fuoye', label: 'Federal University, Oye-Ekiti (FUOYE)', fullName: 'Federal University, Oye-Ekiti' },
-    { value: 'fuwukari', label: 'Federal University, Wukari', fullName: 'Federal University, Wukari' },
 
-    // State Universities
-    { value: 'lasu', label: 'Lagos State University (LASU)', fullName: 'Lagos State University' },
-    { value: 'aaua', label: 'Adekunle Ajasin University, Akungba (AAUA)', fullName: 'Adekunle Ajasin University, Akungba' },
-    { value: 'adsu', label: 'Adamawa State University, Mubi', fullName: 'Adamawa State University, Mubi' },
-    { value: 'aksu', label: 'Akwa Ibom State University (AKSU)', fullName: 'Akwa Ibom State University' },
-    { value: 'ambrose', label: 'Ambrose Alli University, Ekpoma', fullName: 'Ambrose Alli University, Ekpoma' },
-    { value: 'ansu', label: 'Anambra State University, Uli', fullName: 'Anambra State University, Uli' },
-    { value: 'basu', label: 'Bauchi State University, Gadau', fullName: 'Bauchi State University, Gadau' },
-    { value: 'bsu', label: 'Benue State University, Makurdi', fullName: 'Benue State University, Makurdi' },
-    { value: 'bosu', label: 'Bornu State University, Maiduguri', fullName: 'Bornu State University, Maiduguri' },
-    { value: 'crutech', label: 'Cross River University of Technology (CRUTECH)', fullName: 'Cross River University of Technology' },
-    { value: 'delsu', label: 'Delta State University, Abraka (DELSU)', fullName: 'Delta State University, Abraka' },
-    { value: 'ebsu', label: 'Ebonyi State University, Abakaliki (EBSU)', fullName: 'Ebonyi State University, Abakaliki' },
-    { value: 'edsu', label: 'Edo State University, Uzairue', fullName: 'Edo State University, Uzairue' },
-    { value: 'eksu', label: 'Ekiti State University, Ado-Ekiti (EKSU)', fullName: 'Ekiti State University, Ado-Ekiti' },
-    { value: 'esut', label: 'Enugu State University of Science and Technology (ESUT)', fullName: 'Enugu State University of Science and Technology' },
-    { value: 'fcuotuoke', label: 'Federal College of Education (Technical), Otuoke', fullName: 'Federal College of Education (Technical), Otuoke' },
-    { value: 'fuam', label: 'Federal University of Agriculture, Makurdi (FUAM)', fullName: 'Federal University of Agriculture, Makurdi' },
-    { value: 'gombe', label: 'Gombe State University', fullName: 'Gombe State University' },
-    { value: 'imsu', label: 'Imo State University, Owerri (IMSU)', fullName: 'Imo State University, Owerri' },
-    { value: 'jabu', label: 'Joseph Ayo Babalola University, Ikeji-Arakeji', fullName: 'Joseph Ayo Babalola University, Ikeji-Arakeji' },
-    { value: 'kasu', label: 'Kaduna State University (KASU)', fullName: 'Kaduna State University' },
-    {
-        value: 'kasu',
-        label: 'Kano State University of Science and Technology, Wudil',
-        fullName: 'Kano State University of Science and Technology, Wudil',
-    },
-    { value: 'kogi', label: 'Kogi State University, Anyigba', fullName: 'Kogi State University, Anyigba' },
-    { value: 'kwasu', label: 'Kwara State University, Malete (KWASU)', fullName: 'Kwara State University, Malete' },
-    {
-        value: 'lautech',
-        label: 'Ladoke Akintola University of Technology, Ogbomoso (LAUTECH)',
-        fullName: 'Ladoke Akintola University of Technology, Ogbomoso',
-    },
-    {
-        value: 'mouau',
-        label: 'Michael Okpara University of Agriculture, Umudike (MOUAU)',
-        fullName: 'Michael Okpara University of Agriculture, Umudike',
-    },
-    { value: 'nasarawa', label: 'Nasarawa State University, Keffi', fullName: 'Nasarawa State University, Keffi' },
-    { value: 'noun', label: 'National Open University of Nigeria (NOUN)', fullName: 'National Open University of Nigeria' },
-    { value: 'oou', label: 'Olabisi Onabanjo University, Ago-Iwoye (OOU)', fullName: 'Olabisi Onabanjo University, Ago-Iwoye' },
-    { value: 'osun', label: 'Osun State University, Osogbo (UNIOSUN)', fullName: 'Osun State University, Osogbo' },
-    { value: 'plasu', label: 'Plateau State University, Bokkos', fullName: 'Plateau State University, Bokkos' },
-    {
-        value: 'rsust',
-        label: 'Rivers State University of Science and Technology (RSUST)',
-        fullName: 'Rivers State University of Science and Technology',
-    },
-    { value: 'sokoto', label: 'Sokoto State University', fullName: 'Sokoto State University' },
-    { value: 'tasued', label: 'Tai Solarin University of Education, Ijagun (TASUED)', fullName: 'Tai Solarin University of Education, Ijagun' },
-    { value: 'unizik', label: 'Nnamdi Azikiwe University, Awka (UNIZIK)', fullName: 'Nnamdi Azikiwe University, Awka' },
-    { value: 'ysu', label: 'Yobe State University, Damaturu', fullName: 'Yobe State University, Damaturu' },
-    { value: 'zamfara', label: 'Zamfara State University', fullName: 'Zamfara State University' },
-
-    // Private Universities
-    { value: 'cu', label: 'Covenant University, Ota', fullName: 'Covenant University, Ota' },
-    { value: 'babcock', label: 'Babcock University, Ilishan-Remo', fullName: 'Babcock University, Ilishan-Remo' },
-    { value: 'aun', label: 'American University of Nigeria, Yola (AUN)', fullName: 'American University of Nigeria, Yola' },
-    { value: 'adeleke', label: 'Adeleke University, Ede', fullName: 'Adeleke University, Ede' },
-    { value: 'afe_babalola', label: 'Afe Babalola University, Ado-Ekiti (ABUAD)', fullName: 'Afe Babalola University, Ado-Ekiti' },
-    { value: 'ajayi_crowther', label: 'Ajayi Crowther University, Oyo', fullName: 'Ajayi Crowther University, Oyo' },
-    { value: 'al_qalam', label: 'Al-Qalam University, Katsina', fullName: 'Al-Qalam University, Katsina' },
-    { value: 'al_hikmah', label: 'Al-Hikmah University, Ilorin', fullName: 'Al-Hikmah University, Ilorin' },
-    { value: 'baze', label: 'Baze University, Abuja', fullName: 'Baze University, Abuja' },
-    { value: 'bells', label: 'Bells University of Technology, Ota', fullName: 'Bells University of Technology, Ota' },
-    { value: 'bingham', label: 'Bingham University, Karu', fullName: 'Bingham University, Karu' },
-    { value: 'bowen', label: 'Bowen University, Iwo', fullName: 'Bowen University, Iwo' },
-    { value: 'caleb', label: 'Caleb University, Lagos', fullName: 'Caleb University, Lagos' },
-    { value: 'crawford', label: 'Crawford University, Igbesa', fullName: 'Crawford University, Igbesa' },
-    { value: 'crescent', label: 'Crescent University, Abeokuta', fullName: 'Crescent University, Abeokuta' },
-    { value: 'elizade', label: 'Elizade University, Ilara-Mokin', fullName: 'Elizade University, Ilara-Mokin' },
-    { value: 'fountain', label: 'Fountain University, Osogbo', fullName: 'Fountain University, Osogbo' },
-    { value: 'igbinedion', label: 'Igbinedion University, Okada', fullName: 'Igbinedion University, Okada' },
-    { value: 'landmark', label: 'Landmark University, Omu-Aran', fullName: 'Landmark University, Omu-Aran' },
-    { value: 'lead_city', label: 'Lead City University, Ibadan', fullName: 'Lead City University, Ibadan' },
-    { value: 'madonna', label: 'Madonna University, Okija', fullName: 'Madonna University, Okija' },
-    { value: 'mcpherson', label: 'McPherson University, Seriki-Sotayo', fullName: 'McPherson University, Seriki-Sotayo' },
-    { value: 'mountain_top', label: 'Mountain Top University, Ibafo', fullName: 'Mountain Top University, Ibafo' },
-    { value: 'nile', label: 'Nile University of Nigeria, Abuja', fullName: 'Nile University of Nigeria, Abuja' },
-    { value: 'oduduwa', label: 'Oduduwa University, Ipetumodu', fullName: 'Oduduwa University, Ipetumodu' },
-    { value: 'pan_atlantic', label: 'Pan-Atlantic University, Lagos', fullName: 'Pan-Atlantic University, Lagos' },
-    { value: 'paul', label: 'Paul University, Awka', fullName: 'Paul University, Awka' },
-    { value: 'redeemers', label: "Redeemer's University, Ede", fullName: "Redeemer's University, Ede" },
-    { value: 'rhema', label: 'Rhema University, Obeama-Asa', fullName: 'Rhema University, Obeama-Asa' },
-    { value: 'salem', label: 'Salem University, Lokoja', fullName: 'Salem University, Lokoja' },
-    { value: 'samuel_adegboyega', label: 'Samuel Adegboyega University, Ogwa', fullName: 'Samuel Adegboyega University, Ogwa' },
-    { value: 'southwestern', label: 'Southwestern University, Okun-Owa', fullName: 'Southwestern University, Okun-Owa' },
-    { value: 'summit', label: 'Summit University, Offa', fullName: 'Summit University, Offa' },
-    { value: 'veritas', label: 'Veritas University, Abuja', fullName: 'Veritas University, Abuja' },
-    { value: 'wellspring', label: 'Wellspring University, Evbuobanosa', fullName: 'Wellspring University, Evbuobanosa' },
-    { value: 'western_delta', label: 'Western Delta University, Oghara', fullName: 'Western Delta University, Oghara' },
-    { value: 'other', label: 'Other', fullName: 'Other' },
-] as const;
-
-// Nigerian University Faculties
-const faculties = [
-    { value: 'agriculture', label: 'Faculty of Agriculture' },
-    { value: 'arts', label: 'Faculty of Arts' },
-    { value: 'basic_medical_sciences', label: 'Faculty of Basic Medical Sciences' },
-    { value: 'clinical_sciences', label: 'Faculty of Clinical Sciences' },
-    { value: 'communication_and_media_studies', label: 'Faculty of Communication and Media Studies' },
-    { value: 'dentistry', label: 'Faculty of Dentistry' },
-    { value: 'earth_sciences', label: 'Faculty of Earth Sciences' },
-    { value: 'education', label: 'Faculty of Education' },
-    { value: 'engineering', label: 'Faculty of Engineering' },
-    { value: 'environmental_sciences', label: 'Faculty of Environmental Sciences' },
-    { value: 'law', label: 'Faculty of Law' },
-    { value: 'life_sciences', label: 'Faculty of Life Sciences' },
-    { value: 'management_sciences', label: 'Faculty of Management Sciences' },
-    { value: 'medicine', label: 'Faculty of Medicine' },
-    { value: 'nursing', label: 'Faculty of Nursing' },
-    { value: 'pharmacy', label: 'Faculty of Pharmacy' },
-    { value: 'physical_sciences', label: 'Faculty of Physical Sciences' },
-    { value: 'sciences', label: 'Faculty of Sciences' },
-    { value: 'social_sciences', label: 'Faculty of Social Sciences' },
-    { value: 'technology', label: 'Faculty of Technology' },
-    { value: 'veterinary_medicine', label: 'Faculty of Veterinary Medicine' },
-] as const;
-
-// Nigerian University Departments (organized by common faculty groupings)
-const departments = [
-    // Arts & Humanities
-    { value: 'english_literature', label: 'English and Literary Studies', faculty: 'arts' },
-    { value: 'history_strategic_studies', label: 'History and Strategic Studies', faculty: 'arts' },
-    { value: 'linguistics', label: 'Linguistics and Nigerian Languages', faculty: 'arts' },
-    { value: 'philosophy', label: 'Philosophy', faculty: 'arts' },
-    { value: 'religious_studies', label: 'Religious Studies', faculty: 'arts' },
-    { value: 'theatre_arts', label: 'Theatre Arts', faculty: 'arts' },
-    { value: 'music', label: 'Music', faculty: 'arts' },
-    { value: 'fine_arts', label: 'Fine and Applied Arts', faculty: 'arts' },
-
-    // Engineering
-    { value: 'civil_engineering', label: 'Civil Engineering', faculty: 'engineering' },
-    { value: 'mechanical_engineering', label: 'Mechanical Engineering', faculty: 'engineering' },
-    { value: 'electrical_engineering', label: 'Electrical/Electronic Engineering', faculty: 'engineering' },
-    { value: 'computer_engineering', label: 'Computer Engineering', faculty: 'engineering' },
-    { value: 'chemical_engineering', label: 'Chemical Engineering', faculty: 'engineering' },
-    { value: 'petroleum_engineering', label: 'Petroleum and Gas Engineering', faculty: 'engineering' },
-    { value: 'agricultural_engineering', label: 'Agricultural and Bioresources Engineering', faculty: 'engineering' },
-    { value: 'metallurgical_engineering', label: 'Metallurgical and Materials Engineering', faculty: 'engineering' },
-
-    // Sciences
-    { value: 'computer_science', label: 'Computer Science', faculty: 'physical_sciences' },
-    { value: 'mathematics', label: 'Mathematics', faculty: 'physical_sciences' },
-    { value: 'physics', label: 'Physics', faculty: 'physical_sciences' },
-    { value: 'chemistry', label: 'Chemistry', faculty: 'physical_sciences' },
-    { value: 'statistics', label: 'Statistics', faculty: 'physical_sciences' },
-    { value: 'geology', label: 'Geology', faculty: 'physical_sciences' },
-    { value: 'geography', label: 'Geography and Meteorology', faculty: 'physical_sciences' },
-
-    // Life Sciences
-    { value: 'biology', label: 'Biology', faculty: 'life_sciences' },
-    { value: 'biochemistry', label: 'Biochemistry', faculty: 'life_sciences' },
-    { value: 'microbiology', label: 'Microbiology', faculty: 'life_sciences' },
-    { value: 'botany', label: 'Plant Science and Biotechnology', faculty: 'life_sciences' },
-    { value: 'zoology', label: 'Zoology and Environmental Biology', faculty: 'life_sciences' },
-    { value: 'marine_biology', label: 'Marine Biology', faculty: 'life_sciences' },
-
-    // Social Sciences
-    { value: 'economics', label: 'Economics', faculty: 'social_sciences' },
-    { value: 'political_science', label: 'Political Science', faculty: 'social_sciences' },
-    { value: 'sociology', label: 'Sociology and Anthropology', faculty: 'social_sciences' },
-    { value: 'psychology', label: 'Psychology', faculty: 'social_sciences' },
-    { value: 'mass_communication', label: 'Mass Communication', faculty: 'social_sciences' },
-    { value: 'social_work', label: 'Social Work', faculty: 'social_sciences' },
-    { value: 'international_relations', label: 'International Studies and Diplomacy', faculty: 'social_sciences' },
-
-    // Management Sciences
-    { value: 'accounting', label: 'Accountancy', faculty: 'management_sciences' },
-    { value: 'business_administration', label: 'Business Administration', faculty: 'management_sciences' },
-    { value: 'banking_finance', label: 'Banking and Finance', faculty: 'management_sciences' },
-    { value: 'marketing', label: 'Marketing', faculty: 'management_sciences' },
-    { value: 'public_administration', label: 'Public Administration and Local Government', faculty: 'management_sciences' },
-    { value: 'insurance', label: 'Insurance', faculty: 'management_sciences' },
-
-    // Education
-    { value: 'educational_foundations', label: 'Educational Foundations', faculty: 'education' },
-    { value: 'curriculum_instruction', label: 'Curriculum Studies and Educational Technology', faculty: 'education' },
-    { value: 'educational_psychology', label: 'Educational Psychology', faculty: 'education' },
-    { value: 'adult_education', label: 'Adult Education and Extra-Mural Studies', faculty: 'education' },
-    { value: 'library_information_science', label: 'Library and Information Science', faculty: 'education' },
-
-    // Medicine & Health Sciences
-    { value: 'medicine_surgery', label: 'Medicine and Surgery', faculty: 'medicine' },
-    { value: 'anatomy', label: 'Anatomy', faculty: 'basic_medical_sciences' },
-    { value: 'physiology', label: 'Physiology', faculty: 'basic_medical_sciences' },
-    { value: 'pharmacology', label: 'Pharmacology and Toxicology', faculty: 'basic_medical_sciences' },
-    { value: 'pathology', label: 'Pathology', faculty: 'clinical_sciences' },
-    { value: 'surgery', label: 'Surgery', faculty: 'clinical_sciences' },
-    { value: 'internal_medicine', label: 'Internal Medicine', faculty: 'clinical_sciences' },
-    { value: 'nursing_science', label: 'Nursing Science', faculty: 'nursing' },
-
-    // Agriculture
-    { value: 'agronomy', label: 'Agronomy', faculty: 'agriculture' },
-    { value: 'animal_science', label: 'Animal Science and Range Management', faculty: 'agriculture' },
-    { value: 'soil_science', label: 'Soil Science and Land Resources Management', faculty: 'agriculture' },
-    { value: 'crop_science', label: 'Crop Science', faculty: 'agriculture' },
-    { value: 'agricultural_economics', label: 'Agricultural Economics', faculty: 'agriculture' },
-    { value: 'food_technology', label: 'Food Science and Technology', faculty: 'agriculture' },
-
-    // Environmental Sciences
-    { value: 'architecture', label: 'Architecture', faculty: 'environmental_sciences' },
-    { value: 'urban_planning', label: 'Urban and Regional Planning', faculty: 'environmental_sciences' },
-    { value: 'estate_management', label: 'Estate Management', faculty: 'environmental_sciences' },
-    { value: 'building_technology', label: 'Building', faculty: 'environmental_sciences' },
-    { value: 'quantity_surveying', label: 'Quantity Surveying', faculty: 'environmental_sciences' },
-
-    // Law
-    { value: 'private_law', label: 'Private and Property Law', faculty: 'law' },
-    { value: 'public_law', label: 'Public and International Law', faculty: 'law' },
-    { value: 'commercial_law', label: 'Commercial and Industrial Law', faculty: 'law' },
-] as const;
 
 // Watch for academic level selection to show relevant categories
 const getAvailableCategories = (academicLevel: string) => {
@@ -699,7 +523,7 @@ watch(
 const getCurrentStepFields = (values: Record<string, any>, step: number): Record<string, any> => {
     const stepFieldsMap = {
         1: ['projectType', 'projectCategoryId'], // Step 1: Academic Level & Project Type
-        2: ['university', 'otherUniversity', 'faculty', 'department', 'course'], // Step 2: University Details
+        2: ['universityId', 'facultyId', 'departmentId', 'course'], // Step 2: University Details
         3: ['fieldOfStudy', 'supervisorName', 'matricNumber', 'academicSession', 'workingMode', 'aiAssistanceLevel'], // Step 3: Research Details
     };
 
@@ -760,7 +584,7 @@ function onSubmit(values: any) {
     console.log('📋 All steps data for submission:', allStepsData);
 
     // Validate we have all required data
-    if (!allStepsData.projectType || !allStepsData.university) {
+    if (!allStepsData.projectType || !allStepsData.universityId || !allStepsData.facultyId || !allStepsData.departmentId) {
         toast('Incomplete Data', {
             description: 'Please complete all previous steps before submitting.',
         });
@@ -771,9 +595,9 @@ function onSubmit(values: any) {
     const projectData = {
         project_category_id: allStepsData.projectCategoryId,
         type: allStepsData.projectType,
-        university: allStepsData.university === 'other' ? allStepsData.otherUniversity : allStepsData.university,
-        faculty: allStepsData.faculty,
-        department: allStepsData.department,
+        university_id: allStepsData.universityId,
+        faculty_id: allStepsData.facultyId,
+        department_id: allStepsData.departmentId,
         course: allStepsData.course,
         field_of_study: allStepsData.fieldOfStudy,
         supervisor_name: allStepsData.supervisorName,
@@ -808,156 +632,137 @@ function onSubmit(values: any) {
             <div>
                 <h1 class="text-3xl font-bold">Create Your Project</h1>
                 <p class="text-muted-foreground">Set up your final year project in just a few steps</p>
-                <div v-if="currentStep > 1" class="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-600">
-                    💡 <strong>Tip:</strong> You can click on any previous step to go back and make changes. Your progress is automatically saved!
+                <div v-if="currentStep > 1"
+                    class="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-600">
+                    💡 <strong>Tip:</strong> You can click on any previous step to go back and make changes. Your
+                    progress is automatically saved!
                 </div>
             </div>
 
             <Card>
                 <CardContent class="pt-6">
-                    <Form
-                        :key="formKey"
-                        v-slot="{ meta, values, validate }"
-                        as=""
-                        keep-values
-                        :validation-schema="toTypedSchema(currentSchema)"
-                        :initial-values="initialFormValues"
-                    >
+                    <Form :key="formKey" v-slot="{ meta, values, validate }" as="" keep-values
+                        :validation-schema="toTypedSchema(currentSchema)" :initial-values="initialFormValues">
                         <!-- Auto-save values when they change -->
                         <template v-if="!isInitializing">{{ autoSaveFormValues(values) }}</template>
                         <Stepper v-model="currentStep" class="w-full">
-                            <form
-                                @submit="
-                                    (e) => {
-                                        e.preventDefault();
-                                        validate();
+                            <form @submit="
+                                (e) => {
+                                    e.preventDefault();
+                                    validate();
 
-                                        if (currentStep === steps.length && meta.valid) {
-                                            onSubmit(values);
-                                        }
+                                    if (currentStep === steps.length && meta.valid) {
+                                        onSubmit(values);
                                     }
-                                "
-                                class="w-full"
-                            >
+                                }
+                            " class="w-full">
                                 <!-- Stepper Header with Fixed Line Positioning -->
-                                <div class="flex w-full items-start justify-start">
+                                <div class="flex w-full flex-col items-start justify-start gap-4 md:flex-row md:gap-0">
                                     <!-- Stepper Items -->
                                     <template v-for="(step, index) in steps" :key="step.step">
-                                        <StepperItem v-slot="{ state }" class="relative flex flex-shrink-0 flex-col items-center" :step="step.step">
+                                        <StepperItem v-slot="{ state }"
+                                            class="relative flex flex-shrink-0 flex-row items-center gap-4 md:flex-col md:gap-0"
+                                            :step="step.step">
                                             <StepperTrigger as-child>
                                                 <Button
                                                     :variant="state === 'completed' || state === 'active' ? 'default' : 'outline'"
-                                                    size="icon"
-                                                    class="relative z-10 shrink-0 rounded-full"
-                                                    :class="[
+                                                    size="icon" class="relative z-10 shrink-0 rounded-full" :class="[
                                                         state === 'active' && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
                                                         !isStepAccessible(step.step, currentStep, meta.valid) && 'cursor-not-allowed opacity-50',
                                                     ]"
                                                     :disabled="!isStepAccessible(step.step, currentStep, meta.valid)"
-                                                    @click="goToStep(step.step, values)"
-                                                    type="button"
-                                                >
+                                                    @click="goToStep(step.step, values)" type="button">
                                                     <Check v-if="state === 'completed'" class="size-5" />
                                                     <component :is="step.icon" v-else class="size-5" />
                                                 </Button>
                                             </StepperTrigger>
 
-                                            <div class="mt-5 flex flex-col items-center text-center">
-                                                <StepperTitle
-                                                    :class="[
-                                                        state === 'active' && 'text-primary',
-                                                        isStepAccessible(step.step, currentStep, meta.valid) &&
-                                                            step.step !== currentStep &&
-                                                            'cursor-pointer text-blue-600 hover:text-blue-800',
-                                                    ]"
-                                                    class="text-sm font-semibold transition lg:text-base"
-                                                    @click="isStepAccessible(step.step, currentStep, meta.valid) ? goToStep(step.step, values) : null"
-                                                >
+                                            <div
+                                                class="flex flex-col items-start text-left md:mt-5 md:items-center md:text-center">
+                                                <StepperTitle :class="[
+                                                    state === 'active' && 'text-primary',
+                                                    isStepAccessible(step.step, currentStep, meta.valid) &&
+                                                    step.step !== currentStep &&
+                                                    'cursor-pointer text-blue-600 hover:text-blue-800',
+                                                ]" class="text-sm font-semibold transition lg:text-base"
+                                                    @click="isStepAccessible(step.step, currentStep, meta.valid) ? goToStep(step.step, values) : null">
                                                     {{ step.title }}
                                                 </StepperTitle>
-                                                <StepperDescription
-                                                    :class="[
-                                                        state === 'active' && 'text-primary',
-                                                        isStepAccessible(step.step, currentStep, meta.valid) &&
-                                                            step.step !== currentStep &&
-                                                            'text-blue-500',
-                                                    ]"
-                                                    class="text-xs text-muted-foreground transition md:text-sm"
-                                                >
+                                                <StepperDescription :class="[
+                                                    state === 'active' && 'text-primary',
+                                                    isStepAccessible(step.step, currentStep, meta.valid) &&
+                                                    step.step !== currentStep &&
+                                                    'text-blue-500',
+                                                ]" class="text-xs text-muted-foreground transition md:text-sm">
                                                     {{ step.description }}
                                                     <span
                                                         v-if="isStepAccessible(step.step, currentStep, meta.valid) && step.step < currentStep"
-                                                        class="mt-1 block text-xs text-blue-600"
-                                                    >
+                                                        class="mt-1 block text-xs text-blue-600">
                                                         (click to edit)
                                                     </span>
                                                 </StepperDescription>
                                             </div>
                                         </StepperItem>
 
-                                        <!-- Connector line between steps -->
-                                        <div
-                                            v-if="index < steps.length - 1"
-                                            :class="[
-                                                'mt-5 h-0.5 w-full max-w-[200px] transition-all duration-300',
-                                                currentStep > step.step ? 'bg-primary' : 'bg-muted',
-                                            ]"
-                                        />
+                                        <!-- Connector line between steps (Desktop only) -->
+                                        <div v-if="index < steps.length - 1" :class="[
+                                            'mt-5 hidden h-0.5 w-full max-w-[200px] transition-all duration-300 md:block',
+                                            currentStep > step.step ? 'bg-primary' : 'bg-muted',
+                                        ]" />
                                     </template>
                                 </div>
 
                                 <!-- Form Content -->
                                 <div class="mt-8 space-y-6">
                                     <!-- Step 1: Academic Level & Project Type -->
-                                    <div v-if="currentStep === 1" class="space-y-6">
+                                    <div v-if="currentStep === 1"
+                                        class="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                                         <FormField v-slot="{ componentField }" name="projectType">
                                             <FormItem>
                                                 <FormLabel>What is your academic level?</FormLabel>
                                                 <FormControl>
-                                                    <RadioGroup
-                                                        :model-value="componentField.modelValue"
+                                                    <RadioGroup :model-value="componentField.modelValue"
                                                         @update:model-value="
                                                             (value: string) => {
                                                                 componentField['onUpdate:modelValue']?.(value);
                                                                 selectedProjectType = value;
                                                             }
-                                                        "
-                                                    >
-                                                        <div class="grid grid-cols-2 gap-4">
+                                                        ">
+                                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                                             <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                            >
+                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
                                                                 <RadioGroupItem value="undergraduate" />
                                                                 <div class="space-y-1">
                                                                     <p class="text-sm font-medium">Undergraduate</p>
-                                                                    <p class="text-xs text-muted-foreground">BSc/BTech final year project</p>
+                                                                    <p class="text-xs text-muted-foreground">BSc/BTech
+                                                                        final year project</p>
                                                                 </div>
                                                             </label>
                                                             <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                            >
+                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
                                                                 <RadioGroupItem value="postgraduate" />
                                                                 <div class="space-y-1">
                                                                     <p class="text-sm font-medium">Postgraduate</p>
-                                                                    <p class="text-xs text-muted-foreground">MSc/PhD thesis</p>
+                                                                    <p class="text-xs text-muted-foreground">MSc/PhD
+                                                                        thesis</p>
                                                                 </div>
                                                             </label>
                                                             <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                            >
+                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
                                                                 <RadioGroupItem value="hnd" />
                                                                 <div class="space-y-1">
                                                                     <p class="text-sm font-medium">HND</p>
-                                                                    <p class="text-xs text-muted-foreground">Higher National Diploma</p>
+                                                                    <p class="text-xs text-muted-foreground">Higher
+                                                                        National Diploma</p>
                                                                 </div>
                                                             </label>
                                                             <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                            >
+                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
                                                                 <RadioGroupItem value="nd" />
                                                                 <div class="space-y-1">
                                                                     <p class="text-sm font-medium">ND</p>
-                                                                    <p class="text-xs text-muted-foreground">National Diploma</p>
+                                                                    <p class="text-xs text-muted-foreground">National
+                                                                        Diploma</p>
                                                                 </div>
                                                             </label>
                                                         </div>
@@ -972,27 +777,27 @@ function onSubmit(values: any) {
                                             <FormItem>
                                                 <FormLabel>What type of project are you creating?</FormLabel>
                                                 <FormControl>
-                                                    <RadioGroup
-                                                        :model-value="componentField.modelValue?.toString()"
+                                                    <RadioGroup :model-value="componentField.modelValue?.toString()"
                                                         @update:model-value="
                                                             (value: string) => componentField['onUpdate:modelValue']?.(parseInt(value))
-                                                        "
-                                                    >
+                                                        ">
                                                         <div class="space-y-3">
                                                             <template
                                                                 v-for="category in getAvailableCategories(selectedProjectType)"
-                                                                :key="category.id"
-                                                            >
+                                                                :key="category.id">
                                                                 <label
-                                                                    class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                                >
-                                                                    <RadioGroupItem :value="category.id.toString()" class="mt-1" />
+                                                                    class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 transition-all duration-200 hover:border-primary hover:bg-accent/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
+                                                                    <RadioGroupItem :value="category.id.toString()"
+                                                                        class="mt-1" />
                                                                     <div class="flex-1 space-y-2">
                                                                         <div>
-                                                                            <p class="font-medium">{{ category.name }}</p>
-                                                                            <p class="text-sm text-muted-foreground">{{ category.description }}</p>
+                                                                            <p class="font-medium">{{ category.name }}
+                                                                            </p>
+                                                                            <p class="text-sm text-muted-foreground">{{
+                                                                                category.description }}</p>
                                                                         </div>
-                                                                        <div class="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                                                                        <div
+                                                                            class="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                                                                             <div class="flex items-center gap-1">
                                                                                 <BookOpen class="h-3 w-3" />
                                                                                 {{ category.default_chapter_count }}
@@ -1000,7 +805,8 @@ function onSubmit(values: any) {
                                                                             </div>
                                                                             <div class="flex items-center gap-1">
                                                                                 <FileText class="h-3 w-3" />
-                                                                                ~{{ (category.target_word_count / 1000).toFixed(0) }}k words
+                                                                                ~{{ (category.target_word_count /
+                                                                                    1000).toFixed(0) }}k words
                                                                             </div>
                                                                             <div class="flex items-center gap-1">
                                                                                 <GraduationCap class="h-3 w-3" />
@@ -1010,13 +816,12 @@ function onSubmit(values: any) {
                                                                     </div>
                                                                 </label>
                                                             </template>
-                                                            <div v-if="!selectedProjectType" class="py-8 text-center text-muted-foreground">
+                                                            <div v-if="!selectedProjectType"
+                                                                class="py-8 text-center text-muted-foreground">
                                                                 Please select an academic level first
                                                             </div>
-                                                            <div
-                                                                v-else-if="getAvailableCategories(selectedProjectType).length === 0"
-                                                                class="py-8 text-center text-muted-foreground"
-                                                            >
+                                                            <div v-else-if="getAvailableCategories(selectedProjectType).length === 0"
+                                                                class="py-8 text-center text-muted-foreground">
                                                                 No project categories available for this academic level
                                                             </div>
                                                         </div>
@@ -1028,31 +833,29 @@ function onSubmit(values: any) {
                                     </div>
 
                                     <!-- Step 2: University Details -->
-                                    <div v-if="currentStep === 2" class="space-y-4">
-                                        <FormField v-slot="{ componentField }" name="university">
+                                    <div v-if="currentStep === 2"
+                                        class="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+                                        <FormField v-slot="{ componentField }" name="universityId">
                                             <FormItem class="flex flex-col">
                                                 <FormLabel>University</FormLabel>
-                                                <Popover>
+                                                <Popover v-model:open="universityPopoverOpen">
                                                     <PopoverTrigger as-child>
                                                         <FormControl>
-                                                            <Button
-                                                                variant="outline"
-                                                                role="combobox"
-                                                                :class="
-                                                                    cn(
-                                                                        'w-full justify-between',
-                                                                        !componentField.modelValue && 'text-muted-foreground',
-                                                                    )
-                                                                "
-                                                            >
+                                                            <Button variant="outline" role="combobox" :class="cn(
+                                                                'w-full justify-between',
+                                                                !componentField.modelValue && 'text-muted-foreground',
+                                                            )
+                                                                ">
                                                                 {{
                                                                     componentField.modelValue
                                                                         ? universities.find(
-                                                                              (university) => university.value === componentField.modelValue,
-                                                                          )?.label
+                                                                            (university) => university.id ===
+                                                                                componentField.modelValue,
+                                                                        )?.name
                                                                         : 'Select your university...'
                                                                 }}
-                                                                <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                <ChevronsUpDown
+                                                                    class="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                             </Button>
                                                         </FormControl>
                                                     </PopoverTrigger>
@@ -1062,27 +865,22 @@ function onSubmit(values: any) {
                                                             <CommandEmpty>No university found.</CommandEmpty>
                                                             <CommandList>
                                                                 <CommandGroup>
-                                                                    <CommandItem
-                                                                        v-for="university in universities"
-                                                                        :key="university.value"
-                                                                        :value="university.label"
-                                                                        @select="
+                                                                    <CommandItem v-for="university in universities"
+                                                                        :key="university.id"
+                                                                        :value="university.name" @select="
                                                                             () => {
-                                                                                componentField['onUpdate:modelValue']?.(university.value);
+                                                                                componentField['onUpdate:modelValue']?.(university.id);
+                                                                                universityPopoverOpen = false;
                                                                             }
-                                                                        "
-                                                                    >
-                                                                        {{ university.label }}
-                                                                        <Check
-                                                                            :class="
-                                                                                cn(
-                                                                                    'ml-auto h-4 w-4',
-                                                                                    university.value === componentField.modelValue
-                                                                                        ? 'opacity-100'
-                                                                                        : 'opacity-0',
-                                                                                )
-                                                                            "
-                                                                        />
+                                                                        ">
+                                                                        {{ university.name }}
+                                                                        <Check :class="cn(
+                                                                            'ml-auto h-4 w-4',
+                                                                            university.id === componentField.modelValue
+                                                                                ? 'opacity-100'
+                                                                                : 'opacity-0',
+                                                                        )
+                                                                            " />
                                                                     </CommandItem>
                                                                 </CommandGroup>
                                                             </CommandList>
@@ -1093,42 +891,27 @@ function onSubmit(values: any) {
                                             </FormItem>
                                         </FormField>
 
-                                        <!-- Other University Input -->
-                                        <FormField v-slot="{ componentField }" name="otherUniversity" v-if="values.university === 'other'">
-                                            <FormItem>
-                                                <FormLabel>University Name</FormLabel>
-                                                <FormControl>
-                                                    <Input type="text" placeholder="Enter your university name" v-bind="componentField" />
-                                                </FormControl>
-                                                <FormDescription> Please enter the full name of your university </FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
-
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <FormField v-slot="{ componentField }" name="faculty">
+                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <FormField v-slot="{ componentField }" name="facultyId">
                                                 <FormItem class="flex flex-col">
                                                     <FormLabel>Faculty</FormLabel>
-                                                    <Popover>
+                                                    <Popover v-model:open="facultyPopoverOpen">
                                                         <PopoverTrigger as-child>
                                                             <FormControl>
-                                                                <Button
-                                                                    variant="outline"
-                                                                    role="combobox"
-                                                                    :class="
-                                                                        cn(
-                                                                            'w-full justify-between',
-                                                                            !componentField.modelValue && 'text-muted-foreground',
-                                                                        )
-                                                                    "
-                                                                >
+                                                                <Button variant="outline" role="combobox" :class="cn(
+                                                                    'w-full justify-between',
+                                                                    !componentField.modelValue && 'text-muted-foreground',
+                                                                )
+                                                                    ">
                                                                     {{
                                                                         componentField.modelValue
-                                                                            ? faculties.find((faculty) => faculty.value === componentField.modelValue)
-                                                                                  ?.label
+                                                                            ? 'Faculty of ' + faculties.find((faculty) => faculty.id ===
+                                                                                componentField.modelValue)
+                                                                                ?.name
                                                                             : 'Select faculty...'
                                                                     }}
-                                                                    <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                    <ChevronsUpDown
+                                                                        class="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                                 </Button>
                                                             </FormControl>
                                                         </PopoverTrigger>
@@ -1138,27 +921,23 @@ function onSubmit(values: any) {
                                                                 <CommandEmpty>No faculty found.</CommandEmpty>
                                                                 <CommandList>
                                                                     <CommandGroup>
-                                                                        <CommandItem
-                                                                            v-for="faculty in faculties"
-                                                                            :key="faculty.value"
-                                                                            :value="faculty.value"
+                                                                        <CommandItem v-for="faculty in faculties"
+                                                                            :key="faculty.id" :value="faculty.id"
                                                                             @select="
                                                                                 () => {
-                                                                                    componentField['onUpdate:modelValue']?.(faculty.value);
+                                                                                    componentField['onUpdate:modelValue']?.(faculty.id);
+                                                                                    selectedFacultyId = faculty.id;
+                                                                                    facultyPopoverOpen = false;
                                                                                 }
-                                                                            "
-                                                                        >
-                                                                            <Check
-                                                                                :class="
-                                                                                    cn(
-                                                                                        'mr-2 h-4 w-4',
-                                                                                        componentField.modelValue === faculty.value
-                                                                                            ? 'opacity-100'
-                                                                                            : 'opacity-0',
-                                                                                    )
-                                                                                "
-                                                                            />
-                                                                            {{ faculty.label }}
+                                                                            ">
+                                                                            <Check :class="cn(
+                                                                                'mr-2 h-4 w-4',
+                                                                                componentField.modelValue === faculty.id
+                                                                                    ? 'opacity-100'
+                                                                                    : 'opacity-0',
+                                                                            )
+                                                                                " />
+                                                                            Faculty of {{ faculty.name }}
                                                                         </CommandItem>
                                                                     </CommandGroup>
                                                                 </CommandList>
@@ -1169,29 +948,26 @@ function onSubmit(values: any) {
                                                 </FormItem>
                                             </FormField>
 
-                                            <FormField v-slot="{ componentField }" name="department">
+                                            <FormField v-slot="{ componentField }" name="departmentId">
                                                 <FormItem class="flex flex-col">
                                                     <FormLabel>Department</FormLabel>
-                                                    <Popover>
+                                                    <Popover v-model:open="departmentPopoverOpen">
                                                         <PopoverTrigger as-child>
                                                             <FormControl>
-                                                                <Button
-                                                                    variant="outline"
-                                                                    role="combobox"
-                                                                    :class="
-                                                                        cn(
-                                                                            'w-full justify-between',
-                                                                            !componentField.modelValue && 'text-muted-foreground',
-                                                                        )
-                                                                    "
-                                                                >
+                                                                <Button variant="outline" role="combobox" :class="cn(
+                                                                    'w-full justify-between',
+                                                                    !componentField.modelValue && 'text-muted-foreground',
+                                                                )
+                                                                    ">
                                                                     {{
                                                                         componentField.modelValue
-                                                                            ? departments.find((dept) => dept.value === componentField.modelValue)
-                                                                                  ?.label
+                                                                            ? departments.find((dept) => dept.id ===
+                                                                                componentField.modelValue)
+                                                                                ?.name
                                                                             : 'Select department...'
                                                                     }}
-                                                                    <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                    <ChevronsUpDown
+                                                                        class="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                                 </Button>
                                                             </FormControl>
                                                         </PopoverTrigger>
@@ -1201,27 +977,22 @@ function onSubmit(values: any) {
                                                                 <CommandEmpty>No department found.</CommandEmpty>
                                                                 <CommandList>
                                                                     <CommandGroup>
-                                                                        <CommandItem
-                                                                            v-for="dept in departments"
-                                                                            :key="dept.value"
-                                                                            :value="dept.value"
+                                                                        <CommandItem v-for="dept in departments"
+                                                                            :key="dept.id" :value="dept.id"
                                                                             @select="
                                                                                 () => {
-                                                                                    componentField['onUpdate:modelValue']?.(dept.value);
+                                                                                    componentField['onUpdate:modelValue']?.(dept.id);
+                                                                                    departmentPopoverOpen = false;
                                                                                 }
-                                                                            "
-                                                                        >
-                                                                            <Check
-                                                                                :class="
-                                                                                    cn(
-                                                                                        'mr-2 h-4 w-4',
-                                                                                        componentField.modelValue === dept.value
-                                                                                            ? 'opacity-100'
-                                                                                            : 'opacity-0',
-                                                                                    )
-                                                                                "
-                                                                            />
-                                                                            {{ dept.label }}
+                                                                            ">
+                                                                            <Check :class="cn(
+                                                                                'mr-2 h-4 w-4',
+                                                                                componentField.modelValue === dept.id
+                                                                                    ? 'opacity-100'
+                                                                                    : 'opacity-0',
+                                                                            )
+                                                                                " />
+                                                                            {{ dept.name }}
                                                                         </CommandItem>
                                                                     </CommandGroup>
                                                                 </CommandList>
@@ -1237,7 +1008,8 @@ function onSubmit(values: any) {
                                             <FormItem>
                                                 <FormLabel>Course of Study</FormLabel>
                                                 <FormControl>
-                                                    <Input type="text" placeholder="e.g., Computer Science" v-bind="componentField" />
+                                                    <Input type="text" placeholder="e.g., Computer Science"
+                                                        v-bind="componentField" />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
@@ -1245,19 +1017,20 @@ function onSubmit(values: any) {
                                     </div>
 
                                     <!-- Step 3: Research & Working Details -->
-                                    <div v-if="currentStep === 3" class="space-y-6">
+                                    <div v-if="currentStep === 3"
+                                        class="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                                         <FormField v-slot="{ componentField }" name="fieldOfStudy">
                                             <FormItem>
                                                 <FormLabel>Field/Area of Research (Optional)</FormLabel>
                                                 <FormControl>
-                                                    <Input
-                                                        type="text"
+                                                    <Input type="text"
                                                         placeholder="e.g., Artificial Intelligence, Web Development (leave blank if unsure)"
-                                                        v-bind="componentField"
-                                                    />
+                                                        v-bind="componentField" />
                                                 </FormControl>
                                                 <FormDescription>
-                                                    Your specific area of focus for this project. Leave blank if you need AI guidance in choosing a
+                                                    Your specific area of focus for this project. Leave blank if you
+                                                    need AI guidance in
+                                                    choosing a
                                                     research area.
                                                 </FormDescription>
                                                 <FormMessage />
@@ -1268,18 +1041,20 @@ function onSubmit(values: any) {
                                             <FormItem>
                                                 <FormLabel>Supervisor Name (Optional)</FormLabel>
                                                 <FormControl>
-                                                    <Input type="text" placeholder="e.g., Dr. John Doe" v-bind="componentField" />
+                                                    <Input type="text" placeholder="e.g., Dr. John Doe"
+                                                        v-bind="componentField" />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         </FormField>
 
-                                        <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                             <FormField v-slot="{ componentField }" name="matricNumber">
                                                 <FormItem>
                                                     <FormLabel>Matric Number (Optional)</FormLabel>
                                                     <FormControl>
-                                                        <Input type="text" placeholder="e.g., 2019/1234" v-bind="componentField" />
+                                                        <Input type="text" placeholder="e.g., 2019/1234"
+                                                            v-bind="componentField" />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
@@ -1289,7 +1064,8 @@ function onSubmit(values: any) {
                                                 <FormItem>
                                                     <FormLabel>Academic Session</FormLabel>
                                                     <FormControl>
-                                                        <Input type="text" placeholder="e.g., 2024/2025" v-bind="componentField" />
+                                                        <Input type="text" placeholder="e.g., 2024/2025"
+                                                            v-bind="componentField" />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
@@ -1304,25 +1080,26 @@ function onSubmit(values: any) {
                                                     <RadioGroup v-bind="componentField">
                                                         <div class="space-y-3">
                                                             <label
-                                                                class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                            >
+                                                                class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
                                                                 <RadioGroupItem value="auto" class="mt-1" />
                                                                 <div class="space-y-1">
                                                                     <p class="font-medium">Auto Mode</p>
                                                                     <p class="text-sm text-muted-foreground">
-                                                                        AI generates complete chapters. You review and approve each section. Perfect
+                                                                        AI generates complete chapters. You review and
+                                                                        approve each section.
+                                                                        Perfect
                                                                         for quick completion.
                                                                     </p>
                                                                 </div>
                                                             </label>
                                                             <label
-                                                                class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent"
-                                                            >
+                                                                class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
                                                                 <RadioGroupItem value="manual" class="mt-1" />
                                                                 <div class="space-y-1">
                                                                     <p class="font-medium">Manual Mode</p>
                                                                     <p class="text-sm text-muted-foreground">
-                                                                        Co-write with AI assistance. Get suggestions as you type, maintain full
+                                                                        Co-write with AI assistance. Get suggestions as
+                                                                        you type, maintain full
                                                                         control.
                                                                     </p>
                                                                 </div>
@@ -1338,21 +1115,20 @@ function onSubmit(values: any) {
 
                                 <!-- Navigation Buttons -->
                                 <div class="mt-8 flex justify-between">
-                                    <Button :disabled="currentStep <= 1" variant="outline" @click="goToStep(currentStep - 1, values)" type="button">
+                                    <Button :disabled="currentStep <= 1" variant="outline"
+                                        @click="goToStep(currentStep - 1, values)" type="button">
                                         Back
                                     </Button>
 
                                     <div class="flex gap-3">
-                                        <Button
-                                            v-if="currentStep !== steps.length"
-                                            :disabled="!meta.valid"
-                                            @click="goToStep(currentStep + 1, values)"
-                                            type="button"
-                                        >
+                                        <Button v-if="currentStep !== steps.length" :disabled="!meta.valid"
+                                            @click="goToStep(currentStep + 1, values)" type="button">
                                             Next
                                         </Button>
 
-                                        <Button v-if="currentStep === steps.length" type="submit" :disabled="!meta.valid"> Complete Setup </Button>
+                                        <Button v-if="currentStep === steps.length" type="submit"
+                                            :disabled="!meta.valid"> Complete Setup
+                                        </Button>
                                     </div>
                                 </div>
                             </form>
@@ -1363,15 +1139,8 @@ function onSubmit(values: any) {
         </div>
 
         <!-- Debug Panel (Development Only) -->
-        <WizardDebugPanel
-            v-if="isDevelopment"
-            :current-step="currentStep"
-            :project-id="currentProjectId"
-            :form-values="currentFormValues"
-            :saved-values="lastSavedValues"
-            :is-initializing="isInitializing"
-            @force-save="() => saveProgress(currentStep, currentFormValues)"
-            @reset-form="() => {}"
-        />
+        <WizardDebugPanel v-if="isDevelopment" :current-step="currentStep" :project-id="currentProjectId"
+            :form-values="currentFormValues" :saved-values="lastSavedValues" :is-initializing="isInitializing"
+            @force-save="() => saveProgress(currentStep, currentFormValues)" @reset-form="() => { }" />
     </AppLayout>
 </template>

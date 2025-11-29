@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, Moon, PenTool, Save, Sun, Target, BookCheck } from 'lucide-vue-next';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, Moon, PenTool, Save, Sun, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -81,6 +81,23 @@ interface ProjectOutline {
     sections: ChapterSection[];
 }
 
+interface FacultyChapter {
+    number: number;
+    title: string;
+    word_count: number;
+    completion_threshold: number;
+    description: string;
+    is_required: boolean;
+    sections: Array<{
+        number: string;
+        title: string;
+        description: string;
+        word_count: number;
+        is_required: boolean;
+        tips?: string[];
+    }>;
+}
+
 interface Project {
     id: number;
     slug: string;
@@ -101,6 +118,7 @@ interface Props {
     project: Project;
     chapter: Chapter;
     allChapters: Chapter[];
+    facultyChapters?: FacultyChapter[];
     mode?: 'write' | 'edit';
 }
 
@@ -149,6 +167,10 @@ const saveChatModeToStorage = (isActive: boolean) => {
 const showLeftSidebar = ref(false);
 const showRightSidebar = ref(false);
 const isMobile = ref(false);
+
+// Sidebar collapse states (Desktop)
+const isLeftSidebarCollapsed = ref(false);
+const isRightSidebarCollapsed = ref(false);
 
 // Fullscreen sidebar states
 const showLeftSidebarInFullscreen = ref(true);
@@ -369,17 +391,22 @@ const goToChapter = (chapterNumber: number) => {
             save();
         }
     }
-    
+
     // Use smart routing: write for new chapters, edit for existing ones
     const chapter = props.allChapters.find(c => c.chapter_number === chapterNumber);
     const hasContent = chapter?.content && chapter.content.trim() !== '';
     const routeName = hasContent ? 'chapters.edit' : 'chapters.write';
-    
+
     router.visit(
         route(routeName, {
             project: props.project.slug,
             chapter: chapterNumber,
         }),
+        {
+            only: ['chapter', 'mode', 'allChapters'],
+            preserveState: true,
+            preserveScroll: false,
+        }
     );
 };
 
@@ -458,99 +485,99 @@ const startSectionGeneration = async (sectionType: string) => {
     generationPercentage.value = 5;
     generationPhase.value = 'Papers';
     generationProgress.value = 'Checking for verified sources...';
-    
+
     // Set estimated word count for section (typically 500-800 words per section)
     estimatedTotalWords.value = 600;
-    
+
     // Store original content for appending (crucial for section generation)
     originalContentForAppend.value = chapterContent.value || props.chapter.content || '';
-    
+
     // Enable presentation mode
     showPresentationMode.value = true;
-    
+
     try {
         // Stage 1: Skip paper collection for section generation (papers should already exist)
         // Section generation assumes papers are already collected from previous chapter work
         generationPercentage.value = 50;
         generationPhase.value = 'Papers';
         generationProgress.value = 'Using existing verified sources...';
-        
+
         // Small delay to show the papers stage briefly
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Stage 2: Start section generation (50-100%)
         generationPhase.value = 'Section';
         generationProgress.value = `Generating ${sectionType} section with verified sources...`;
         generationPercentage.value = 51;
-        
+
         // Use existing stream endpoint with section parameter
         const url = route('chapters.stream', {
             project: props.project.slug,
             chapter: props.chapter.chapter_number,
         });
-        
+
         eventSource.value = new EventSource(`${url}?generation_type=section&section_type=${sectionType}`);
-        
+
         eventSource.value.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
+
             switch (data.type) {
                 case 'start':
                     generationPhase.value = 'Generating Section';
                     generationPercentage.value = 52;
                     generationProgress.value = `Starting ${sectionType} section generation...`;
                     break;
-                    
+
                 case 'content':
                     streamBuffer.value += data.content;
                     streamWordCount.value = data.word_count || countWords(streamBuffer.value);
-                    
+
                     // Throttle UI updates to improve performance and visibility (same as chapter streaming)
                     const now = Date.now();
                     if (now - lastStreamUpdate.value > 150) { // Update UI every 150ms
                         // For section generation, always append to original content
                         // Use stored original content to ensure proper appending
                         const newSectionContent = streamBuffer.value;
-                        
+
                         // Append new section content with proper spacing
                         chapterContent.value = originalContentForAppend.value + "\n\n" + newSectionContent;
                         lastStreamUpdate.value = now;
-                        
+
                         // Progress from 52-95%
                         const progress = Math.min((streamWordCount.value / estimatedTotalWords.value) * 43, 43);
                         generationPercentage.value = Math.max(52, 52 + progress);
                         generationProgress.value = `Generating ${sectionType} section... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
-                        
+
                         calculateWritingStats();
                         scrollToBottom();
                     }
                     break;
-                    
+
                 case 'complete':
                     generationPercentage.value = 100;
                     generationPhase.value = 'Complete';
                     generationProgress.value = `✓ Generated ${sectionType} section (${streamWordCount.value} words)`;
-                    
+
                     // Ensure final content is updated for section generation
                     // Always append to original content for section generation
                     const newSectionContent = streamBuffer.value;
                     chapterContent.value = originalContentForAppend.value + "\n\n" + newSectionContent;
-                    
+
                     // Auto-save
                     save(true);
-                    
+
                     toast.success('✅ Section Generated Successfully', {
                         description: `Added ${sectionType} section with ${streamWordCount.value} words and verified citations.`,
                         duration: 5000,
                     });
-                    
+
                     isGenerating.value = false;
                     eventSource.value?.close();
                     break;
-                    
+
                 case 'error':
                     throw new Error(data.message || 'Section generation failed');
-                    
+
                 case 'heartbeat':
                     if (generationPercentage.value < 95) {
                         generationPercentage.value += 0.5;
@@ -558,7 +585,7 @@ const startSectionGeneration = async (sectionType: string) => {
                     break;
             }
         };
-        
+
         eventSource.value.onerror = () => {
             isGenerating.value = false;
             generationPhase.value = 'Error';
@@ -568,7 +595,7 @@ const startSectionGeneration = async (sectionType: string) => {
             });
             eventSource.value?.close();
         };
-        
+
     } catch (error) {
         console.error('Section generation failed:', error);
         isGenerating.value = false;
@@ -595,22 +622,22 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
     generationPercentage.value = 10;
     generationPhase.value = 'Rephrasing';
     generationProgress.value = 'Preparing to rephrase selected text...';
-    
+
     // Set estimated word count based on selected text length
     const selectedWordCount = selectedText.split(/\s+/).length;
     estimatedTotalWords.value = Math.max(selectedWordCount, 50);
-    
+
     // Get the active editor and store the current selection range
     const activeEditor = richTextEditorFullscreen.value || richTextEditor.value;
     const selectionRange = activeEditor?.getSelectionRange();
-    
+
     console.log('📍 ChapterEditor - Editor and selection info:', {
         hasActiveEditor: !!activeEditor,
         selectionRange,
         selectedWordCount,
         estimatedWords: estimatedTotalWords.value
     });
-    
+
     // Store rephrase context for precise replacement
     const rephraseContext = {
         originalText: selectedText,
@@ -619,41 +646,41 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
         style: style,
         startTime: Date.now()
     };
-    
+
     console.log('💾 ChapterEditor - Stored rephrase context:', rephraseContext);
-    
+
     // Enable presentation mode
     showPresentationMode.value = true;
-    
+
     try {
         generationPercentage.value = 20;
         generationProgress.value = `Rephrasing ${selectedWordCount} words in ${style} style...`;
-        
+
         const url = route('chapters.stream', {
             project: props.project.slug,
             chapter: props.chapter.chapter_number,
         });
-        
+
         // Use a rephrase endpoint with the selected text and style
         const rephraseUrl = `${url}?generation_type=rephrase&selected_text=${encodeURIComponent(selectedText)}&style=${encodeURIComponent(style)}`;
-        
+
         console.log('🌐 ChapterEditor - Creating EventSource:', {
             url: rephraseUrl,
             encodedTextLength: encodeURIComponent(selectedText).length
         });
-        
+
         eventSource.value = new EventSource(rephraseUrl);
-        
+
         eventSource.value.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
+
             console.log('📨 ChapterEditor - EventSource message received:', {
                 type: data.type,
                 hasContent: !!data.content,
                 contentLength: data.content?.length || 0,
                 wordCount: data.word_count
             });
-            
+
             switch (data.type) {
                 case 'start':
                     console.log('▶️ ChapterEditor - Rephrase generation started');
@@ -661,30 +688,30 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
                     generationPercentage.value = 30;
                     generationProgress.value = `Rephrasing text in ${style} style...`;
                     break;
-                    
+
                 case 'content':
                     // For rephrasing, we replace the selected text rather than append
                     streamBuffer.value += data.content;
                     streamWordCount.value = data.word_count || countWords(streamBuffer.value);
-                    
+
                     console.log('📝 ChapterEditor - Content chunk received:', {
                         chunkLength: data.content?.length || 0,
                         totalBufferLength: streamBuffer.value.length,
                         totalWords: streamWordCount.value
                     });
-                    
+
                     // Progress from 30-90%
                     const progress = Math.min((streamWordCount.value / estimatedTotalWords.value) * 60, 60);
                     generationPercentage.value = Math.max(30, 30 + progress);
                     generationProgress.value = `Rephrasing... (${streamWordCount.value} words)`;
                     break;
-                    
+
                 case 'complete':
                     console.log('🏁 ChapterEditor - Rephrase generation complete');
                     generationPercentage.value = 100;
                     generationPhase.value = 'Complete';
                     generationProgress.value = `✓ Text rephrased successfully (${streamWordCount.value} words)`;
-                    
+
                     console.log('🔄 ChapterEditor - Starting text replacement:', {
                         hasRange: !!rephraseContext.range,
                         hasContent: !!streamBuffer.value.trim(),
@@ -692,21 +719,21 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
                         newContentLength: streamBuffer.value.trim().length,
                         newContentPreview: streamBuffer.value.trim().substring(0, 100) + '...'
                     });
-                    
+
                     // Replace the selected text with the rephrased version using precise positioning
                     if (rephraseContext.range && streamBuffer.value.trim()) {
                         console.log('🎯 ChapterEditor - Attempting text replacement with activeEditor:', {
                             editorType: activeEditor === richTextEditorFullscreen.value ? 'fullscreen' : 'normal',
                             hasActiveEditor: !!activeEditor
                         });
-                        
+
                         const success = activeEditor?.replaceSelection(
-                            streamBuffer.value.trim(), 
+                            streamBuffer.value.trim(),
                             rephraseContext.range
                         );
-                        
+
                         console.log('📊 ChapterEditor - Text replacement result:', { success });
-                        
+
                         if (success) {
                             console.log('✅ ChapterEditor - Text replacement successful, updating chapter content');
                             // Update the chapter content to reflect the change
@@ -728,22 +755,22 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
                             missingContent: !streamBuffer.value.trim()
                         });
                     }
-                    
+
                     // Auto-save
                     save(true);
-                    
+
                     toast.success('✅ Text Rephrased Successfully', {
                         description: `Rephrased ${selectedWordCount} words in ${style} style.`,
                         duration: 5000,
                     });
-                    
+
                     isGenerating.value = false;
                     eventSource.value?.close();
                     break;
-                    
+
                 case 'error':
                     throw new Error(data.message || 'Text rephrasing failed');
-                    
+
                 case 'heartbeat':
                     if (generationPercentage.value < 95) {
                         generationPercentage.value += 0.5;
@@ -751,7 +778,7 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
                     break;
             }
         };
-        
+
         eventSource.value.onerror = () => {
             isGenerating.value = false;
             generationPhase.value = 'Error';
@@ -761,7 +788,7 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
             });
             eventSource.value?.close();
         };
-        
+
     } catch (error) {
         console.error('Text rephrasing failed:', error);
         isGenerating.value = false;
@@ -786,22 +813,22 @@ const startExpandGeneration = async (selectedText: string) => {
     generationPercentage.value = 10;
     generationPhase.value = 'Expanding';
     generationProgress.value = 'Preparing to expand selected text...';
-    
+
     // Set estimated word count based on selected text length (2x expansion)
     const selectedWordCount = selectedText.split(/\s+/).length;
     estimatedTotalWords.value = Math.max(selectedWordCount * 2, 100);
-    
+
     // Get the active editor and store the current selection range
     const activeEditor = richTextEditorFullscreen.value || richTextEditor.value;
     const selectionRange = activeEditor?.getSelectionRange();
-    
+
     console.log('📍 ChapterEditor - Editor and selection info for expand:', {
         hasActiveEditor: !!activeEditor,
         selectionRange,
         selectedWordCount,
         estimatedWords: estimatedTotalWords.value
     });
-    
+
     // Store expand context for precise replacement
     const expandContext = {
         originalText: selectedText,
@@ -809,35 +836,35 @@ const startExpandGeneration = async (selectedText: string) => {
         wordCount: selectedWordCount,
         startTime: Date.now()
     };
-    
+
     console.log('💾 ChapterEditor - Stored expand context:', expandContext);
-    
+
     try {
         const url = route('chapters.stream', {
             project: props.project.slug,
             chapter: props.chapter.chapter_number,
         });
-        
+
         // Use EventSource with expand parameters
         const expandUrl = `${url}?generation_type=expand&selected_text=${encodeURIComponent(selectedText)}`;
-        
+
         console.log('🌐 ChapterEditor - Creating EventSource for expand:', {
             url: expandUrl,
             encodedTextLength: encodeURIComponent(selectedText).length
         });
-        
+
         eventSource.value = new EventSource(expandUrl);
-        
+
         eventSource.value.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
+
             console.log('📨 ChapterEditor - EventSource message received:', {
                 type: data.type,
                 hasContent: !!data.content,
                 contentLength: data.content?.length || 0,
                 wordCount: data.word_count
             });
-            
+
             switch (data.type) {
                 case 'start':
                     console.log('▶️ ChapterEditor - Expand generation started');
@@ -845,42 +872,42 @@ const startExpandGeneration = async (selectedText: string) => {
                     generationPercentage.value = 20;
                     generationProgress.value = 'Starting text expansion...';
                     break;
-                    
+
                 case 'content':
                     // Append streamed content
                     streamBuffer.value += data.content;
                     streamWordCount.value = data.word_count || streamBuffer.value.split(/\s+/).filter(word => word.length > 0).length;
-                    
+
                     // Update progress based on estimated words
                     const progress = Math.min((streamWordCount.value / estimatedTotalWords.value) * 90, 90);
                     generationPercentage.value = Math.max(progress, 25);
                     generationProgress.value = `Expanding text... ${streamWordCount.value}/${estimatedTotalWords.value} words`;
-                    
+
                     console.log('📝 ChapterEditor - Expand content received:', {
                         chunkLength: data.content?.length || 0,
                         totalWords: streamWordCount.value,
                         progress: generationPercentage.value
                     });
                     break;
-                    
+
                 case 'complete':
                     console.log('✅ ChapterEditor - Expand generation complete');
-                    
+
                     generationPhase.value = 'Complete';
                     generationProgress.value = '✅ Text expansion completed';
                     generationPercentage.value = 100;
-                    
+
                     // Replace the selected text with the expanded version using precise positioning
                     if (expandContext.range && streamBuffer.value.trim()) {
                         console.log('🎯 ChapterEditor - Attempting text replacement for expand');
-                        
+
                         const success = activeEditor?.replaceSelection(
-                            streamBuffer.value.trim(), 
+                            streamBuffer.value.trim(),
                             expandContext.range
                         );
-                        
+
                         console.log('📊 ChapterEditor - Expand text replacement result:', { success });
-                        
+
                         if (success) {
                             console.log('✅ ChapterEditor - Expand text replacement successful');
                             // Update the chapter content to reflect the change
@@ -901,18 +928,18 @@ const startExpandGeneration = async (selectedText: string) => {
                             missingContent: !streamBuffer.value.trim()
                         });
                     }
-                    
+
                     // Auto-save
                     save(true);
-                    
+
                     toast.success('✅ Text Expanded Successfully', {
                         description: `Expanded ${expandContext.wordCount} words into ${streamWordCount.value} words`,
                     });
-                    
+
                     isGenerating.value = false;
                     eventSource.value?.close();
                     break;
-                    
+
                 case 'error':
                     console.error('❌ ChapterEditor - Expand generation error:', data.message);
                     isGenerating.value = false;
@@ -936,7 +963,7 @@ const startExpandGeneration = async (selectedText: string) => {
             });
             eventSource.value?.close();
         };
-        
+
     } catch (error) {
         console.error('Text expansion failed:', error);
         isGenerating.value = false;
@@ -1286,7 +1313,7 @@ const insertCitation = (citation: string) => {
     try {
         // Get the active editor (check both regular and fullscreen)
         const activeEditor = richTextEditorFullscreen.value?.editor || richTextEditor.value?.editor;
-        
+
         if (!activeEditor) {
             toast.error('Editor not found');
             return;
@@ -1591,7 +1618,7 @@ const checkForAutoGeneration = () => {
             } else if (generationType === 'single') {
                 // Handle single generation type if needed
                 startStreamingGeneration('progressive');
-                
+
                 // Clean URL parameters after starting generation
                 const url = new URL(window.location.href);
                 url.searchParams.delete('ai_generate');
@@ -1758,7 +1785,7 @@ const handleDefensePanelToggle = async (isOpen: boolean) => {
 const shouldLoadDefenseQuestions = () => {
     if (!defenseQuestions.value.length) return true;
     if (!lastDefenseQuestionsLoad.value) return true;
-    
+
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
     return lastDefenseQuestionsLoad.value < sixHoursAgo;
 };
@@ -1766,7 +1793,7 @@ const shouldLoadDefenseQuestions = () => {
 // Load defense questions - use project.id not project.slug
 const loadDefenseQuestions = async (forceRefresh = false) => {
     if (isLoadingDefenseQuestions.value) return;
-    
+
     isLoadingDefenseQuestions.value = true;
     try {
         // Log the request details for debugging
@@ -1776,7 +1803,7 @@ const loadDefenseQuestions = async (forceRefresh = false) => {
             limit: 5,
             force_refresh: forceRefresh
         });
-        
+
         const response = await axios.get(`/api/projects/${props.project.id}/defense/questions`, {
             params: {
                 chapter_number: currentChapter.value?.chapter_number || null,
@@ -1788,14 +1815,14 @@ const loadDefenseQuestions = async (forceRefresh = false) => {
                 'X-Requested-With': 'XMLHttpRequest'
             }
         });
-        
+
         console.log('Defense questions loaded:', response.data);
         console.log('Questions array:', response.data.questions);
         console.log('Questions count:', response.data.questions ? response.data.questions.length : 0);
-        
+
         defenseQuestions.value = response.data.questions || [];
         lastDefenseQuestionsLoad.value = new Date();
-        
+
         // Store in localStorage for persistence (chapter-specific)
         if (response.data.questions && response.data.questions.length > 0) {
             const chapterCacheKey = `defense_questions_${props.project.id}_chapter_${currentChapter.value?.chapter_number}`;
@@ -1808,29 +1835,23 @@ const loadDefenseQuestions = async (forceRefresh = false) => {
                 })
             );
         } else if (!forceRefresh) {
-            // Auto-generate questions if none exist for this chapter AND content meets threshold
-            console.log('No existing questions found...');
-
-            // Check if we have sufficient content for defense questions
-            if (meetsDefenseThreshold.value && !hasTriggeredGeneration.value) {
-                console.log('Content meets threshold, auto-generating questions...');
-                await generateNewDefenseQuestions();
-            } else {
-                console.log(`Cannot auto-generate: Word count ${currentWordCount.value}/${DEFENSE_THRESHOLD}`);
-            }
+            // NO AUTOMATIC GENERATION - Users must click the "Generate Questions" button manually
+            console.log('No existing questions found for this chapter');
+            console.log(`Current word count: ${currentWordCount.value}/${DEFENSE_THRESHOLD}`);
+            console.log('User must click "Generate Questions" button to create defense questions');
         }
     } catch (error: any) {
         console.error('Failed to load defense questions:', error);
-        
+
         // Detailed error logging
         if (error.response) {
             console.error('Response status:', error.response.status);
             console.error('Response data:', error.response.data);
-            
+
             // Handle specific error codes
             if (error.response.status === 422) {
                 console.error('Validation errors:', error.response.data.errors);
-                
+
                 // Show specific validation error if available
                 const firstError = Object.values(error.response.data.errors || {})[0];
                 if (firstError && Array.isArray(firstError)) {
@@ -1850,7 +1871,7 @@ const loadDefenseQuestions = async (forceRefresh = false) => {
             console.error('Error setting up request:', error.message);
             toast.error('An unexpected error occurred');
         }
-        
+
         // Set empty array to prevent UI errors
         defenseQuestions.value = [];
     } finally {
@@ -1861,9 +1882,9 @@ const loadDefenseQuestions = async (forceRefresh = false) => {
 // Stream generate new questions
 const generateNewDefenseQuestions = async () => {
     if (isGeneratingDefenseQuestions.value) return;
-    
+
     isGeneratingDefenseQuestions.value = true;
-    
+
     try {
         // First try direct API call for better reliability
         const response = await axios.post(`/api/projects/${props.project.id}/defense/questions/generate`, {
@@ -1875,12 +1896,12 @@ const generateNewDefenseQuestions = async () => {
                 'Content-Type': 'application/json'
             }
         });
-        
+
         if (response.data && response.data.questions) {
             // Replace questions instead of appending for cleaner UI
             defenseQuestions.value = response.data.questions;
             lastDefenseQuestionsLoad.value = new Date();
-            
+
             // Cache the questions (chapter-specific)
             const chapterCacheKey = `defense_questions_${props.project.id}_chapter_${currentChapter.value?.chapter_number}`;
             localStorage.setItem(chapterCacheKey, JSON.stringify({
@@ -1888,7 +1909,7 @@ const generateNewDefenseQuestions = async () => {
                 chapter_number: currentChapter.value?.chapter_number,
                 loaded_at: new Date().toISOString()
             }));
-            
+
             toast.success(`Generated ${response.data.questions.length} new questions`);
         }
     } catch (error) {
@@ -1936,13 +1957,13 @@ const markQuestionHelpful = async (questionId: number, helpful: boolean) => {
                 'Content-Type': 'application/json'
             }
         });
-        
+
         // Update local state
         const question = defenseQuestions.value.find(q => q.id === questionId);
         if (question) {
             question.user_marked_helpful = helpful;
         }
-        
+
         toast.success(helpful ? 'Question marked as helpful' : 'Removed helpful mark');
     } catch (error) {
         console.error('Failed to mark question:', error);
@@ -1959,16 +1980,16 @@ const hideQuestion = async (questionId: number) => {
                 'Accept': 'application/json'
             }
         });
-        
+
         // Remove from local state
         defenseQuestions.value = defenseQuestions.value.filter(q => q.id !== questionId);
-        
+
         // Update localStorage
         localStorage.setItem(`defense_questions_${props.project.id}`, JSON.stringify({
             questions: defenseQuestions.value,
             loaded_at: new Date().toISOString()
         }));
-        
+
         toast.success('Question hidden');
     } catch (error) {
         console.error('Failed to hide question:', error);
@@ -1981,19 +2002,19 @@ onMounted(async () => {
     const chapterCacheKey = `defense_questions_${props.project.id}_chapter_${currentChapter.value?.chapter_number}`;
     const cached = localStorage.getItem(chapterCacheKey);
     let shouldLoadFresh = true;
-    
+
     if (cached) {
         const parsed = JSON.parse(cached);
         const loadedAt = new Date(parsed.loaded_at);
         const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-        
+
         if (loadedAt > sixHoursAgo && parsed.chapter_number === currentChapter.value?.chapter_number) {
             defenseQuestions.value = parsed.questions;
             lastDefenseQuestionsLoad.value = loadedAt;
             shouldLoadFresh = false;
         }
     }
-    
+
     // Load defense questions for current chapter if no valid cache exists
     if (shouldLoadFresh) {
         await loadDefenseQuestions();
@@ -2063,16 +2084,28 @@ watch(currentWordCount, (newCount, oldCount) => {
             @exit-citation-mode="exitCitationMode" />
 
         <!-- Fullscreen Layout with Sidebars -->
-        <div v-else-if="isNativeFullscreen" class="flex h-screen flex-col overflow-hidden bg-background">
+        <!-- Fullscreen Layout with Sidebars -->
+        <div v-else-if="isNativeFullscreen"
+            class="flex h-screen flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-primary/20">
+            <!-- Ambient Background Effects -->
+            <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                <div class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-500/5 blur-[120px]">
+                </div>
+                <div
+                    class="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-purple-500/5 blur-[120px]">
+                </div>
+            </div>
+
             <!-- Header -->
             <div
-                class="flex flex-shrink-0 items-center justify-between border-b bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div class="flex items-center gap-4">
+                class="relative z-20 flex flex-shrink-0 items-center justify-between border-b border-border/40 bg-background/60 p-4 backdrop-blur-xl supports-[backdrop-filter]:bg-background/40 transition-all duration-300">
+                <div class="flex items-center gap-5">
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button @click="router.visit(route('projects.show', props.project.slug))" variant="ghost"
-                                size="icon">
-                                <ArrowLeft class="h-4 w-4" />
+                                size="icon"
+                                class="h-10 w-10 rounded-full hover:bg-primary/10 hover:text-primary transition-all duration-300">
+                                <ArrowLeft class="h-5 w-5" />
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -2080,70 +2113,85 @@ watch(currentWordCount, (newCount, oldCount) => {
                         </TooltipContent>
                     </Tooltip>
 
-                    <div>
-                        <h1 class="text-xl font-bold">{{ props.project.title }}</h1>
-                        <p class="text-sm text-muted-foreground">
-                            Chapter {{ props.chapter.chapter_number }} • {{ currentWordCount }} / {{ targetWordCount }}
-                            words
-                        </p>
+                    <div class="flex flex-col">
+                        <h1 class="text-lg font-bold tracking-tight text-foreground/90 font-display">{{
+                            props.project.title }}</h1>
+                        <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                            <Badge variant="outline"
+                                class="h-5 px-2 rounded-full border-primary/20 bg-primary/5 text-primary font-medium">
+                                Chapter {{ props.chapter.chapter_number }}
+                            </Badge>
+                            <span class="flex items-center gap-1.5">
+                                <span class="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                {{ currentWordCount }} words
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <!-- Sidebar Toggle Buttons -->
-                    <Button @click="showLeftSidebarInFullscreen = !showLeftSidebarInFullscreen"
-                        :variant="showLeftSidebarInFullscreen ? 'default' : 'outline'" size="sm">
-                        <Menu class="mr-2 h-4 w-4" />
-                        Chapters
-                    </Button>
+                <div class="flex items-center gap-4">
+                    <!-- Center Control Group -->
+                    <div
+                        class="flex items-center p-1 rounded-full border border-border/40 bg-background/50 backdrop-blur-sm shadow-sm">
+                        <Button @click="showLeftSidebarInFullscreen = !showLeftSidebarInFullscreen"
+                            :variant="showLeftSidebarInFullscreen ? 'secondary' : 'ghost'" size="sm"
+                            class="h-8 px-4 rounded-full text-xs font-medium transition-all duration-300"
+                            :class="showLeftSidebarInFullscreen ? 'bg-primary/10 text-primary hover:bg-primary/15' : 'hover:bg-muted'">
+                            <Menu class="mr-2 h-3.5 w-3.5" />
+                            Outline
+                        </Button>
 
-                    <Button @click="showRightSidebarInFullscreen = !showRightSidebarInFullscreen"
-                        :variant="showRightSidebarInFullscreen ? 'default' : 'outline'" size="sm">
-                        <Brain class="mr-2 h-4 w-4" />
-                        AI Tools
-                    </Button>
+                        <div class="w-px h-4 bg-border/50 mx-1"></div>
 
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button @click="showStatistics = !showStatistics"
-                                :variant="showStatistics ? 'default' : 'outline'" size="sm">
-                                <Target class="h-4 w-4" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>{{ showStatistics ? 'Hide' : 'Show' }} Writing Statistics</p>
-                        </TooltipContent>
-                    </Tooltip>
+                        <Button @click="showRightSidebarInFullscreen = !showRightSidebarInFullscreen"
+                            :variant="showRightSidebarInFullscreen ? 'secondary' : 'ghost'" size="sm"
+                            class="h-8 px-4 rounded-full text-xs font-medium transition-all duration-300"
+                            :class="showRightSidebarInFullscreen ? 'bg-primary/10 text-primary hover:bg-primary/15' : 'hover:bg-muted'">
+                            <Brain class="mr-2 h-3.5 w-3.5" />
+                            Assistant
+                        </Button>
+                    </div>
 
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button @click="toggleDarkMode" variant="outline" size="sm">
-                                <Moon v-if="!isDarkMode" class="h-4 w-4" />
-                                <Sun v-else class="h-4 w-4" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>Toggle {{ isDarkMode ? 'Light' : 'Dark' }} Mode</p>
-                        </TooltipContent>
-                    </Tooltip>
+                    <!-- Right Actions -->
+                    <div class="flex items-center gap-2">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button @click="showStatistics = !showStatistics"
+                                    :variant="showStatistics ? 'secondary' : 'ghost'" size="icon"
+                                    class="h-9 w-9 rounded-full transition-all hover:bg-muted">
+                                    <Target class="h-4.5 w-4.5 text-muted-foreground" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{{ showStatistics ? 'Hide' : 'Show' }} Statistics</p>
+                            </TooltipContent>
+                        </Tooltip>
 
-                    <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
-                        :all-chapters="memoizedAllChapters" size="sm" />
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button @click="toggleDarkMode" variant="ghost" size="icon"
+                                    class="h-9 w-9 rounded-full transition-all hover:bg-muted">
+                                    <Moon v-if="!isDarkMode" class="h-4.5 w-4.5 text-muted-foreground" />
+                                    <Sun v-else class="h-4.5 w-4.5 text-muted-foreground" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Toggle Theme</p>
+                            </TooltipContent>
+                        </Tooltip>
 
-                    <Separator orientation="vertical" class="h-6" />
-
-                    <span class="text-sm text-muted-foreground">Press F11 or ESC to exit</span>
+                        <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
+                            :all-chapters="memoizedAllChapters" size="icon" variant="ghost"
+                            class="h-9 w-9 rounded-full hover:bg-muted" />
+                    </div>
                 </div>
             </div>
 
-            <!-- Progress bar -->
-            <div class="flex-shrink-0 bg-muted/30 px-3 py-2">
-                <div class="mb-2 flex items-center justify-between">
-                    <span class="text-sm font-medium">Writing Progress</span>
-                    <span class="text-sm text-muted-foreground">{{ currentWordCount }} / {{ targetWordCount }} words ({{
-                        Math.round(progressPercentage) }}%)</span>
+            <!-- Progress Line -->
+            <div class="relative z-20 h-[2px] w-full bg-border/20">
+                <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-all duration-700 ease-out shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                    :style="{ width: `${Math.min(progressPercentage, 100)}%` }">
                 </div>
-                <Progress :model-value="Number(progressPercentage)" class="h-1.5" />
             </div>
 
             <!-- AI Generation Progress Card -->
@@ -2228,230 +2276,235 @@ watch(currentWordCount, (newCount, oldCount) => {
 
             <!-- Writing Statistics -->
             <WritingStatistics v-if="showStatistics" :show-statistics="showStatistics"
-                :current-word-count="currentWordCount" :writing-stats="writingStats"
-                :quality-analysis="latestAnalysis" :is-analyzing="isAnalyzing" />
+                :current-word-count="currentWordCount" :writing-stats="writingStats" :quality-analysis="latestAnalysis"
+                :is-analyzing="isAnalyzing"
+                class="relative z-20 mx-4 mt-2 rounded-lg border border-border/40 bg-background/60 backdrop-blur-md" />
 
             <!-- Main Content with Sidebars -->
-            <div class="flex flex-1 overflow-hidden">
+            <div class="relative z-10 flex flex-1 overflow-hidden">
                 <!-- Left Sidebar -->
-                <div v-if="showLeftSidebarInFullscreen"
-                    class="w-80 flex-shrink-0 border-r bg-background/50 backdrop-blur">
-                    <div class="h-[calc(100vh-380px)] overflow-y-auto">
-                    <div class="p-4">
-                        <Suspense>
-                            <ChapterNavigation :all-chapters="memoizedAllChapters" :current-chapter="memoizedChapter"
-                                :project="memoizedProject" :current-word-count="currentWordCount"
-                                :target-word-count="targetWordCount" :writing-quality-score="writingQualityScore"
-                                :chapter-content-length="chapterContent.length" @go-to-chapter="goToChapter"
-                                @generate-next-chapter="generateNextChapter" />
-                            <template #fallback>
-                                <div class="flex items-center justify-center p-4">
+                <Transition enter-active-class="transition-all duration-300 ease-in-out"
+                    enter-from-class="-ml-72 opacity-0" enter-to-class="ml-0 opacity-100"
+                    leave-active-class="transition-all duration-300 ease-in-out" leave-from-class="ml-0 opacity-100"
+                    leave-to-class="-ml-72 opacity-0">
+                    <div v-if="showLeftSidebarInFullscreen"
+                        class="w-[320px] flex-shrink-0 border-r border-border/50 bg-background/80 backdrop-blur-xl shadow-xl z-20">
+                        <div class="h-full overflow-y-auto custom-scrollbar">
+                            <div class="p-4">
+                                <div class="mb-3">
+                                    <h2 class="text-sm font-semibold text-foreground mb-1">Table of Contents</h2>
+                                    <p class="text-xs text-muted-foreground">{{ memoizedAllChapters.length }} Chapters
+                                    </p>
+                                </div>
+                                <Suspense>
+                                    <ChapterNavigation :all-chapters="memoizedAllChapters"
+                                        :current-chapter="memoizedChapter" :project="memoizedProject"
+                                        :outlines="project.outlines || []" :faculty-chapters="facultyChapters || []"
+                                        :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+                                        :writing-quality-score="writingQualityScore"
+                                        :chapter-content-length="chapterContent.length" @go-to-chapter="goToChapter"
+                                        @generate-next-chapter="generateNextChapter" />
+                                    <template #fallback>
+                                        <div class="flex items-center justify-center p-8">
+                                            <div
+                                                class="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent">
+                                            </div>
+                                        </div>
+                                    </template>
+                                </Suspense>
+                            </div>
+                        </div>
+                    </div>
+                </Transition>
+
+                <!-- Main Editor Area -->
+                <div class="flex min-h-0 flex-1 flex-col bg-transparent relative">
+                    <!-- Editor Container - Floating Paper Style -->
+                    <div class="flex-1 overflow-hidden relative">
+                        <div
+                            class="absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col items-center py-8 px-4 sm:px-8">
+
+                            <!-- The "Paper" -->
+                            <Card
+                                class="w-full max-w-[850px] min-h-[calc(100vh-180px)] flex flex-col bg-background shadow-xl shadow-black/5 ring-1 ring-black/5 dark:ring-white/10 rounded-xl overflow-hidden transition-all duration-300">
+                                <CardHeader
+                                    class="flex-shrink-0 border-b border-border/30 px-8 py-6 bg-background/50 backdrop-blur-sm sticky top-0 z-10">
+                                    <div class="flex items-center justify-between">
+                                        <div class="space-y-1">
+                                            <Label for="chapter-title-fs"
+                                                class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chapter
+                                                Title</Label>
+                                            <Input id="chapter-title-fs" v-model="chapterTitle"
+                                                placeholder="Enter chapter title..."
+                                                class="h-auto p-0 border-0 bg-transparent text-2xl font-bold placeholder:text-muted-foreground/40 focus-visible:ring-0 px-0" />
+                                        </div>
+
+                                        <div class="flex items-center gap-2">
+                                            <Badge :variant="chapter.status === 'approved' ? 'default' : 'secondary'"
+                                                class="rounded-full px-3">
+                                                {{ chapter.status.replace('_', ' ') }}
+                                            </Badge>
+                                            <Badge variant="outline" class="rounded-full px-3 transition-colors" :class="{
+                                                'text-green-600 border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800': (latestAnalysis?.total_score || 0) >= 80,
+                                                'text-yellow-600 border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800': (latestAnalysis?.total_score || 0) >= 70 && (latestAnalysis?.total_score || 0) < 80,
+                                                'text-orange-600 border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800': (latestAnalysis?.total_score || 0) >= 60 && (latestAnalysis?.total_score || 0) < 70,
+                                                'text-red-600 border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800': (latestAnalysis?.total_score || 0) < 60
+                                            }">
+                                                {{ latestAnalysis?.total_score ? Math.round(latestAnalysis.total_score)
+                                                    :
+                                                    writingQualityScore }}% Quality
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+
+                                <CardContent class="flex min-h-0 flex-1 flex-col p-0">
+                                    <!-- Toolbar Area (Will be enhanced in next step) -->
                                     <div
-                                        class="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent">
+                                        class="flex items-center justify-between px-6 py-2 border-b border-border/30 bg-muted/5">
+                                        <div class="flex items-center gap-2">
+                                            <Button @click="togglePresentationMode"
+                                                :variant="showPresentationMode ? 'default' : 'ghost'" size="sm"
+                                                class="h-7 text-xs rounded-full">
+                                                <Eye class="mr-1.5 h-3.5 w-3.5" />
+                                                {{ showPresentationMode ? 'Edit' : 'Preview' }}
+                                            </Button>
+                                        </div>
+                                        <div class="space-y-1 relative z-10">
+                                            <div class="text-sm font-medium text-foreground">
+                                                {{ aiChapterAnalysis?.section.name || getSectionInfo(nextSection).name
+                                                }}
+                                            </div>
+                                            <div class="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+                                                {{ aiChapterAnalysis?.section.description ||
+                                                    getSectionInfo(nextSection).description }}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </template>
-                        </Suspense>
-                    </div>
-                    </div>
-                </div>
 
-                <!-- Main Editor -->
-                <div class="flex min-h-0 flex-1 flex-col">
-                    <Card class="flex min-h-0 flex-1 flex-col rounded-none border-0 bg-transparent shadow-none">
-                        <CardHeader class="flex-shrink-0 border-b px-4 py-3">
-                            <div class="flex items-center justify-between">
-                                <CardTitle class="text-lg">Chapter {{ chapter.chapter_number }}</CardTitle>
-                                <div class="flex items-center gap-2">
-                                    <Badge :variant="chapter.status === 'approved' ? 'default' : 'secondary'">
-                                        {{ chapter.status.replace('_', ' ') }}
-                                    </Badge>
-                                    <Badge variant="outline" class="text-xs"
-                                        :class="{
-                                            'text-green-600 border-green-200 bg-green-50': (latestAnalysis?.total_score || 0) >= 80,
-                                            'text-yellow-600 border-yellow-200 bg-yellow-50': (latestAnalysis?.total_score || 0) >= 70 && (latestAnalysis?.total_score || 0) < 80,
-                                            'text-orange-600 border-orange-200 bg-orange-50': (latestAnalysis?.total_score || 0) >= 60 && (latestAnalysis?.total_score || 0) < 70,
-                                            'text-red-600 border-red-200 bg-red-50': (latestAnalysis?.total_score || 0) < 60
-                                        }">
-                                        {{ latestAnalysis?.total_score ? Math.round(latestAnalysis.total_score) : writingQualityScore }}% Quality
-                                    </Badge>
-                                </div>
-                            </div>
-                        </CardHeader>
+                                    <!-- Editor Content -->
+                                    <div class="flex-1 relative bg-background">
+                                        <RichTextEditor v-show="!showPresentationMode" v-model="chapterContent"
+                                            placeholder="Start writing your chapter..." min-height="500px"
+                                            class="min-h-[500px] px-8 py-6" ref="richTextEditor" :show-toolbar="true"
+                                            @update:selected-text="(text) => { selectedText = text; }" />
 
-                        <CardContent class="flex min-h-0 flex-1 flex-col space-y-3 p-4">
-                            <!-- Chapter Title Input -->
-                            <div class="flex-shrink-0 space-y-2">
-                                <Label for="chapter-title-fs" class="text-sm font-medium">Chapter Title</Label>
-                                <Input id="chapter-title-fs" v-model="chapterTitle" placeholder="Enter chapter title..."
-                                    class="h-10 text-lg font-medium" />
-                            </div>
+                                        <div v-show="showPresentationMode" class="px-12 py-10 min-h-[500px]">
+                                            <RichTextViewer :content="chapterContent" :show-font-controls="false"
+                                                class="prose-lg mx-auto"
+                                                style="font-family: 'Times New Roman', serif; line-height: 1.8" />
+                                        </div>
+                                    </div>
+                                </CardContent>
 
-                            <!-- Content Editor -->
-                            <div class="flex min-h-0 flex-1 flex-col space-y-2">
-                                <div class="flex items-center justify-between">
-                                    <Label for="chapter-content-fs" class="text-sm font-medium">Content</Label>
+                                <!-- Floating Action Bar -->
+                                <div
+                                    class="sticky bottom-0 z-10 border-t border-border/30 bg-background/80 backdrop-blur-md p-4 flex items-center justify-between">
+                                    <div class="text-xs text-muted-foreground">
+                                        {{ isSaving ? 'Saving...' : 'All changes saved' }}
+                                    </div>
                                     <div class="flex items-center gap-2">
-                                        <Button @click="togglePresentationMode"
-                                            :variant="showPresentationMode ? 'default' : 'outline'" size="sm">
-                                            <Eye class="mr-1 h-4 w-4" />
-                                            {{ showPresentationMode ? 'Edit Mode' : 'Preview Mode' }}
+                                        <Button @click="save(false)" :disabled="!isValid || isSaving" size="sm"
+                                            variant="ghost" class="h-8 rounded-full">
+                                            <Save class="mr-2 h-3.5 w-3.5" />
+                                            Save Draft
+                                        </Button>
+
+                                        <Button @click="analyzeChapter"
+                                            :disabled="isAnalyzing || currentWordCount < 100" variant="outline"
+                                            size="sm" class="h-8 rounded-full">
+                                            <BookCheck
+                                                :class="['mr-2 h-3.5 w-3.5', { 'animate-pulse': isAnalyzing }]" />
+                                            Analyze
+                                        </Button>
+
+                                        <Button @click="save(false)"
+                                            :disabled="!isValid || currentWordCount < targetWordCount * 0.8" size="sm"
+                                            class="h-8 rounded-full bg-gradient-to-r from-primary to-primary/90 shadow-sm hover:shadow-md transition-all">
+                                            <CheckCircle class="mr-2 h-3.5 w-3.5" />
+                                            Complete
                                         </Button>
                                     </div>
                                 </div>
+                            </Card>
 
-                                <!-- Rich Text Editor -->
-                                <ScrollArea ref="editorScrollRef" class="h-[calc(100vh-380px)] w-full"
-                                    v-show="!showPresentationMode">
-                                    <RichTextEditor v-model="chapterContent" placeholder="Start writing your chapter..."
-                                        min-height="100%" class="text-base leading-relaxed" ref="richTextEditor"
-                                        @update:selected-text="(text) => { selectedText = text; console.log('📋 ChapterEditor - Selected text updated:', { length: text.length, preview: text.substring(0, 50) + (text.length > 50 ? '...' : '') }); }" />
-                                </ScrollArea>
-
-
-                                <!-- Presentation View -->
-                                <ScrollArea ref="previewScrollRef" class="h-[calc(100vh-380px)] w-full"
-                                    v-show="showPresentationMode">
-                                    <RichTextViewer :content="chapterContent" :show-font-controls="false"
-                                        class="rounded-md border border-border/50 bg-background p-6"
-                                        style="font-family: 'Times New Roman', serif; line-height: 1.8" />
-                                </ScrollArea>
-                            </div>
-
-                            <!-- Action Buttons -->
-                            <div class="flex flex-shrink-0 flex-row gap-2 pt-2">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="save(false)" :disabled="!isValid || isSaving" size="sm">
-                                            <Save class="mr-2 h-4 w-4" />
-                                            {{ isSaving ? 'Saving...' : 'Save Draft' }}
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Save chapter as draft (Ctrl+S)</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="analyzeChapter" :disabled="isAnalyzing || currentWordCount < 100"
-                                                variant="outline" size="sm">
-                                            <BookCheck :class="['mr-2 h-4 w-4', { 'animate-pulse': isAnalyzing }]" />
-                                            {{ isAnalyzing ? 'Analyzing...' : 'Analyze Quality' }}
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Run academic quality analysis ({{ currentWordCount }}/100 words min)</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="showPreview = !showPreview" variant="outline" size="sm">
-                                            <Eye v-if="!showPreview" class="mr-2 h-4 w-4" />
-                                            <PenTool v-else class="mr-2 h-4 w-4" />
-                                            {{ showPreview ? 'Edit' : 'Preview' }}
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{{ showPreview ? 'Switch to edit mode' : 'Switch to preview mode' }}</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="save(false)"
-                                            :disabled="!isValid || currentWordCount < targetWordCount * 0.8" size="sm">
-                                            <CheckCircle class="mr-2 h-4 w-4" />
-                                            Save & Mark Complete
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Mark chapter as complete (requires 80% of target word count)</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
-                                    :all-chapters="memoizedAllChapters" size="sm" variant="outline" />
-                            </div>
-                        </CardContent>
-                    </Card>
+                            <!-- Bottom Spacer -->
+                            <div class="h-12"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Right Sidebar -->
-                <div v-if="showRightSidebarInFullscreen"
-                    class="w-80 flex-shrink-0 border-l bg-background/50 backdrop-blur">
-                    <div class="h-[calc(100vh-400px)] overflow-y-auto">
-                    <div class="space-y-6 p-4">
-                        <Suspense>
-                            <AISidebar :project="memoizedProject" :chapter="memoizedChapter" :is-generating="isGenerating"
-                                :selected-text="selectedText" :is-loading-suggestions="isLoadingSuggestions"
-                                :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
-                                :current-word-count="currentWordCount" :target-word-count="targetWordCount"
-                                @start-streaming-generation="handleAIGeneration"
-                                @get-ai-suggestions="getAISuggestions"
-                                @update:show-citation-helper="showCitationHelper = $event"
-                                @insert-citation="insertCitation"
-                                @check-citations="checkCitations" />
-                            <template #fallback>
-                                <div class="flex items-center justify-center p-4">
-                                    <div
-                                        class="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent">
-                                    </div>
-                                </div>
-                            </template>
+                <Transition enter-active-class="transition-all duration-300 ease-in-out"
+                    enter-from-class="-mr-72 opacity-0" enter-to-class="mr-0 opacity-100"
+                    leave-active-class="transition-all duration-300 ease-in-out" leave-from-class="mr-0 opacity-100"
+                    leave-to-class="-mr-72 opacity-0">
+                    <div v-if="showRightSidebarInFullscreen"
+                        class="w-72 flex-shrink-0 border-l border-border/40 bg-background/40 backdrop-blur-md">
+                        <div class="h-full overflow-y-auto custom-scrollbar">
+                            <div class="space-y-6 p-4">
+                                <Suspense>
+                                    <AISidebar :project="memoizedProject" :chapter="memoizedChapter"
+                                        :is-generating="isGenerating" :selected-text="selectedText"
+                                        :is-loading-suggestions="isLoadingSuggestions"
+                                        :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+                                        :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+                                        @start-streaming-generation="handleAIGeneration"
+                                        @get-ai-suggestions="getAISuggestions"
+                                        @update:show-citation-helper="showCitationHelper = $event"
+                                        @insert-citation="insertCitation" @check-citations="checkCitations" />
+                                    <template #fallback>
+                                        <div class="flex items-center justify-center p-8">
+                                            <div
+                                                class="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent">
+                                            </div>
+                                        </div>
+                                    </template>
+                                </Suspense>
 
-                        </Suspense>
-                        
-                        <Suspense>
-                            <DefensePreparationPanel
-                                :show-defense-prep="showDefensePrep"
-                                :questions="defenseQuestions"
-                                :is-loading="isLoadingDefenseQuestions"
-                                :is-generating="isGeneratingDefenseQuestions"
-                                :chapter-context="{
-                                    chapter_number: currentChapter.chapter_number,
-                                    chapter_title: currentChapter.title,
-                                    word_count: currentWordCount
-                                }"
-                                :defense-watcher="{
-                                    meetsThreshold: meetsDefenseThreshold,
-                                    shouldShowProgress: shouldShowDefenseProgress,
-                                    progressPercentage: defenseProgressPercentage,
-                                    wordsRemaining: defenseWordsRemaining,
-                                    hasTriggeredGeneration,
-                                    threshold: DEFENSE_THRESHOLD,
-                                    statusMessage: getDefenseStatusMessage()
-                                }"
-                                @update:show-defense-prep="handleDefensePanelToggle"
-                                @generate-more="generateNewDefenseQuestions"
-                                @refresh="() => loadDefenseQuestions(true)"
-                                @mark-helpful="markQuestionHelpful"
-                                @hide-question="hideQuestion"
-                            />
-                            <template #fallback>
-                                <div class="flex items-center justify-center p-4">
-                                    <div class="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-transparent"></div>
-                                </div>
-                            </template>
-                        </Suspense>
+                                <Suspense>
+                                    <DefensePreparationPanel :show-defense-prep="showDefensePrep"
+                                        :questions="defenseQuestions" :is-loading="isLoadingDefenseQuestions"
+                                        :is-generating="isGeneratingDefenseQuestions" :chapter-context="{
+                                            chapter_number: currentChapter.chapter_number,
+                                            chapter_title: currentChapter.title,
+                                            word_count: currentWordCount
+                                        }" :defense-watcher="{
+                                            meetsThreshold: meetsDefenseThreshold,
+                                            shouldShowProgress: shouldShowDefenseProgress,
+                                            progressPercentage: defenseProgressPercentage,
+                                            wordsRemaining: defenseWordsRemaining,
+                                            hasTriggeredGeneration,
+                                            threshold: DEFENSE_THRESHOLD,
+                                            statusMessage: getDefenseStatusMessage()
+                                        }" @update:show-defense-prep="handleDefensePanelToggle"
+                                        @generate-more="generateNewDefenseQuestions"
+                                        @refresh="() => loadDefenseQuestions(true)" @mark-helpful="markQuestionHelpful"
+                                        @hide-question="hideQuestion" />
+                                    <template #fallback>
+                                        <div class="flex items-center justify-center p-4">
+                                            <div
+                                                class="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-transparent">
+                                            </div>
+                                        </div>
+                                    </template>
+                                </Suspense>
 
-                        <!-- Data Collection Panel -->
-                        <Suspense>
-                            <DataCollectionPanel
-                                :chapter-id="currentChapter.id"
-                                :content="editorContent"
-                            />
-                            <template #fallback>
-                                <div class="flex items-center justify-center p-4">
-                                    <div class="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-transparent"></div>
-                                </div>
-                            </template>
-                        </Suspense>
-
+                                <!-- Data Collection Panel -->
+                                <Suspense>
+                                    <DataCollectionPanel :chapter-id="currentChapter.id" :content="chapterContent" />
+                                    <template #fallback>
+                                        <div class="flex items-center justify-center p-4">
+                                            <div
+                                                class="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-transparent">
+                                            </div>
+                                        </div>
+                                    </template>
+                                </Suspense>
+                            </div>
+                        </div>
                     </div>
-                    </div>
-                </div>
+                </Transition>
             </div>
         </div>
 
@@ -2508,6 +2561,8 @@ watch(currentWordCount, (newCount, oldCount) => {
                                     <p>AI Tools & Defense Prep</p>
                                 </TooltipContent>
                             </Tooltip>
+
+
 
                             <!-- Desktop controls -->
                             <div class="hidden items-center gap-2 lg:flex">
@@ -2690,37 +2745,64 @@ watch(currentWordCount, (newCount, oldCount) => {
                         :writing-stats="writingStats" :quality-analysis="latestAnalysis" :is-analyzing="isAnalyzing" />
 
                     <!-- Main Content Grid -->
-                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-12">
+                    <!-- Main Content Grid -->
+                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 transition-all duration-300">
                         <!-- Left Sidebar (Desktop) -->
-                        <div class="hidden lg:col-span-2 lg:block">
-                            <div class="h-[calc(100vh-320px)] overflow-y-auto space-y-6">
-                            <ChapterNavigation :all-chapters="memoizedAllChapters" :current-chapter="memoizedChapter"
-                                :project="memoizedProject" :current-word-count="currentWordCount"
-                                :target-word-count="targetWordCount" :writing-quality-score="writingQualityScore"
-                                :chapter-content-length="chapterContent.length" @go-to-chapter="goToChapter"
-                                @generate-next-chapter="generateNextChapter" />
+                        <div v-show="!isLeftSidebarCollapsed"
+                            class="hidden lg:block lg:col-span-2 transition-all duration-300">
+                            <div class="h-[calc(100vh-320px)] overflow-y-auto space-y-6 custom-scrollbar pr-1">
+                                <ChapterNavigation :all-chapters="memoizedAllChapters"
+                                    :current-chapter="memoizedChapter" :project="memoizedProject"
+                                    :outlines="project.outlines || []" :faculty-chapters="facultyChapters || []"
+                                    :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+                                    :writing-quality-score="writingQualityScore"
+                                    :chapter-content-length="chapterContent.length" @go-to-chapter="goToChapter"
+                                    @generate-next-chapter="generateNextChapter" />
                             </div>
                         </div>
 
                         <!-- Main Editor -->
-                        <div class="lg:col-span-7">
-                            <Card class="border-[0.5px] border-border/50">
+                        <div :class="[
+                            'transition-all duration-300',
+                            isLeftSidebarCollapsed && isRightSidebarCollapsed ? 'lg:col-span-12' :
+                                isLeftSidebarCollapsed ? 'lg:col-span-9' :
+                                    isRightSidebarCollapsed ? 'lg:col-span-10' :
+                                        'lg:col-span-7'
+                        ]">
+                            <Card class="border-[0.5px] border-border/50 transition-all duration-300">
                                 <CardHeader class="pb-4">
                                     <div class="flex items-center justify-between">
-                                        <CardTitle class="text-lg">Chapter {{ chapter.chapter_number }}</CardTitle>
+                                        <div class="flex items-center gap-2">
+                                            <Button variant="ghost" size="icon"
+                                                class="h-6 w-6 hidden lg:flex mr-1 text-muted-foreground hover:text-foreground"
+                                                @click="isLeftSidebarCollapsed = !isLeftSidebarCollapsed"
+                                                :title="isLeftSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'">
+                                                <PanelLeftClose v-if="!isLeftSidebarCollapsed" class="h-4 w-4" />
+                                                <PanelLeftOpen v-else class="h-4 w-4" />
+                                            </Button>
+                                            <CardTitle class="text-lg">Chapter {{ chapter.chapter_number }}</CardTitle>
+                                        </div>
                                         <div class="flex items-center gap-2">
                                             <Badge :variant="chapter.status === 'approved' ? 'default' : 'secondary'">
                                                 {{ chapter.status.replace('_', ' ') }}
                                             </Badge>
-                                            <Badge variant="outline" class="text-xs"
-                                                :class="{
-                                                    'text-green-600 border-green-200 bg-green-50': (latestAnalysis?.total_score || 0) >= 80,
-                                                    'text-yellow-600 border-yellow-200 bg-yellow-50': (latestAnalysis?.total_score || 0) >= 70 && (latestAnalysis?.total_score || 0) < 80,
-                                                    'text-orange-600 border-orange-200 bg-orange-50': (latestAnalysis?.total_score || 0) >= 60 && (latestAnalysis?.total_score || 0) < 70,
-                                                    'text-red-600 border-red-200 bg-red-50': (latestAnalysis?.total_score || 0) < 60
-                                                }">
-                                                {{ latestAnalysis?.total_score ? Math.round(latestAnalysis.total_score) : writingQualityScore }}% Quality
+                                            <Badge variant="outline" class="text-xs" :class="{
+                                                'text-green-600 border-green-200 bg-green-50': (latestAnalysis?.total_score || 0) >= 80,
+                                                'text-yellow-600 border-yellow-200 bg-yellow-50': (latestAnalysis?.total_score || 0) >= 70 && (latestAnalysis?.total_score || 0) < 80,
+                                                'text-orange-600 border-orange-200 bg-orange-50': (latestAnalysis?.total_score || 0) >= 60 && (latestAnalysis?.total_score || 0) < 70,
+                                                'text-red-600 border-red-200 bg-red-50': (latestAnalysis?.total_score || 0) < 60
+                                            }">
+                                                {{ latestAnalysis?.total_score ? Math.round(latestAnalysis.total_score)
+                                                    :
+                                                    writingQualityScore }}% Quality
                                             </Badge>
+                                            <Button variant="ghost" size="icon"
+                                                class="h-6 w-6 hidden lg:flex ml-1 text-muted-foreground hover:text-foreground"
+                                                @click="isRightSidebarCollapsed = !isRightSidebarCollapsed"
+                                                :title="isRightSidebarCollapsed ? 'Expand Tools' : 'Collapse Tools'">
+                                                <PanelRightClose v-if="!isRightSidebarCollapsed" class="h-4 w-4" />
+                                                <PanelRightOpen v-else class="h-4 w-4" />
+                                            </Button>
                                         </div>
                                     </div>
                                 </CardHeader>
@@ -2783,15 +2865,19 @@ watch(currentWordCount, (newCount, oldCount) => {
 
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button @click="analyzeChapter" :disabled="isAnalyzing || currentWordCount < 100"
-                                                        variant="outline" size="sm" class="flex-1 sm:flex-none">
-                                                    <BookCheck :class="['mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4', { 'animate-pulse': isAnalyzing }]" />
+                                                <Button @click="analyzeChapter"
+                                                    :disabled="isAnalyzing || currentWordCount < 100" variant="outline"
+                                                    size="sm" class="flex-1 sm:flex-none">
+                                                    <BookCheck
+                                                        :class="['mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4', { 'animate-pulse': isAnalyzing }]" />
                                                     <span class="hidden sm:inline">{{ isAnalyzing ? 'Analyzing...' : 'Analyze Quality' }}</span>
-                                                    <span class="sm:hidden">{{ isAnalyzing ? 'Analyzing...' : 'Analyze' }}</span>
+                                                    <span class="sm:hidden">{{ isAnalyzing ? 'Analyzing...' : 'Analyze'
+                                                        }}</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>
-                                                <p>Run academic quality analysis ({{ currentWordCount }}/100 words min)</p>
+                                                <p>Run academic quality analysis ({{ currentWordCount }}/100 words min)
+                                                </p>
                                             </TooltipContent>
                                         </Tooltip>
 
@@ -2803,9 +2889,9 @@ watch(currentWordCount, (newCount, oldCount) => {
                                                         class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <PenTool v-else class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <span class="hidden sm:inline">{{ showPreview ? 'Edit' : 'Preview'
-                                                    }}</span>
+                                                        }}</span>
                                                     <span class="sm:hidden">{{ showPreview ? 'Edit' : 'Preview'
-                                                    }}</span>
+                                                        }}</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>
@@ -2838,43 +2924,37 @@ watch(currentWordCount, (newCount, oldCount) => {
                         </div>
 
                         <!-- Right Sidebar (Desktop) -->
-                        <div class="hidden lg:col-span-3 lg:block">
-                            <div class="h-[calc(100vh-40px)] overflow-y-auto space-y-4 sm:space-y-6">
-                            <AISidebar :project="memoizedProject" :chapter="memoizedChapter" :is-generating="isGenerating"
-                                :selected-text="selectedText" :is-loading-suggestions="isLoadingSuggestions"
-                                :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
-                                :current-word-count="currentWordCount" :target-word-count="targetWordCount"
-                                @start-streaming-generation="handleAIGeneration"
-                                @get-ai-suggestions="getAISuggestions"
-                                @update:show-citation-helper="showCitationHelper = $event"
-                                @insert-citation="insertCitation"
-                                @check-citations="checkCitations" />
-                                
-                            <DefensePreparationPanel
-                                :show-defense-prep="showDefensePrep"
-                                :questions="defenseQuestions"
-                                :is-loading="isLoadingDefenseQuestions"
-                                :is-generating="isGeneratingDefenseQuestions"
-                                :chapter-context="{
-                                    chapter_number: currentChapter.chapter_number,
-                                    chapter_title: currentChapter.title,
-                                    word_count: currentWordCount
-                                }"
-                                :defense-watcher="{
-                                    meetsThreshold: meetsDefenseThreshold,
-                                    shouldShowProgress: shouldShowDefenseProgress,
-                                    progressPercentage: defenseProgressPercentage,
-                                    wordsRemaining: defenseWordsRemaining,
-                                    hasTriggeredGeneration,
-                                    threshold: DEFENSE_THRESHOLD,
-                                    statusMessage: getDefenseStatusMessage()
-                                }"
-                                @update:show-defense-prep="handleDefensePanelToggle"
-                                @generate-more="generateNewDefenseQuestions"
-                                @refresh="() => loadDefenseQuestions(true)"
-                                @mark-helpful="markQuestionHelpful"
-                                @hide-question="hideQuestion"
-                            />
+                        <div v-show="!isRightSidebarCollapsed"
+                            class="hidden lg:block lg:col-span-3 transition-all duration-300">
+                            <div class="h-[calc(100vh-40px)] overflow-y-auto space-y-4 custom-scrollbar px-1">
+                                <AISidebar :project="memoizedProject" :chapter="memoizedChapter"
+                                    :is-generating="isGenerating" :selected-text="selectedText"
+                                    :is-loading-suggestions="isLoadingSuggestions"
+                                    :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+                                    :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+                                    @start-streaming-generation="handleAIGeneration"
+                                    @get-ai-suggestions="getAISuggestions"
+                                    @update:show-citation-helper="showCitationHelper = $event"
+                                    @insert-citation="insertCitation" @check-citations="checkCitations" />
+
+                                <DefensePreparationPanel :show-defense-prep="showDefensePrep"
+                                    :questions="defenseQuestions" :is-loading="isLoadingDefenseQuestions"
+                                    :is-generating="isGeneratingDefenseQuestions" :chapter-context="{
+                                        chapter_number: currentChapter.chapter_number,
+                                        chapter_title: currentChapter.title,
+                                        word_count: currentWordCount
+                                    }" :defense-watcher="{
+                                        meetsThreshold: meetsDefenseThreshold,
+                                        shouldShowProgress: shouldShowDefenseProgress,
+                                        progressPercentage: defenseProgressPercentage,
+                                        wordsRemaining: defenseWordsRemaining,
+                                        hasTriggeredGeneration,
+                                        threshold: DEFENSE_THRESHOLD,
+                                        statusMessage: getDefenseStatusMessage()
+                                    }" @update:show-defense-prep="handleDefensePanelToggle"
+                                    @generate-more="generateNewDefenseQuestions"
+                                    @refresh="() => loadDefenseQuestions(true)" @mark-helpful="markQuestionHelpful"
+                                    @hide-question="hideQuestion" />
 
                             </div>
                         </div>
@@ -2890,8 +2970,8 @@ watch(currentWordCount, (newCount, oldCount) => {
                         :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
                         @update:show-left-sidebar="showLeftSidebar = $event"
                         @update:show-right-sidebar="showRightSidebar = $event" @go-to-chapter="goToChapter"
-                        @generate-next-chapter="generateNextChapter"
-                        @start-streaming-generation="handleAIGeneration" @get-ai-suggestions="getAISuggestions"
+                        @generate-next-chapter="generateNextChapter" @start-streaming-generation="handleAIGeneration"
+                        @get-ai-suggestions="getAISuggestions"
                         @update:show-citation-helper="showCitationHelper = $event" @check-citations="checkCitations" />
                 </div>
             </div>

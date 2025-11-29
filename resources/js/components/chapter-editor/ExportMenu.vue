@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { ChevronDown, Download, FileDown, FileText } from 'lucide-vue-next';
@@ -139,11 +139,11 @@ const exportCurrentChapter = async () => {
 
 const exportFullProject = async () => {
     toast.loading('Exporting full project...', { id: 'export-project' });
-    
+
     const exportUrl = route('export.project.word', {
         project: props.project.slug,
     });
-    
+
     try {
         const response = await fetch(exportUrl, {
             method: 'GET',
@@ -157,7 +157,7 @@ const exportFullProject = async () => {
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
                 const errorData = await response.json();
-                toast.error('Export Failed', { 
+                toast.error('Export Failed', {
                     id: 'export-project',
                     description: errorData.message || 'An error occurred during export.'
                 });
@@ -175,27 +175,92 @@ const exportFullProject = async () => {
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
 
-            toast.success('Project exported successfully!', { 
+            toast.success('Project exported successfully!', {
                 id: 'export-project',
                 description: `${props.project.title} has been downloaded.`
             });
         } else {
             try {
                 const errorData = await response.json();
-                toast.error('Export Failed', { 
+                toast.error('Export Failed', {
                     id: 'export-project',
                     description: errorData.message || 'An error occurred during export.'
                 });
             } catch {
-                toast.error('Export Failed', { 
+                toast.error('Export Failed', {
                     id: 'export-project',
                     description: 'Unable to export project. Please try again.'
                 });
             }
         }
     } catch (error) {
-        toast.error('Export Failed', { 
+        toast.error('Export Failed', {
             id: 'export-project',
+            description: 'Network error occurred. Please check your connection and try again.'
+        });
+    }
+};
+
+const exportFullProjectPdf = async () => {
+    toast.loading('Generating project PDF...', { id: 'export-project-pdf' });
+
+    const exportUrl = route('export.project.pdf', {
+        project: props.project.slug,
+    });
+
+    try {
+        const response = await fetch(exportUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/pdf',
+            },
+        });
+
+        if (response.ok) {
+            // Check if response is JSON (error) or file download
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json();
+                toast.error('Export Failed', {
+                    id: 'export-project-pdf',
+                    description: errorData.message || 'An error occurred during PDF export.'
+                });
+                return;
+            }
+
+            // Success - trigger download
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${props.project.slug}_full_project.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            toast.success('Project PDF exported successfully!', {
+                id: 'export-project-pdf',
+                description: `${props.project.title} has been downloaded as PDF.`
+            });
+        } else {
+            // Try to get error message from response
+            try {
+                const errorData = await response.json();
+                toast.error('Export Failed', {
+                    id: 'export-project-pdf',
+                    description: errorData.message || 'An error occurred during PDF export.'
+                });
+            } catch {
+                toast.error('Export Failed', {
+                    id: 'export-project-pdf',
+                    description: 'Unable to export project as PDF. Please try again.'
+                });
+            }
+        }
+    } catch (error) {
+        toast.error('Export Failed', {
+            id: 'export-project-pdf',
             description: 'Network error occurred. Please check your connection and try again.'
         });
     }
@@ -314,6 +379,72 @@ const openMultiChapterDialog = () => {
     selectedChapters.value = [];
     showMultiChapterDialog.value = true;
 };
+
+const exportCurrentChapterPdf = async () => {
+    toast.loading('Generating PDF...', { id: 'export-chapter-pdf' });
+
+    const exportUrl = route('export.chapter.pdf', {
+        project: props.project.slug,
+        chapterNumber: props.currentChapter.chapter_number,
+    });
+
+    try {
+        const response = await fetch(exportUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/pdf',
+            },
+        });
+
+        if (response.ok) {
+            // Check if response is JSON (error) or file download
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json();
+                toast.error('Export Failed', {
+                    id: 'export-chapter-pdf',
+                    description: errorData.message || 'An error occurred during PDF export.'
+                });
+                return;
+            }
+
+            // Success - trigger download
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `chapter_${props.currentChapter.chapter_number}_${props.currentChapter.title.toLowerCase().replace(/\s+/g, '_')}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            toast.success('PDF exported successfully!', {
+                id: 'export-chapter-pdf',
+                description: `${props.currentChapter.title} has been downloaded as PDF.`
+            });
+        } else {
+            // Try to get error message from response
+            try {
+                const errorData = await response.json();
+                toast.error('Export Failed', {
+                    id: 'export-chapter-pdf',
+                    description: errorData.message || 'An error occurred during PDF export.'
+                });
+            } catch {
+                toast.error('Export Failed', {
+                    id: 'export-chapter-pdf',
+                    description: 'Unable to export chapter as PDF. Please try again.'
+                });
+            }
+        }
+    } catch (error) {
+        toast.error('Export Failed', {
+            id: 'export-chapter-pdf',
+            description: 'Network error occurred. Please check your connection and try again.'
+        });
+    }
+};
 </script>
 
 <template>
@@ -338,17 +469,29 @@ const openMultiChapterDialog = () => {
             </DropdownMenuTrigger>
             
             <DropdownMenuContent align="end" class="w-64">
-                <!-- Current Chapter Export -->
+                <!-- Current Chapter Export Options -->
+                <DropdownMenuLabel>Current Chapter</DropdownMenuLabel>
+
                 <DropdownMenuItem @click="exportCurrentChapter" class="gap-2">
                     <FileText class="h-4 w-4" />
                     <div class="flex flex-col">
-                        <span class="font-medium">Current Chapter</span>
+                        <span class="font-medium">Export as Word</span>
                         <span class="text-xs text-muted-foreground">
                             Chapter {{ currentChapter.chapter_number }}: {{ currentChapter.title }}
                         </span>
                     </div>
                 </DropdownMenuItem>
-                
+
+                <DropdownMenuItem @click="exportCurrentChapterPdf" class="gap-2">
+                    <FileText class="h-4 w-4" />
+                    <div class="flex flex-col">
+                        <span class="font-medium">Export as PDF</span>
+                        <span class="text-xs text-muted-foreground">
+                            Professional academic format
+                        </span>
+                    </div>
+                </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
                 
                 <!-- Selected Chapters Export -->
@@ -365,12 +508,24 @@ const openMultiChapterDialog = () => {
                 <DropdownMenuSeparator />
                 
                 <!-- Full Project Export -->
+                <DropdownMenuLabel>Full Project</DropdownMenuLabel>
+
                 <DropdownMenuItem @click="exportFullProject" class="gap-2">
                     <FileText class="h-4 w-4" />
                     <div class="flex flex-col">
-                        <span class="font-medium">Full Project</span>
+                        <span class="font-medium">Export as Word</span>
                         <span class="text-xs text-muted-foreground">
-                            Export entire project with all chapters
+                            Entire project with all chapters
+                        </span>
+                    </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem @click="exportFullProjectPdf" class="gap-2">
+                    <FileText class="h-4 w-4" />
+                    <div class="flex flex-col">
+                        <span class="font-medium">Export as PDF</span>
+                        <span class="text-xs text-muted-foreground">
+                            Professional academic format with cover page
                         </span>
                     </div>
                 </DropdownMenuItem>

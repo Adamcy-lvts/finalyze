@@ -74,18 +74,18 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-    'update:input': [value: string];
-    'send-message': [];
-    'quick-action': [action: string];
-    'retry-message': [message: Message];
-    'stop-generation': [];
-    'toggle-minimize': [];
-    'change-mode': [mode: 'review' | 'assist'];
-    'copy-message': [message: Message];
-    'rate-message': [messageId: number, rating: number];
-    'new-session': [];
-    'chat-deleted': [];
-    'chat-cleared': [];
+    (e: 'update:input', value: string): void;
+    (e: 'send-message'): void;
+    (e: 'quick-action', action: string): void;
+    (e: 'retry-message', message: Message): void;
+    (e: 'stop-generation'): void;
+    (e: 'toggle-minimize'): void;
+    (e: 'change-mode', mode: 'review' | 'assist'): void;
+    (e: 'copy-message', message: Message): void;
+    (e: 'rate-message', messageId: number, rating: number): void;
+    (e: 'new-session'): void;
+    (e: 'chat-deleted'): void;
+    (e: 'chat-cleared'): void;
 }>();
 
 const scrollContainer = ref();
@@ -93,7 +93,7 @@ const inputRef = ref();
 const showFileUpload = ref(false);
 const showSearch = ref(false);
 const showHistory = ref(false);
-const uploadedFiles = ref([]);
+const uploadedFiles = ref<any[]>([]);
 
 // Computed
 const hasSelectedText = computed(() => props.selectedText.trim().length > 0);
@@ -350,113 +350,56 @@ const stopGeneration = () => {
         <!-- Chat Header -->
         <div :class="[
             'flex flex-shrink-0 items-center justify-between border-b bg-muted/30',
-            isMobile ? 'p-4' : 'p-3'
+            isMobile ? 'p-3' : 'p-2'
         ]">
             <div class="flex items-center gap-2">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600">
-                    <Bot class="h-4 w-4 text-white" />
-                </div>
-                <div v-if="!isMinimized">
-                    <h3 class="text-sm font-semibold">AI Assistant</h3>
-                    <p class="text-xs text-muted-foreground">
-                        {{ currentMode === 'review' ? 'Academic Reviewer' : 'Writing Helper' }}
-                    </p>
+                <!-- Mode Toggle -->
+                <div v-if="!isMinimized" class="flex rounded-md border bg-background p-0.5">
+                    <Button @click="emit('change-mode', 'assist')"
+                        :variant="currentMode === 'assist' ? 'secondary' : 'ghost'" size="sm"
+                        class="h-7 px-2 text-xs gap-1.5">
+                        <PenTool class="h-3.5 w-3.5" />
+                        Assist
+                    </Button>
+                    <Button @click="emit('change-mode', 'review')"
+                        :variant="currentMode === 'review' ? 'secondary' : 'ghost'" size="sm"
+                        class="h-7 px-2 text-xs gap-1.5">
+                        <Search class="h-3.5 w-3.5" />
+                        Review
+                    </Button>
                 </div>
             </div>
 
             <div class="flex items-center gap-1">
-                <!-- Mode Toggle -->
-                <div v-if="!isMinimized" class="flex rounded-md border p-1">
-                    <Button
-                        @click="emit('change-mode', 'assist')"
-                        :variant="currentMode === 'assist' ? 'default' : 'ghost'"
-                        :size="isMobile ? 'sm' : 'xs'"
-                        :class="isMobile ? 'h-8 px-3 text-sm' : 'h-6 px-2 text-xs'"
-                    >
-                        ✍️ Assist
-                    </Button>
-                    <Button
-                        @click="emit('change-mode', 'review')"
-                        :variant="currentMode === 'review' ? 'default' : 'ghost'"
-                        :size="isMobile ? 'sm' : 'xs'"
-                        :class="isMobile ? 'h-8 px-3 text-sm' : 'h-6 px-2 text-xs'"
-                    >
-                        🔍 Review
-                    </Button>
-                </div>
-
-                <!-- Start New Chat Button -->
-                <Button
-                    v-if="!isMinimized"
-                    @click="startNewSession"
-                    variant="outline"
-                    :size="isMobile ? 'sm' : 'xs'"
-                    :class="[
-                        'gap-1',
-                        isMobile ? 'h-8 px-3 text-sm' : 'h-6 px-2 text-xs'
-                    ]"
-                    title="Start a new chat session"
-                >
-                    <Plus :class="isMobile ? 'h-4 w-4' : 'h-3 w-3'" />
-                    <span v-if="!isMobile">New</span>
+                <Button @click="startNewSession" variant="ghost" size="icon" class="h-8 w-8" title="New Session">
+                    <Plus class="h-4 w-4" />
                 </Button>
 
-                <Button
-                    @click="toggleSearch"
-                    variant="ghost"
-                    size="icon"
-                    :class="[
-                        isMobile ? 'h-10 w-10' : 'h-8 w-8',
-                        { 'bg-muted': showSearch }
-                    ]"
-                >
-                    <Search :class="isMobile ? 'h-5 w-5' : 'h-4 w-4'" />
+                <div class="h-4 w-px bg-border mx-1"></div>
+
+                <Button @click="toggleSearch" variant="ghost" size="icon"
+                    :class="['h-8 w-8', { 'bg-muted': showSearch }]" title="Search">
+                    <Search class="h-4 w-4" />
                 </Button>
 
-                <Button
-                    @click="toggleHistory"
-                    variant="ghost"
-                    size="icon"
-                    :class="[
-                        isMobile ? 'h-10 w-10' : 'h-8 w-8',
-                        { 'bg-muted': showHistory }
-                    ]"
-                >
-                    <Clock :class="isMobile ? 'h-5 w-5' : 'h-4 w-4'" />
+                <Button @click="toggleHistory" variant="ghost" size="icon"
+                    :class="['h-8 w-8', { 'bg-muted': showHistory }]" title="History">
+                    <Clock class="h-4 w-4" />
                 </Button>
 
-                <Button
-                    @click="toggleFileUpload"
-                    variant="ghost"
-                    size="icon"
-                    :class="[
-                        isMobile ? 'h-10 w-10' : 'h-8 w-8',
-                        { 'bg-muted': showFileUpload }
-                    ]"
-                >
-                    <FileText :class="isMobile ? 'h-5 w-5' : 'h-4 w-4'" />
+                <Button @click="toggleFileUpload" variant="ghost" size="icon"
+                    :class="['h-8 w-8', { 'bg-muted': showFileUpload }]" title="Upload Context">
+                    <FileText class="h-4 w-4" />
                 </Button>
 
-                <Button
-                    v-if="!isMobile"
-                    @click="emit('toggle-minimize')"
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                >
+                <Button v-if="!isMobile" @click="emit('toggle-minimize')" variant="ghost" size="icon" class="h-8 w-8">
                     <Minimize2 v-if="!isMinimized" class="h-4 w-4" />
                     <Maximize2 v-else class="h-4 w-4" />
                 </Button>
 
                 <!-- Mobile Close Button -->
-                <Button
-                    v-if="isMobile"
-                    @click="emit('toggle-minimize')"
-                    variant="ghost"
-                    size="icon"
-                    class="h-10 w-10"
-                >
-                    <X class="h-5 w-5" />
+                <Button v-if="isMobile" @click="emit('toggle-minimize')" variant="ghost" size="icon" class="h-8 w-8">
+                    <X class="h-4 w-4" />
                 </Button>
             </div>
         </div>
@@ -474,377 +417,306 @@ const stopGeneration = () => {
             <!-- Chat Mode Container with Transitions -->
             <div class="relative flex-1 overflow-hidden">
                 <!-- Search Mode -->
-                <Transition
-                    name="slide-left"
-                    mode="out-in"
-                    appear
-                >
+                <Transition name="slide-left" mode="out-in" appear>
                     <div v-if="showSearch" key="search" class="absolute inset-0 bg-background">
-                        <ChatSearch
-                            :project-slug="projectSlug"
-                            :chapter-number="chapterNumber"
-                            :show="showSearch"
-                            @close="showSearch = false"
-                            @message-selected="handleSearchMessageSelected"
-                        />
+                        <ChatSearch :project-slug="projectSlug" :chapter-number="chapterNumber" :show="showSearch"
+                            @close="showSearch = false" @message-selected="handleSearchMessageSelected" />
                     </div>
                 </Transition>
 
                 <!-- History Mode -->
-                <Transition
-                    name="slide-right"
-                    mode="out-in"
-                    appear
-                >
+                <Transition name="slide-right" mode="out-in" appear>
                     <div v-if="showHistory" key="history" class="absolute inset-0 bg-background overflow-y-auto">
                         <div class="p-4">
-                            <ChatHistory
-                                :project-slug="projectSlug"
-                                :chapter-number="chapterNumber"
-                                @chat-deleted="handleChatDeleted"
-                                @chat-cleared="handleChatCleared"
-                            />
+                            <ChatHistory :project-slug="projectSlug" :chapter-number="chapterNumber"
+                                @chat-deleted="handleChatDeleted" @chat-cleared="handleChatCleared" />
                         </div>
                     </div>
                 </Transition>
 
                 <!-- Normal Chat Mode -->
-                <Transition
-                    name="slide-up"
-                    mode="out-in"
-                    appear
-                >
+                <Transition name="slide-up" mode="out-in" appear>
                     <div v-if="!showSearch && !showHistory && !showFileUpload" key="chat" class="flex flex-col h-full">
                         <!-- Enhanced Quick Actions Bar -->
-            <div :class="[
-                'flex-shrink-0 border-b bg-muted/20',
-                isMobile ? 'p-2' : 'p-1.5'
-            ]">
-                <!-- Review Mode Actions -->
-                <div v-if="currentMode === 'review'" :class="[
-                    'flex flex-wrap gap-1',
-                    isMobile ? 'justify-center' : 'justify-start'
-                ]">
-                    <Button
-                        @click="handleQuickAction('overall-review')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <BarChart3 :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Overall Review
-                    </Button>
-                    <Button
-                        @click="handleQuickAction('test-knowledge')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <HelpCircle :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Test Knowledge
-                    </Button>
-                    <Button
-                        @click="handleQuickAction('find-weaknesses')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <Target :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Find Weaknesses
-                    </Button>
-                    <Button
-                        @click="handleQuickAction('citation-check')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <BookCheck :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Check Citations
-                    </Button>
-                    <Button
-                        @click="handleQuickAction('structure-review')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <Building2 :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Review Structure
-                    </Button>
-                </div>
+                        <div :class="[
+                            'flex-shrink-0 border-b bg-muted/20',
+                            isMobile ? 'p-2' : 'p-1.5'
+                        ]">
+                            <!-- Review Mode Actions -->
+                            <div v-if="currentMode === 'review'" :class="[
+                                'flex flex-wrap gap-1',
+                                isMobile ? 'justify-center' : 'justify-start'
+                            ]">
+                                <Button @click="handleQuickAction('overall-review')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <BarChart3 :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Overall Review
+                                </Button>
+                                <Button @click="handleQuickAction('test-knowledge')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <HelpCircle :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Test Knowledge
+                                </Button>
+                                <Button @click="handleQuickAction('find-weaknesses')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <Target :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Find Weaknesses
+                                </Button>
+                                <Button @click="handleQuickAction('citation-check')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <BookCheck :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Check Citations
+                                </Button>
+                                <Button @click="handleQuickAction('structure-review')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <Building2 :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Review Structure
+                                </Button>
+                            </div>
 
-                <!-- Assist Mode Actions -->
-                <div v-else :class="[
-                    'flex flex-wrap gap-1',
-                    isMobile ? 'justify-center' : 'justify-start'
-                ]">
-                    <Button
-                        @click="handleQuickAction('improve-writing')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <PenTool :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Improve Writing
-                    </Button>
-                    <Button
-                        @click="handleQuickAction('expand-section')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <Zap :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Expand Section
-                    </Button>
-                    <Button
-                        @click="handleQuickAction('fix-grammar')"
-                        size="sm"
-                        variant="ghost"
-                        :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'"
-                    >
-                        <Type :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
-                        Fix Grammar
-                    </Button>
-                </div>
-            </div>
+                            <!-- Assist Mode Actions -->
+                            <div v-else :class="[
+                                'flex flex-wrap gap-1',
+                                isMobile ? 'justify-center' : 'justify-start'
+                            ]">
+                                <Button @click="handleQuickAction('improve-writing')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <PenTool :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Improve Writing
+                                </Button>
+                                <Button @click="handleQuickAction('expand-section')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <Zap :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Expand Section
+                                </Button>
+                                <Button @click="handleQuickAction('fix-grammar')" size="sm" variant="ghost"
+                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
+                                    <Type :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                    Fix Grammar
+                                </Button>
+                            </div>
+                        </div>
 
-            <!-- Chapter Context Panel -->
-            <div class="flex-shrink-0 border-b bg-gradient-to-r from-green-50 to-blue-50 p-2 dark:from-green-950/20 dark:to-blue-950/20">
-                <div class="flex items-start gap-2">
-                    <Brain class="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600 dark:text-green-400" />
-                    <div class="min-w-0 flex-1">
-                        <p class="text-xs font-medium text-green-700 dark:text-green-300">AI Context:</p>
-                        <p class="text-xs text-green-600 dark:text-green-400">
-                            I can see your full chapter content ({{ Math.round(chapterContent.length / 1000) }}k chars) and will provide specific
-                            advice
-                        </p>
-                    </div>
-                </div>
-            </div>
+                        <!-- Chapter Context Panel -->
+                        <div
+                            class="flex-shrink-0 border-b bg-gradient-to-r from-green-50 to-blue-50 p-2 dark:from-green-950/20 dark:to-blue-950/20">
+                            <div class="flex items-start gap-2">
+                                <Brain class="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600 dark:text-green-400" />
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-medium text-green-700 dark:text-green-300">AI Context:</p>
+                                    <p class="text-xs text-green-600 dark:text-green-400">
+                                        I can see your full chapter content ({{ Math.round(chapterContent.length / 1000)
+                                        }}k chars) and will provide specific
+                                        advice
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
 
-            <!-- Selected Text Context -->
-            <div v-if="hasSelectedText" class="flex-shrink-0 border-b bg-blue-50 p-2 dark:bg-blue-950/20">
-                <div class="flex items-start gap-2">
-                    <Sparkles class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
-                    <div class="min-w-0 flex-1">
-                        <p class="text-xs font-medium text-blue-700 dark:text-blue-300">Selected text:</p>
-                        <p class="truncate text-xs text-blue-600 dark:text-blue-400">
-                            "{{ selectedText.substring(0, 60) }}{{ selectedText.length > 60 ? '...' : '' }}"
-                        </p>
-                    </div>
-                    <Button @click="suggestWithSelectedText" size="sm" variant="outline" class="h-6 px-2 text-xs"> Help </Button>
-                </div>
-            </div>
+                        <!-- Selected Text Context -->
+                        <div v-if="hasSelectedText" class="flex-shrink-0 border-b bg-blue-50 p-2 dark:bg-blue-950/20">
+                            <div class="flex items-start gap-2">
+                                <Sparkles class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-medium text-blue-700 dark:text-blue-300">Selected text:</p>
+                                    <p class="truncate text-xs text-blue-600 dark:text-blue-400">
+                                        "{{ selectedText.substring(0, 60) }}{{ selectedText.length > 60 ? '...' : '' }}"
+                                    </p>
+                                </div>
+                                <Button @click="suggestWithSelectedText" size="sm" variant="outline"
+                                    class="h-6 px-2 text-xs"> Help </Button>
+                            </div>
+                        </div>
 
                         <!-- File Upload Panel -->
                         <Transition name="slide-down" appear>
-                            <div v-if="showFileUpload" class="flex-shrink-0 border-b bg-orange-50 p-3 dark:bg-orange-950/20">
-                                <FileUpload
-                                    :project-slug="projectSlug"
-                                    :chapter-number="chapterNumber"
-                                    :session-id="sessionId"
-                                    :disabled="isTyping"
-                                    @file-uploaded="handleFileUploaded"
-                                    @file-deleted="handleFileDeleted"
-                                    @files-loaded="handleFilesLoaded"
-                                />
+                            <div v-if="showFileUpload"
+                                class="flex-shrink-0 border-b bg-orange-50 p-3 dark:bg-orange-950/20">
+                                <FileUpload :project-slug="projectSlug" :chapter-number="chapterNumber"
+                                    :session-id="sessionId" :disabled="isTyping" @file-uploaded="handleFileUploaded"
+                                    @file-deleted="handleFileDeleted" @files-loaded="handleFilesLoaded" />
                             </div>
                         </Transition>
 
-            <!-- Messages Area -->
-            <ScrollArea ref="scrollContainer" class="min-h-0 flex-1">
-                <div class="min-h-full space-y-4 p-3">
-                    <div
-                        v-for="message in messages"
-                        :key="message.id"
-                        :class="['flex gap-3', message.type === 'user' ? 'justify-end' : 'justify-start']"
-                    >
-                        <!-- AI/System Message -->
-                        <div v-if="message.type !== 'user'" class="flex max-w-[85%] gap-2">
-                            <div
-                                :class="[
-                                    'mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full',
-                                    message.type === 'ai' ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-orange-500',
-                                ]"
-                            >
-                                <Bot v-if="message.type === 'ai'" class="h-3 w-3 text-white" />
-                                <AlertCircle v-else class="h-3 w-3 text-white" />
-                            </div>
+                        <!-- Messages Area -->
+                        <ScrollArea ref="scrollContainer" class="min-h-0 flex-1">
+                            <div class="min-h-full space-y-4 p-3">
+                                <TransitionGroup name="message-list" tag="div" class="space-y-4">
+                                    <div v-for="message in messages" :key="message.id"
+                                        :class="['flex gap-3', message.type === 'user' ? 'justify-end' : 'justify-start']">
+                                        <!-- AI/System Message -->
+                                        <div v-if="message.type !== 'user'" class="flex max-w-[85%] gap-2">
+                                            <div :class="[
+                                                'mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full',
+                                                message.type === 'ai' ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-orange-500',
+                                            ]">
+                                                <Bot v-if="message.type === 'ai'" class="h-3 w-3 text-white" />
+                                                <AlertCircle v-else class="h-3 w-3 text-white" />
+                                            </div>
 
-                            <div class="flex-1">
-                                <div
-                                    :class="[
-                                        'rounded-lg p-3 text-sm',
-                                        message.type === 'ai'
-                                            ? 'border bg-muted'
-                                            : 'border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20',
-                                    ]"
-                                >
-                                    <!-- Show content or streaming indicator -->
-                                    <RichTextViewer
-                                        v-if="message.content"
-                                        :content="message.content"
-                                        class="prose prose-sm dark:prose-invert max-w-none chat-message-ai"
-                                    />
+                                            <div class="flex-1">
+                                                <div :class="[
+                                                    'rounded-lg p-3 text-sm',
+                                                    message.type === 'ai'
+                                                        ? 'border bg-muted'
+                                                        : 'border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20',
+                                                ]">
+                                                    <!-- Show content or streaming indicator -->
+                                                    <RichTextViewer v-if="message.content" :content="message.content"
+                                                        class="prose prose-sm dark:prose-invert max-w-none chat-message-ai" />
 
-                                    <!-- Streaming Indicator for empty messages -->
-                                    <div v-else-if="message.isStreaming" class="flex items-center gap-2 py-2">
-                                        <div class="flex gap-1">
-                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60"></div>
-                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 0.1s"></div>
-                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 0.2s"></div>
+                                                    <!-- Streaming Indicator for empty messages -->
+                                                    <div v-else-if="message.isStreaming"
+                                                        class="flex items-center gap-2 py-2">
+                                                        <div class="flex gap-1">
+                                                            <div
+                                                                class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60">
+                                                            </div>
+                                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60"
+                                                                style="animation-delay: 0.1s"></div>
+                                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60"
+                                                                style="animation-delay: 0.2s"></div>
+                                                        </div>
+                                                        <span
+                                                            class="text-xs text-muted-foreground/80">Thinking...</span>
+                                                    </div>
+
+                                                    <!-- Enhanced Message Actions -->
+                                                    <div v-if="message.type === 'ai'"
+                                                        class="mt-2 flex items-center justify-between border-t border-border/50 pt-2">
+                                                        <div class="flex items-center gap-1">
+                                                            <!-- Retry button for failed messages -->
+                                                            <Button v-if="message.failed" @click="retryMessage(message)"
+                                                                size="sm" variant="outline"
+                                                                class="h-6 px-2 text-xs border-orange-300 text-orange-600 hover:bg-orange-50">
+                                                                <RotateCcwIcon class="mr-1 h-3 w-3" />
+                                                                Try Again
+                                                            </Button>
+
+                                                            <Button @click="copyMessage(message)" size="sm"
+                                                                variant="ghost" class="h-6 px-2 text-xs"
+                                                                :disabled="copiedMessageId === message.id || copiedMessageId === -1">
+                                                                <Copy
+                                                                    v-if="copiedMessageId !== message.id && copiedMessageId !== -1"
+                                                                    class="mr-1 h-3 w-3" />
+                                                                <CheckCircle v-else-if="copiedMessageId === message.id"
+                                                                    class="mr-1 h-3 w-3 text-green-600" />
+                                                                <AlertCircle v-else class="mr-1 h-3 w-3 text-red-600" />
+
+                                                                <span v-if="copiedMessageId === message.id"
+                                                                    class="text-green-600">Copied!</span>
+                                                                <span v-else-if="copiedMessageId === -1">Failed</span>
+                                                                <span v-else>Copy</span>
+                                                            </Button>
+                                                            <Button @click="emit('rate-message', message.id, 1)"
+                                                                size="sm" variant="ghost" class="h-6 px-2 text-xs">
+                                                                <ThumbsUp class="h-3 w-3" />
+                                                            </Button>
+                                                            <Button @click="emit('rate-message', message.id, -1)"
+                                                                size="sm" variant="ghost" class="h-6 px-2 text-xs">
+                                                                <ThumbsDown class="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+
+                                                        <!-- Model indicator -->
+                                                        <Badge variant="outline" class="text-xs">
+                                                            {{ currentMode === 'review' ? 'GPT-4o' : 'GPT-4o-mini' }}
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+
+                                                <p class="mt-1 px-1 text-xs text-muted-foreground">
+                                                    {{ formatTimestamp(message.timestamp) }}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <span class="text-xs text-muted-foreground/80">Thinking...</span>
-                                    </div>
 
-                                    <!-- Enhanced Message Actions -->
-                                    <div v-if="message.type === 'ai'" class="mt-2 flex items-center justify-between border-t border-border/50 pt-2">
-                                        <div class="flex items-center gap-1">
-                                            <!-- Retry button for failed messages -->
-                                            <Button
-                                                v-if="message.failed"
-                                                @click="retryMessage(message)"
-                                                size="sm"
-                                                variant="outline"
-                                                class="h-6 px-2 text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
-                                            >
-                                                <RotateCcwIcon class="mr-1 h-3 w-3" />
-                                                Try Again
-                                            </Button>
+                                        <!-- User Message -->
+                                        <div v-else class="flex max-w-[85%] gap-2">
+                                            <div class="flex-1 text-right">
+                                                <div
+                                                    class="inline-block rounded-lg bg-primary p-3 text-sm text-primary-foreground">
+                                                    <RichTextViewer :content="message.content"
+                                                        class="prose prose-sm prose-invert max-w-none chat-message-user" />
+                                                </div>
+                                                <p class="mt-1 px-1 text-xs text-muted-foreground">
+                                                    {{ formatTimestamp(message.timestamp) }}
+                                                </p>
+                                            </div>
 
-                                            <Button
-                                                @click="copyMessage(message)"
-                                                size="sm"
-                                                variant="ghost"
-                                                class="h-6 px-2 text-xs"
-                                                :disabled="copiedMessageId === message.id || copiedMessageId === -1"
-                                            >
-                                                <Copy v-if="copiedMessageId !== message.id && copiedMessageId !== -1" class="mr-1 h-3 w-3" />
-                                                <CheckCircle v-else-if="copiedMessageId === message.id" class="mr-1 h-3 w-3 text-green-600" />
-                                                <AlertCircle v-else class="mr-1 h-3 w-3 text-red-600" />
-
-                                                <span v-if="copiedMessageId === message.id" class="text-green-600">Copied!</span>
-                                                <span v-else-if="copiedMessageId === -1">Failed</span>
-                                                <span v-else>Copy</span>
-                                            </Button>
-                                            <Button @click="emit('rate-message', message.id, 1)" size="sm" variant="ghost" class="h-6 px-2 text-xs">
-                                                <ThumbsUp class="h-3 w-3" />
-                                            </Button>
-                                            <Button @click="emit('rate-message', message.id, -1)" size="sm" variant="ghost" class="h-6 px-2 text-xs">
-                                                <ThumbsDown class="h-3 w-3" />
-                                            </Button>
+                                            <div
+                                                class="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary">
+                                                <User class="h-3 w-3 text-primary-foreground" />
+                                            </div>
                                         </div>
-
-                                        <!-- Model indicator -->
-                                        <Badge variant="outline" class="text-xs">
-                                            {{ currentMode === 'review' ? 'GPT-4o' : 'GPT-4o-mini' }}
-                                        </Badge>
                                     </div>
+                                </TransitionGroup>
+
+                                <!-- Typing Indicator -->
+                                <Transition name="fade">
+                                    <div v-if="isTyping" class="flex gap-2">
+                                        <div
+                                            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600">
+                                            <Bot class="h-3 w-3 text-white" />
+                                        </div>
+                                        <div class="max-w-[85%] rounded-lg border bg-muted p-3">
+                                            <div class="flex items-center gap-1">
+                                                <div class="flex gap-1">
+                                                    <div
+                                                        class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground">
+                                                    </div>
+                                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
+                                                        style="animation-delay: 0.1s"></div>
+                                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
+                                                        style="animation-delay: 0.2s"></div>
+                                                </div>
+                                                <span class="ml-2 text-xs text-muted-foreground">AI is
+                                                    thinking...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </Transition>
+                            </div>
+                        </ScrollArea>
+
+                        <!-- Input Area -->
+                        <div class="flex-shrink-0 border-t bg-background p-3">
+                            <div class="relative">
+                                <CompactRichTextEditor ref="inputRef" :model-value="input"
+                                    @update:model-value="emit('update:input', $event)" @submit="handleSendMessage"
+                                    @keydown="handleKeydown" :disabled="isTyping" :show-toolbar="false"
+                                    placeholder="Ask about your chapter..." class="pr-12" />
+
+                                <!-- Send/Stop Button -->
+                                <div class="absolute right-2 top-1/2 -translate-y-1/2">
+                                    <Button v-if="!isTyping" @click="handleSendMessage" size="sm" variant="ghost"
+                                        class="h-8 w-8 p-0 rounded-full hover:bg-primary hover:text-primary-foreground"
+                                        :disabled="!input.trim()">
+                                        <Send class="h-4 w-4" />
+                                    </Button>
+                                    <Button v-else @click="stopGeneration" size="sm" variant="ghost"
+                                        class="h-8 w-8 p-0 rounded-full hover:bg-destructive hover:text-destructive-foreground">
+                                        <Square class="h-4 w-4" />
+                                    </Button>
                                 </div>
-
-                                <p class="mt-1 px-1 text-xs text-muted-foreground">
-                                    {{ formatTimestamp(message.timestamp) }}
-                                </p>
                             </div>
-                        </div>
 
-                        <!-- User Message -->
-                        <div v-else class="flex max-w-[85%] gap-2">
-                            <div class="flex-1 text-right">
-                                <div class="inline-block rounded-lg bg-primary p-3 text-sm text-primary-foreground">
-                                    <RichTextViewer :content="message.content" class="prose prose-sm prose-invert max-w-none chat-message-user" />
+                            <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                                <span v-if="!isTyping">Press Enter to send, Shift+Enter for new line</span>
+                                <span v-else class="flex items-center gap-1">
+                                    <div class="h-3 w-3 animate-spin rounded-full border-b border-current"></div>
+                                    Generating response...
+                                </span>
+                                <div class="flex items-center gap-2">
+                                    <Button @click="startNewSession" variant="outline" size="sm"
+                                        class="h-6 px-2 text-xs" :disabled="isTyping || messages.length === 0">
+                                        <Plus class="mr-1 h-3 w-3" />
+                                        New Session
+                                    </Button>
+                                    <Badge variant="secondary" class="text-xs"> {{ messages.length }} messages </Badge>
                                 </div>
-                                <p class="mt-1 px-1 text-xs text-muted-foreground">
-                                    {{ formatTimestamp(message.timestamp) }}
-                                </p>
-                            </div>
-
-                            <div class="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary">
-                                <User class="h-3 w-3 text-primary-foreground" />
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Typing Indicator -->
-                    <div v-if="isTyping" class="flex gap-2">
-                        <div
-                            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600"
-                        >
-                            <Bot class="h-3 w-3 text-white" />
-                        </div>
-                        <div class="max-w-[85%] rounded-lg border bg-muted p-3">
-                            <div class="flex items-center gap-1">
-                                <div class="flex gap-1">
-                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"></div>
-                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style="animation-delay: 0.1s"></div>
-                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style="animation-delay: 0.2s"></div>
-                                </div>
-                                <span class="ml-2 text-xs text-muted-foreground">AI is thinking...</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </ScrollArea>
-
-            <!-- Input Area -->
-            <div class="flex-shrink-0 border-t bg-background p-3">
-                <div class="relative">
-                    <CompactRichTextEditor
-                        ref="inputRef"
-                        :model-value="input"
-                        @update:model-value="emit('update:input', $event)"
-                        @submit="handleSendMessage"
-                        @keydown="handleKeydown"
-                        :disabled="isTyping"
-                        :show-toolbar="false"
-                        placeholder="Ask about your chapter..."
-                        class="pr-12"
-                    />
-
-                    <!-- Send/Stop Button -->
-                    <div class="absolute right-2 top-1/2 -translate-y-1/2">
-                        <Button
-                            v-if="!isTyping"
-                            @click="handleSendMessage"
-                            size="sm"
-                            variant="ghost"
-                            class="h-8 w-8 p-0 rounded-full hover:bg-primary hover:text-primary-foreground"
-                            :disabled="!input.trim()"
-                        >
-                            <Send class="h-4 w-4" />
-                        </Button>
-                        <Button
-                            v-else
-                            @click="stopGeneration"
-                            size="sm"
-                            variant="ghost"
-                            class="h-8 w-8 p-0 rounded-full hover:bg-destructive hover:text-destructive-foreground"
-                        >
-                            <Square class="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div>
-
-                <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span v-if="!isTyping">Press Enter to send, Shift+Enter for new line</span>
-                    <span v-else class="flex items-center gap-1">
-                        <div class="h-3 w-3 animate-spin rounded-full border-b border-current"></div>
-                        Generating response...
-                    </span>
-                    <div class="flex items-center gap-2">
-                        <Button
-                            @click="startNewSession"
-                            variant="outline"
-                            size="sm"
-                            class="h-6 px-2 text-xs"
-                            :disabled="isTyping || messages.length === 0"
-                        >
-                            <Plus class="mr-1 h-3 w-3" />
-                            New Session
-                        </Button>
-                        <Badge variant="secondary" class="text-xs"> {{ messages.length }} messages </Badge>
-                    </div>
-                </div>
-            </div>
                     </div>
                 </Transition>
             </div>
@@ -922,6 +794,7 @@ const stopGeneration = () => {
 
 /* Responsive font sizing */
 @media (max-width: 768px) {
+
     :deep(.chat-message-ai),
     :deep(.chat-message-user) {
         font-size: 0.8rem;
@@ -1046,5 +919,32 @@ const stopGeneration = () => {
 .slide-right-enter-active,
 .slide-up-enter-active {
     transition-delay: 0.05s;
+}
+
+/* Message List Transitions */
+.message-list-enter-active,
+.message-list-leave-active {
+    transition: all 0.4s ease;
+}
+
+.message-list-enter-from {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.message-list-leave-to {
+    opacity: 0;
+    transform: translateY(-20px);
+}
+
+/* Fade Transition */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 </style>

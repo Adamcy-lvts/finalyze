@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ChapterStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -15,6 +16,7 @@ class Chapter extends Model
 
     protected $casts = [
         'outline' => 'array',
+        'status' => ChapterStatus::class,
     ];
 
     public function project()
@@ -73,7 +75,7 @@ class Chapter extends Model
 
     public function isComplete()
     {
-        return $this->status === 'approved';
+        return $this->status === ChapterStatus::Approved || $this->status === ChapterStatus::Completed;
     }
 
     /**
@@ -96,8 +98,8 @@ class Chapter extends Model
         if ($project instanceof Project) {
             // Find the chapter by slug within this specific project
             return $this->where('project_id', $project->id)
-                        ->where($field ?? $this->getRouteKeyName(), $value)
-                        ->first();
+                ->where($field ?? $this->getRouteKeyName(), $value)
+                ->first();
         }
 
         // Fallback to default behavior if no project context

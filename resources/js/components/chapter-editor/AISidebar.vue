@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
 import { Brain, Lightbulb, Quote, Sparkles, Target, Wand2, ChevronDown, Zap, RefreshCw, AlignLeft, Type, CheckCircle2, PenTool } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -111,8 +112,8 @@ const handleQuickAction = async (action: string, options?: any) => {
         switch (action) {
             case 'expand':
                 if (props.selectedText) {
-                    emit('startStreamingGeneration', 'expand', { 
-                        selectedText: props.selectedText 
+                    emit('startStreamingGeneration', 'expand', {
+                        selectedText: props.selectedText
                     });
                     toast('Expanding selected text...');
                 } else {
@@ -125,9 +126,9 @@ const handleQuickAction = async (action: string, options?: any) => {
                 break;
             case 'rephrase':
                 if (props.selectedText) {
-                    emit('startStreamingGeneration', 'rephrase', { 
+                    emit('startStreamingGeneration', 'rephrase', {
                         selectedText: props.selectedText,
-                        style: writingStyle.value 
+                        style: writingStyle.value
                     });
                     toast('Rephrasing selected text...');
                 } else {
@@ -165,10 +166,10 @@ const handleQuickAction = async (action: string, options?: any) => {
 
 const getNextSection = (): string => {
     if (!hasContent.value) return 'introduction';
-    
+
     const content = props.chapterContent.toLowerCase();
     const fallbackSections = getFallbackSections();
-    
+
     // Find the first missing section based on content analysis
     for (const section of fallbackSections) {
         const keywords = [section.name.toLowerCase(), section.id.replace('_', ' ')];
@@ -177,7 +178,7 @@ const getNextSection = (): string => {
             return section.id;
         }
     }
-    
+
     // If all sections exist, suggest conclusion if not present
     return 'conclusion';
 };
@@ -195,48 +196,43 @@ const getSubSectionNumber = (sectionId: string): string => {
     return `${chapterNumber}.${sectionIndex + 1}`;
 };
 
-// Legacy method for backward compatibility
-const generateContextualSuggestions = async () => {
-    if (!props.isGenerating) {
-        await generateSuggestions(true);
-    }
-};
+
 
 
 
 // Simple analyze chapter function with cache busting
 const analyzeChapter = async () => {
     if (isLoadingAISuggestions.value || !hasValidChapter.value) return;
-    
+
     isLoadingAISuggestions.value = true;
     const startTime = Date.now();
-    
+
     try {
         // Add cache busting timestamp to force fresh analysis
         const { data } = await axios.post(`/api/projects/${props.project.id}/chapters/${props.chapter.id}/suggest-section?t=${Date.now()}`, {
             current_content: props.chapterContent || ''
         });
-        
+
         // Ensure minimum loading time for better UX (minimum 800ms)
         const elapsedTime = Date.now() - startTime;
         const remainingTime = Math.max(0, 800 - elapsedTime);
-        
+
         if (remainingTime > 0) {
             await new Promise(resolve => setTimeout(resolve, remainingTime));
         }
-        
+
         if (data.success && data.analysis) {
             aiChapterAnalysis.value = data.analysis;
-            
+
             // Override word count with live data from parent to ensure consistency
             if (aiChapterAnalysis.value.word_count_progress && props.currentWordCount !== undefined) {
                 const target = props.targetWordCount || aiChapterAnalysis.value.word_count_progress.target;
                 aiChapterAnalysis.value.word_count_progress.current = props.currentWordCount;
-                aiChapterAnalysis.value.word_count_progress.percentage = target > 0 
-                    ? Math.round((props.currentWordCount / target) * 100 * 100) / 100 
+                aiChapterAnalysis.value.word_count_progress.percentage = target > 0
+                    ? Math.round((props.currentWordCount / target) * 100 * 100) / 100
                     : 0;
             }
-            
+
             console.log('✅ Fresh chapter analysis complete:', {
                 status: data.analysis.status,
                 completion: data.analysis.completion_percentage,
@@ -245,7 +241,7 @@ const analyzeChapter = async () => {
                 usingStructuredData: data.structured || true,
                 cached: false
             });
-            
+
             toast.success('Chapter analyzed successfully');
         } else {
             toast.error('Failed to analyze chapter');
@@ -288,297 +284,182 @@ watch(
 </script>
 
 <template>
-    <div class="space-y-4 sm:space-y-6">
-
+    <div class="flex flex-col gap-4 p-1">
         <!-- Enhanced AI Assistant Panel -->
-        <Card v-if="project.mode === 'auto'" class="border-[0.5px] border-border/50">
-            <CardHeader class="pb-3">
-                <CardTitle class="flex items-center gap-2 text-sm">
-                    <Brain class="h-4 w-4 text-blue-500" />
+        <Card class="border-none shadow-none bg-transparent">
+            <CardHeader class="px-2 py-3">
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold text-foreground/80">
+                    <div class="p-1.5 rounded-lg bg-primary/10 text-primary">
+                        <Brain class="h-4 w-4" />
+                    </div>
                     AI Assistant
                 </CardTitle>
             </CardHeader>
-            <CardContent class="space-y-4">
+            <CardContent class="px-2 space-y-6">
                 <!-- Quick Actions -->
-                <Collapsible :open="true">
-                    <CollapsibleTrigger class="flex w-full items-center justify-between text-sm font-medium">
+                <Collapsible :open="true" class="space-y-2">
+                    <CollapsibleTrigger
+                        class="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors group">
                         <span class="flex items-center gap-2">
-                            <Zap class="h-3 w-3" />
-                            Quick Actions
+                            <Zap class="h-3.5 w-3.5 text-amber-500/70 group-hover:text-amber-500 transition-colors" />
+                            QUICK ACTIONS
                         </span>
-                        <ChevronDown class="h-3 w-3" />
+                        <ChevronDown
+                            class="h-3 w-3 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </CollapsibleTrigger>
-                    <CollapsibleContent class="space-y-3 pt-2">
-                        <!-- Progressive Generation Options -->
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <span class="text-xs font-medium text-muted-foreground">Generation Mode</span>
-                            </div>
-                            
-                            <div class="grid grid-cols-1 gap-2">
-                                <!-- Manual AI Analysis Button -->
-                                <Button
-                                    v-if="shouldShowAnalyzeButton"
-                                    @click="analyzeChapter"
-                                    :disabled="isGenerating || isLoadingAISuggestions"
-                                    size="sm"
-                                    variant="default"
-                                    class="h-auto w-full flex-col gap-1 p-3 bg-accent text-accent-foreground hover:bg-accent/80 cursor-pointer transition-colors border-accent/50 hover:border-accent"
-                                    :aria-label="isLoadingAISuggestions ? 'Analyzing chapter content...' : (isEmptyChapter ? 'Get AI suggestions to start writing' : 'Analyze chapter to get AI-powered suggestions')"
-                                >
-                                    <div class="flex items-center justify-center gap-2 w-full">
-                                        <Brain class="h-4 w-4 flex-shrink-0" />
-                                        <RefreshCw v-if="isLoadingAISuggestions" class="h-3 w-3 animate-spin flex-shrink-0" />
-                                        <span class="text-sm font-medium text-center">
-                                            <template v-if="isLoadingAISuggestions">
-                                                Analyzing...
-                                            </template>
-                                            <template v-else-if="isEmptyChapter">
-                                                Start Writing with AI
-                                            </template>
-                                            <template v-else>
-                                                Analyze Chapter
-                                            </template>
-                                        </span>
-                                    </div>
-                                    <span class="text-xs text-muted-foreground text-center">
-                                        <template v-if="isEmptyChapter">
-                                            Get AI suggestions to begin your chapter
-                                        </template>
-                                        <template v-else>
-                                            Get AI-powered suggestions for next steps
-                                        </template>
+                    <CollapsibleContent class="space-y-3 pt-1">
+                        <!-- Generation Controls -->
+                        <div class="space-y-3">
+                            <!-- Analyze / Start Button -->
+                            <Button v-if="shouldShowAnalyzeButton" @click="analyzeChapter"
+                                :disabled="isGenerating || isLoadingAISuggestions"
+                                class="w-full h-auto flex-col gap-1.5 p-4 rounded-xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/10 hover:border-primary/30 text-primary hover:from-primary/15 transition-all duration-300 shadow-sm">
+                                <div class="flex items-center gap-2">
+                                    <Brain class="h-4 w-4" />
+                                    <span class="font-semibold">
+                                        {{ isLoadingAISuggestions ? 'Analyzing...' : (isEmptyChapter ? 'Start Writing' :
+                                            'Analyze Chapter') }}
                                     </span>
-                                </Button>
-                                
-                                <!-- Generate Next Sub-Section -->
-                                <Transition
-                                    enter-active-class="transition-all duration-300 ease-out"
-                                    enter-from-class="opacity-0 scale-95 translate-y-1"
-                                    enter-to-class="opacity-100 scale-100 translate-y-0"
-                                >
-                                    <Button
-                                        v-if="aiChapterAnalysis && aiChapterAnalysis.show_section_button"
-                                    @click="handleQuickAction('generate-section')"
-                                    :disabled="!canGenerateSection || isLoadingAISuggestions || isGenerating || actionLoadingStates['generate-section']"
-                                    size="sm"
-                                    variant="outline"
-                                    class="h-auto w-full flex-col gap-1 p-3 bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer transition-colors border-primary/30 hover:border-primary/50 min-h-[4rem] overflow-hidden"
-                                    :aria-label="actionLoadingStates['generate-section'] ? 'Generating section...' : `Generate ${aiChapterAnalysis?.section.name || 'next section'}`"
-                                >
-                                    <div class="flex items-center justify-center gap-2 w-full">
-                                        <Brain class="h-4 w-4 flex-shrink-0" />
-                                        <RefreshCw v-if="isLoadingAISuggestions || actionLoadingStates['generate-section']" class="h-3 w-3 animate-spin flex-shrink-0" />
-                                        <span class="text-sm font-medium text-center break-words line-clamp-2 leading-tight">
-                                            <template v-if="isLoadingAISuggestions">
-                                                Analyzing chapter...
-                                            </template>
-                                            <template v-else-if="actionLoadingStates['generate-section']">
-                                                Generating section...
-                                            </template>
-                                            <template v-else-if="aiChapterAnalysis?.section.name && aiChapterAnalysis.section.name !== 'NONE'">
-                                                Generate {{ aiChapterAnalysis.section.number }} {{ aiChapterAnalysis.section.name }}
-                                            </template>
-                                            <template v-else>
-                                                Generate {{ hasValidChapter ? getSubSectionNumber(nextSection) : '1.1' }} {{ getSectionInfo(nextSection).name }}
-                                            </template>
-                                        </span>
-                                    </div>
-                                    <span class="text-xs text-muted-foreground text-center break-words line-clamp-2 w-full">
-                                        <template v-if="isLoadingAISuggestions">
-                                            AI is determining the best next section...
-                                        </template>
-                                        <template v-else-if="actionLoadingStates['generate-section']">
-                                            Creating section content...
-                                        </template>
-                                        <template v-else-if="aiChapterAnalysis?.section.description && aiChapterAnalysis.section.description !== 'NONE'">
-                                            <div>{{ aiChapterAnalysis.section.description }}</div>
-                                            <div v-if="aiChapterAnalysis.completion_percentage !== undefined" class="mt-1 font-medium">
-                                                Progress: {{ aiChapterAnalysis.completion_percentage }}% complete
+                                </div>
+                                <span class="text-[10px] opacity-70 font-normal">
+                                    {{ isEmptyChapter ? 'Get AI suggestions to begin' : 'Generate next steps & suggestions' }}
+                                </span>
+                            </Button>
+
+                            <!-- Next Section Generator -->
+                            <Transition enter-active-class="transition-all duration-300 ease-out"
+                                enter-from-class="opacity-0 scale-95 translate-y-1"
+                                enter-to-class="opacity-100 scale-100 translate-y-0">
+                                <div v-if="aiChapterAnalysis && aiChapterAnalysis.show_section_button"
+                                    class="space-y-2">
+                                    <Button @click="handleQuickAction('generate-section')"
+                                        :disabled="!canGenerateSection || isLoadingAISuggestions || isGenerating || actionLoadingStates['generate-section']"
+                                        variant="outline"
+                                        class="w-full h-auto flex-col items-start gap-2 p-3 rounded-xl border-primary/20 bg-background/50 hover:bg-primary/5 hover:border-primary/40 transition-all duration-300 text-left group relative overflow-hidden">
+                                        <div
+                                            class="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                                        <div class="flex items-center justify-between w-full relative z-10">
+                                            <div class="flex items-center gap-2 text-primary">
+                                                <PenTool class="h-3.5 w-3.5" />
+                                                <span class="text-xs font-semibold">Write Next Section</span>
                                             </div>
-                                        </template>
-                                        <template v-else>
-                                            {{ getSectionInfo(nextSection).description }}
-                                        </template>
-                                    </span>
+                                            <RefreshCw v-if="actionLoadingStates['generate-section']"
+                                                class="h-3 w-3 animate-spin text-primary" />
+                                        </div>
+
+                                        <div class="space-y-1 relative z-10">
+                                            <div class="text-sm font-medium text-foreground">
+                                                {{ aiChapterAnalysis?.section.name || getSectionInfo(nextSection).name
+                                                }}
+                                            </div>
+                                            <div class="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+                                                {{ aiChapterAnalysis?.section.description ||
+                                                getSectionInfo(nextSection).description }}
+                                            </div>
+                                        </div>
                                     </Button>
-                                </Transition>
-                                
-                                <!-- Generate Full Chapter -->
-                                <Transition
-                                    enter-active-class="transition-all duration-300 ease-out"
-                                    enter-from-class="opacity-0 scale-95 translate-y-1"
-                                    enter-to-class="opacity-100 scale-100 translate-y-0"
-                                >
-                                    <Button
-                                        v-if="aiChapterAnalysis && aiChapterAnalysis.show_full_chapter_button"
+                                </div>
+                            </Transition>
+
+                            <!-- Full Chapter Generator -->
+                            <Transition enter-active-class="transition-all duration-300 ease-out"
+                                enter-from-class="opacity-0 scale-95 translate-y-1"
+                                enter-to-class="opacity-100 scale-100 translate-y-0">
+                                <Button v-if="aiChapterAnalysis && aiChapterAnalysis.show_full_chapter_button"
                                     @click="handleQuickAction('generate-full')"
                                     :disabled="isGenerating || isLoadingAISuggestions || actionLoadingStates['generate-full']"
-                                    size="sm"
-                                    variant="outline"
-                                    class="h-auto flex-col gap-1 p-2 hover:bg-muted cursor-pointer transition-colors"
-                                    :aria-label="actionLoadingStates['generate-full'] ? 'Generating full chapter...' : 'Generate complete chapter content'"
-                                >
-                                    <RefreshCw v-if="actionLoadingStates['generate-full']" class="h-3 w-3 animate-spin" />
-                                    <Wand2 v-else class="h-3 w-3" />
-                                    <span class="text-xs">{{ actionLoadingStates['generate-full'] ? 'Generating...' : 'Generate Full Chapter' }}</span>
-                                    </Button>
-                                </Transition>
-                                
-                                <!-- Chapter Complete Message -->
-                                <Transition
-                                    enter-active-class="transition-all duration-500 ease-out"
-                                    enter-from-class="opacity-0 scale-95 translate-y-2"
-                                    enter-to-class="opacity-100 scale-100 translate-y-0"
-                                >
-                                    <div 
-                                        v-if="aiChapterAnalysis && aiChapterAnalysis.status === 'COMPLETE'"
-                                        class="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-950/30 dark:border-green-800"
-                                    >
-                                    <!-- Success Header -->
-                                    <div class="flex items-center justify-center gap-2">
-                                        <CheckCircle2 class="h-4 w-4 text-green-600 flex-shrink-0" />
-                                        <div class="text-center">
-                                            <div class="text-sm font-medium text-green-800 dark:text-green-300">Chapter Complete!</div>
-                                            <div class="text-xs text-green-600 dark:text-green-400">All required sections completed successfully</div>
-                                        </div>
+                                    variant="ghost"
+                                    class="w-full h-9 justify-start gap-2 px-3 rounded-lg text-xs text-muted-foreground hover:text-primary hover:bg-primary/5">
+                                    <Wand2 class="h-3.5 w-3.5" />
+                                    <span>Generate Complete Chapter</span>
+                                </Button>
+                            </Transition>
+
+                            <!-- Completion Status -->
+                            <Transition enter-active-class="transition-all duration-500 ease-out"
+                                enter-from-class="opacity-0 scale-95 translate-y-2"
+                                enter-to-class="opacity-100 scale-100 translate-y-0">
+                                <div v-if="aiChapterAnalysis && aiChapterAnalysis.status === 'COMPLETE'"
+                                    class="p-4 rounded-xl bg-green-500/10 border border-green-500/20 space-y-3">
+                                    <div class="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                        <CheckCircle2 class="h-4 w-4" />
+                                        <span class="text-sm font-semibold">Chapter Complete</span>
                                     </div>
 
-                                    <!-- Structured Progress Info -->
-                                    <div v-if="aiChapterAnalysis.completion_percentage !== undefined" class="space-y-2">
-                                        <!-- Section Progress -->
-                                        <div class="flex items-center justify-between text-xs">
-                                            <span class="text-green-700 dark:text-green-400">Section Progress</span>
-                                            <span class="font-medium text-green-800 dark:text-green-300">{{ aiChapterAnalysis.completion_percentage }}%</span>
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between text-[10px] font-medium text-muted-foreground">
+                                            <span>Progress</span>
+                                            <span>{{ aiChapterAnalysis.completion_percentage }}%</span>
                                         </div>
-                                        
-                                        <!-- Progress Bar -->
-                                        <div class="w-full bg-green-100 rounded-full h-1.5 dark:bg-green-900/50">
-                                            <div 
-                                                class="bg-green-600 h-1.5 rounded-full transition-all duration-300"
-                                                :style="`width: ${aiChapterAnalysis.completion_percentage}%`"
-                                            ></div>
-                                        </div>
-
-                                        <!-- Word Count Progress -->
-                                        <div v-if="aiChapterAnalysis.word_count_progress" class="flex items-center justify-between text-xs">
-                                            <span class="text-green-700 dark:text-green-400">Word Count</span>
-                                            <span class="font-medium text-green-800 dark:text-green-300">
-                                                {{ aiChapterAnalysis.word_count_progress.current }}/{{ aiChapterAnalysis.word_count_progress.target }} words
-                                                ({{ Math.round(aiChapterAnalysis.word_count_progress.percentage || 0) }}%)
-                                            </span>
-                                        </div>
+                                        <Progress :model-value="aiChapterAnalysis.completion_percentage"
+                                            class="h-1.5" />
                                     </div>
-                                    </div>
-                                </Transition>
-                                
-                            </div>
+                                </div>
+                            </Transition>
                         </div>
-                        
-                        <!-- Quick Actions -->
-                        <Separator />
-                        <div class="grid grid-cols-2 gap-2">
-                            <Button
-                                @click="handleQuickAction('improve')"
-                                :disabled="!canImprove || isGenerating || actionLoadingStates.improve"
-                                size="sm"
-                                variant="outline"
-                                class="h-auto flex-col gap-1 p-2 hover:bg-muted cursor-pointer transition-colors"
-                                :aria-label="actionLoadingStates.improve ? 'Improving content...' : 'Improve chapter content'"
-                            >
-                                <RefreshCw v-if="actionLoadingStates.improve" class="h-3 w-3 animate-spin" />
-                                <Sparkles v-else class="h-3 w-3" />
-                                <span class="text-xs">{{ actionLoadingStates.improve ? 'Improving...' : 'Improve' }}</span>
+
+                        <!-- Action Grid -->
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <Button @click="handleQuickAction('improve')"
+                                :disabled="!canImprove || isGenerating || actionLoadingStates.improve" variant="outline"
+                                class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-accent hover:border-accent transition-all duration-300">
+                                <div class="p-1.5 rounded-full bg-blue-500/10 text-blue-500">
+                                    <Sparkles class="h-4 w-4" />
+                                </div>
+                                <span class="text-xs font-medium">Improve</span>
                             </Button>
-                            
-                            <Button
-                                @click="handleQuickAction('expand')"
+
+                            <Button @click="handleQuickAction('expand')"
                                 :disabled="!selectedText || isGenerating || actionLoadingStates.expand"
-                                size="sm"
                                 variant="outline"
-                                class="h-auto flex-col gap-1 p-2 hover:bg-muted cursor-pointer transition-colors"
-                                :aria-label="actionLoadingStates.expand ? 'Expanding selected text...' : 'Expand selected text'"
-                            >
-                                <RefreshCw v-if="actionLoadingStates.expand" class="h-3 w-3 animate-spin" />
-                                <AlignLeft v-else class="h-3 w-3" />
-                                <span class="text-xs">{{ actionLoadingStates.expand ? 'Expanding...' : 'Expand' }}</span>
+                                class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-accent hover:border-accent transition-all duration-300">
+                                <div class="p-1.5 rounded-full bg-purple-500/10 text-purple-500">
+                                    <AlignLeft class="h-4 w-4" />
+                                </div>
+                                <span class="text-xs font-medium">Expand</span>
                             </Button>
-                            
-                            <Button
-                                @click="handleQuickAction('cite')"
-                                :disabled="isGenerating || actionLoadingStates.cite"
-                                size="sm"
-                                variant="outline"
-                                class="h-auto flex-col gap-1 p-2 hover:bg-muted cursor-pointer transition-colors"
-                                :aria-label="actionLoadingStates.cite ? 'Opening citation helper...' : 'Add citations to content'"
-                            >
-                                <RefreshCw v-if="actionLoadingStates.cite" class="h-3 w-3 animate-spin" />
-                                <Quote v-else class="h-3 w-3" />
-                                <span class="text-xs">{{ actionLoadingStates.cite ? 'Opening...' : 'Cite' }}</span>
+
+                            <Button @click="handleQuickAction('cite')"
+                                :disabled="isGenerating || actionLoadingStates.cite" variant="outline"
+                                class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-accent hover:border-accent transition-all duration-300">
+                                <div class="p-1.5 rounded-full bg-orange-500/10 text-orange-500">
+                                    <Quote class="h-4 w-4" />
+                                </div>
+                                <span class="text-xs font-medium">Cite</span>
                             </Button>
-                            
-                            <Button
-                                @click="handleQuickAction('rephrase')"
+
+                            <Button @click="handleQuickAction('rephrase')"
                                 :disabled="!selectedText || isGenerating || actionLoadingStates.rephrase"
-                                size="sm"
                                 variant="outline"
-                                class="h-auto flex-col gap-1 p-2 hover:bg-muted cursor-pointer transition-colors"
-                                :aria-label="actionLoadingStates.rephrase ? 'Rephrasing selected text...' : 'Rephrase selected text'"
-                            >
-                                <RefreshCw v-if="actionLoadingStates.rephrase" class="h-3 w-3 animate-spin" />
-                                <Type v-else class="h-3 w-3" />
-                                <span class="text-xs">{{ actionLoadingStates.rephrase ? 'Rephrasing...' : 'Rephrase' }}</span>
-                            </Button>
-                        </div>
-                        
-                        <!-- Traditional Actions -->
-                        <Separator />
-                        <div class="space-y-1">
-                            <Button
-                                @click="handleGetSuggestions"
-                                :disabled="!canGetSuggestions"
-                                size="sm"
-                                class="w-full justify-start text-xs hover:bg-muted cursor-pointer transition-colors"
-                                variant="ghost"
-                                aria-label="Get AI suggestions for selected text"
-                            >
-                                <Lightbulb class="mr-2 h-3 w-3" />
-                                Get Suggestions
+                                class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-accent hover:border-accent transition-all duration-300">
+                                <div class="p-1.5 rounded-full bg-emerald-500/10 text-emerald-500">
+                                    <Type class="h-4 w-4" />
+                                </div>
+                                <span class="text-xs font-medium">Rephrase</span>
                             </Button>
                         </div>
                     </CollapsibleContent>
                 </Collapsible>
-                
-                <!-- Smart Suggestions (Temporarily Disabled) -->
-                <Collapsible :open="false" class="opacity-50">
-                    <CollapsibleTrigger class="flex w-full items-center justify-between text-sm font-medium cursor-not-allowed">
+
+                <Separator class="bg-border/50" />
+
+                <!-- Writing Style -->
+                <Collapsible :open="true" class="space-y-2">
+                    <CollapsibleTrigger
+                        class="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors group">
                         <span class="flex items-center gap-2">
-                            <Target class="h-3 w-3" />
-                            Smart Suggestions (Coming Soon)
+                            <PenTool
+                                class="h-3.5 w-3.5 text-indigo-500/70 group-hover:text-indigo-500 transition-colors" />
+                            WRITING STYLE
                         </span>
+                        <ChevronDown
+                            class="h-3 w-3 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </CollapsibleTrigger>
-                    <CollapsibleContent class="space-y-2 pt-2">
-                        <div class="text-center py-4">
-                            <Target class="h-8 w-8 mx-auto text-muted-foreground/30" />
-                            <p class="text-xs text-muted-foreground mt-2">Smart suggestions are being improved and will be available soon.</p>
-                            <p class="text-xs text-muted-foreground/70 mt-1">Use the "Analyze Chapter" button above for chapter analysis.</p>
-                        </div>
-                    </CollapsibleContent>
-                </Collapsible>
-                
-                <!-- Enhanced Writing Style Settings -->
-                <Collapsible :open="true">
-                    <CollapsibleTrigger class="flex w-full items-center justify-between text-sm font-medium">
-                        <span class="flex items-center gap-2">
-                            <Type class="h-3 w-3" />
-                            Writing Style
-                        </span>
-                        <ChevronDown class="h-3 w-3" />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent class="space-y-3 pt-2">
-                        <div class="space-y-2">
-                            <Label class="text-xs font-medium">Academic Tone</Label>
-                            <select v-model="writingStyle" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring">
+                    <CollapsibleContent class="pt-1">
+                        <div class="p-1 rounded-xl bg-muted/30 border border-border/50">
+                            <select v-model="writingStyle"
+                                class="w-full bg-transparent border-none text-xs font-medium focus:ring-0 cursor-pointer py-1.5 px-2">
                                 <option value="Academic Formal">Academic Formal</option>
                                 <option value="Academic Casual">Academic Casual</option>
                                 <option value="Technical">Technical</option>
@@ -586,26 +467,15 @@ watch(
                                 <option value="Research-Heavy">Research-Heavy</option>
                             </select>
                         </div>
-                        
-                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span class="flex items-center gap-1">
-                                <CheckCircle2 class="h-3 w-3 text-green-500" />
-                                Style: {{ writingStyle }}
-                            </span>
-                        </div>
                     </CollapsibleContent>
                 </Collapsible>
             </CardContent>
         </Card>
 
         <!-- Citation Helper -->
-        <CitationHelper 
-            :show-citation-helper="showCitationHelper"
-            :chapter-content="chapterContent"
+        <CitationHelper :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
             @update:show-citation-helper="emit('update:showCitationHelper', $event)"
-            @insert-citation="handleInsertCitation"
-        />
-
+            @insert-citation="handleInsertCitation" />
     </div>
 </template>
 

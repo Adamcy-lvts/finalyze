@@ -13,28 +13,71 @@ class DashboardController extends Controller
     public function index()
     {
         $user = auth()->user();
+
+        // Get active project with chapters
         $activeProject = $user->projects()
             ->where('is_active', true)
-            ->with('chapters')
+            ->with(['chapters' => function ($query) {
+                $query->orderBy('chapter_number');
+            }])
+            ->latest('last_activity_at')
             ->first();
 
+        // Calculate global stats
+        $projects = $user->projects()->withCount(['chapters', 'documentCitations'])->get();
+
+        $totalProjects = $projects->count();
+        $activeProjectsCount = $projects->where('is_active', true)->count();
+        $completedProjects = $projects->where('status', 'completed')->count();
+
+        // Calculate total words across all projects
+        // We need to load chapters for all projects to sum words, or use a join.
+        // For performance on small scale, loading is fine. For larger, use aggregate query.
+        $totalWords = 0;
+        $totalChapters = 0;
+
+        foreach ($projects as $project) {
+            $totalWords += $project->chapters()->sum('word_count');
+            $totalChapters += $project->chapters_count;
+        }
+
+        $avgWordsPerChapter = $totalChapters > 0 ? round($totalWords / $totalChapters) : 0;
+
+        // Count citations
+        $citationsAdded = $projects->sum('document_citations_count');
+
+        // Count collected papers
+        $researchPapers = \App\Models\CollectedPaper::where('user_id', $user->id)->count();
+
+        // Count defense questions
+        $defenseQuestions = \App\Models\DefenseQuestion::where('user_id', $user->id)->count();
+
+        // Count AI interactions
+        $aiAssistanceUsed = \App\Models\ChatConversation::where('user_id', $user->id)
+            ->where('message_type', 'ai')
+            ->count();
+
+        // Estimate hours spent (rough estimate: 500 words per hour + 1 hour per chapter for research/editing)
+        $hoursSpent = round(($totalWords / 500) + ($totalChapters * 1));
+
         $stats = [
-            'totalProjects' => $user->projects()->count(),
-            'completedChapters' => $activeProject
-                ? $activeProject->chapters()->where('status', 'approved')->count()
-                : 0,
-            'totalChapters' => $activeProject
-                ? $activeProject->chapters()->count()
-                : 0,
-            'totalWords' => $activeProject
-                ? $activeProject->chapters()->sum('word_count')
-                : 0,
+            'totalProjects' => $totalProjects,
+            'activeProjects' => $activeProjectsCount,
+            'completedProjects' => $completedProjects,
+            'totalWords' => $totalWords,
+            'avgWordsPerChapter' => $avgWordsPerChapter,
+            'citationsAdded' => $citationsAdded,
+            'researchPapers' => $researchPapers,
+            'defenseQuestions' => $defenseQuestions,
+            'aiAssistanceUsed' => $aiAssistanceUsed,
+            'hoursSpent' => $hoursSpent,
+            'weeklyGoalProgress' => 0, // Placeholder
         ];
 
-        $recentActivities = collect(); // Will implement activity tracking later
+        $recentActivities = $this->generateRecentActivities($projects);
 
         if ($activeProject) {
-            $activeProject = [
+            $activeProjectData = [
                 'id' => $activeProject->id,
                 'slug' => $activeProject->slug,
                 'title' => $activeProject->title,
@@ -45,9 +88,13 @@ class DashboardController extends Controller
                     return [
                         'number' => $chapter->chapter_number,
                         'status' => $chapter->status,
+                        'word_count' => $chapter->word_count,
+                        'target_word_count' => $chapter->target_word_count,
                     ];
                 }),
             ];
+        } else {
+            $activeProjectData = null;
         }
 
         return Inertia::render('Dashboard', [
@@ -56,7 +103,7 @@ class DashboardController extends Controller
                 'email' => $user->email,
             ],
             'stats' => $stats,
-            'activeProject' => $activeProject,
+            'activeProject' => $activeProjectData,
             'recentActivities' => $recentActivities,
         ]);
     }

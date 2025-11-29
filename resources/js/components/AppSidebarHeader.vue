@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
+import WordBalanceDisplay from '@/components/WordBalanceDisplay.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItemType } from '@/types';
+import { usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
 withDefaults(
     defineProps<{
@@ -11,6 +14,10 @@ withDefaults(
         breadcrumbs: () => [],
     },
 );
+
+const page = usePage();
+const auth = computed(() => page.props.auth as any);
+const wordBalance = computed(() => auth.value?.user?.word_balance_data);
 </script>
 
 <template>
@@ -22,6 +29,11 @@ withDefaults(
             <template v-if="breadcrumbs && breadcrumbs.length > 0">
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
+        </div>
+
+        <!-- Credit Balance Display -->
+        <div v-if="wordBalance" class="ml-auto">
+            <WordBalanceDisplay :balance="wordBalance" compact />
         </div>
     </header>
 </template>

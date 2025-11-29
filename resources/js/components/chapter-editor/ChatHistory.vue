@@ -454,6 +454,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
+@reference "../../../css/app.css";
+
 .chat-history {
   @apply w-full;
 }

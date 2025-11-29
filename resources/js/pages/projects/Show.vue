@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
-import { ArrowLeft, BookOpen, Calendar, FileText, Lightbulb, Play, Settings, University } from 'lucide-vue-next';
+import { ArrowLeft, BookOpen, Calendar, Edit, FileText, Lightbulb, Play, Settings, University } from 'lucide-vue-next';
 
 interface Chapter {
     id: number;
@@ -105,6 +105,10 @@ const totalTargetWords = () => {
                     </div>
                 </div>
                 <div class="flex gap-3 self-start sm:self-center">
+                    <Button variant="outline" @click="router.visit(route('projects.edit', project.slug))" size="sm">
+                        <Edit class="mr-2 h-4 w-4" />
+                        Edit Details
+                    </Button>
                     <Button variant="outline" @click="() => {
                         const guidanceUrl = route('projects.guidance', project.slug);
                         console.log('🎯 GUIDANCE - Navigating to:', guidanceUrl, 'Project slug:', project.slug);

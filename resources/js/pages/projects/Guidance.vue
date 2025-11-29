@@ -3,15 +3,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import {
     ArrowLeft, BookOpen, ChevronDown, ChevronRight, Clock, FileText,
     Lightbulb, Target, Users, CheckCircle, ArrowRight, Brain,
-    Zap, AlertCircle, PlayCircle, TrendingUp, Sparkles, RefreshCw, Wand2, X, List
+    Zap, AlertCircle, PlayCircle, TrendingUp, Sparkles
 } from 'lucide-vue-next';
 import { ref, computed, watch, onMounted } from 'vue';
 import { toast } from 'vue-sonner';
@@ -67,6 +65,7 @@ interface Project {
     faculty: string;
     type: string;
     slug: string;
+    mode?: string;
 }
 
 interface Props {
@@ -91,23 +90,16 @@ const initializeSections = () => {
 // Initialize sections when component mounts
 initializeSections();
 const isTransitioning = ref(false);
-const regeneratingChapters = ref<Set<number>>(new Set()); // Track which chapters are being regenerated
 
-// Guidance generation state
 const isGeneratingGuidance = ref(false);
 const guidanceProgress = ref(0);
 const currentGeneratingChapter = ref<number | null>(null);
 const generationMessage = ref('Preparing your guidance...');
 
-// Bulk generation state
-const isBulkGenerating = ref(false);
-const bulkGenerationProgress = ref(0);
-const bulkGenerationCurrentChapter = ref<string>('');
-const bulkGenerationResults = ref<any[]>([]);
-const showBulkProgressModal = ref(false);
-
 // Make chapters reactive so we can update individual chapters with new guidance
 const chapters = ref<Chapter[]>([]);
+
+const isManualMode = computed(() => (props.project?.mode ?? 'manual') !== 'auto');
 
 // Watch for changes in props and update reactive chapters
 watch(() => props.structure?.chapters, (newChapters) => {
@@ -128,6 +120,10 @@ const goBack = () => {
     router.visit(route('projects.show', props.project.slug));
 };
 
+const goToWriting = () => {
+    router.visit(route('projects.writing', props.project.slug));
+};
+
 const getCsrfToken = () => {
     // Try multiple methods to get CSRF token
     const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -138,187 +134,6 @@ const getCsrfToken = () => {
     if (match) return decodeURIComponent(match[1]);
 
     return '';
-};
-
-const regenerateAllGuidance = async () => {
-    isBulkGenerating.value = true;
-    showBulkProgressModal.value = true;
-    bulkGenerationProgress.value = 0;
-    bulkGenerationCurrentChapter.value = '';
-    bulkGenerationResults.value = [];
-
-    try {
-        // Use Server-Sent Events for real-time updates
-        const eventSource = new EventSource(`/api/projects/${props.project.slug}/guidance/stream-bulk-generation`);
-
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-
-                switch (data.type) {
-                    case 'start':
-                        bulkGenerationCurrentChapter.value = 'Starting...';
-                        break;
-
-                    case 'progress':
-                        bulkGenerationProgress.value = data.progress;
-                        bulkGenerationCurrentChapter.value = `Chapter ${data.current_chapter}: ${data.chapter_title}`;
-                        break;
-
-                    case 'chapter_complete':
-                        // Update the specific chapter with new guidance
-                        const chapterIndex = chapters.value.findIndex(c => c.number === data.result.chapter_number);
-                        if (chapterIndex !== -1) {
-                            chapters.value[chapterIndex] = {
-                                ...chapters.value[chapterIndex],
-                                ai_guidance: data.result.guidance
-                            };
-                        }
-
-                        // Add to results array
-                        const existingIndex = bulkGenerationResults.value.findIndex(r => r.chapter_number === data.result.chapter_number);
-                        if (existingIndex >= 0) {
-                            bulkGenerationResults.value[existingIndex] = data.result;
-                        } else {
-                            bulkGenerationResults.value.push(data.result);
-                        }
-                        break;
-
-                    case 'chapter_error':
-                        // Add error result to results array
-                        const errorIndex = bulkGenerationResults.value.findIndex(r => r.chapter_number === data.result.chapter_number);
-                        if (errorIndex >= 0) {
-                            bulkGenerationResults.value[errorIndex] = data.result;
-                        } else {
-                            bulkGenerationResults.value.push(data.result);
-                        }
-                        break;
-
-                    case 'complete':
-                        bulkGenerationProgress.value = 100;
-                        bulkGenerationCurrentChapter.value = 'Complete!';
-
-                        toast('✨ Bulk Generation Complete!', {
-                            description: data.message,
-                        });
-
-                        // Auto-close modal after a delay
-                        setTimeout(() => {
-                            showBulkProgressModal.value = false;
-                        }, 3000);
-
-                        eventSource.close();
-                        isBulkGenerating.value = false;
-                        break;
-
-                    case 'error':
-                        throw new Error(data.message);
-                }
-            } catch (parseError) {
-                console.error('Failed to parse SSE data:', parseError);
-            }
-        };
-
-        eventSource.onerror = (error) => {
-            console.error('SSE Error:', error);
-            eventSource.close();
-            isBulkGenerating.value = false;
-
-            toast('❌ Error', {
-                description: 'Connection lost. Please try again.',
-            });
-        };
-
-        // Clean up on component unmount
-        const cleanup = () => {
-            eventSource.close();
-        };
-
-        // Store cleanup function for later use
-        (window as any).bulkGenerationCleanup = cleanup;
-
-    } catch (error) {
-        console.error('Failed to start bulk generation:', error);
-        isBulkGenerating.value = false;
-
-        toast('❌ Error', {
-            description: 'Failed to start bulk generation. Please try again.',
-        });
-    }
-};
-
-const closeBulkProgressModal = () => {
-    showBulkProgressModal.value = false;
-};
-
-const regenerateChapterGuidance = async (chapterNumber: number) => {
-    regeneratingChapters.value.add(chapterNumber);
-
-    try {
-        const csrfToken = getCsrfToken();
-
-        if (!csrfToken) {
-            throw new Error('CSRF token not found. Please refresh the page and try again.');
-        }
-
-        const response = await fetch(`/api/projects/${props.project.slug}/guidance/regenerate/${chapterNumber}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-            credentials: 'same-origin',
-        });
-
-        // Handle CSRF token mismatch specifically
-        if (response.status === 419) {
-            toast('🔄 Session Expired', {
-                description: 'Please refresh the page and try again.',
-            });
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
-            return;
-        }
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-            // Update the specific chapter with new guidance data
-            const chapterIndex = chapters.value.findIndex(c => c.number === chapterNumber);
-            if (chapterIndex !== -1 && data.guidance) {
-                chapters.value[chapterIndex] = {
-                    ...chapters.value[chapterIndex],
-                    ai_guidance: data.guidance
-                };
-            }
-
-            toast('✨ Guidance Regenerated!', {
-                description: `Fresh AI guidance generated for Chapter ${chapterNumber}.`,
-            });
-        } else {
-            throw new Error(data.message || 'Failed to regenerate guidance');
-        }
-    } catch (error) {
-        console.error('Failed to regenerate guidance:', error);
-
-        let errorMessage = 'Failed to regenerate guidance. Please try again.';
-        if (error.message.includes('CSRF')) {
-            errorMessage = 'Session expired. Please refresh the page and try again.';
-        }
-
-        toast('❌ Error', {
-            description: errorMessage,
-        });
-    } finally {
-        regeneratingChapters.value.delete(chapterNumber);
-    }
 };
 
 const proceedToWriting = async () => {
@@ -450,6 +265,10 @@ const startGuidanceGeneration = async () => {
 
 // Auto-start guidance generation if no guidance exists
 onMounted(() => {
+    if (!isManualMode.value) {
+        return;
+    }
+
     if (props.guidanceStatus === 'missing') {
         startGuidanceGeneration();
     }
@@ -518,8 +337,27 @@ const getGuidanceTypeIcon = (type: string) => {
                     </div>
                 </div>
 
-                <!-- Loading State for Guidance Generation -->
-                <div v-if="isGeneratingGuidance" class="space-y-6">
+                <div v-if="!isManualMode" class="mt-6">
+                    <Card class="border border-border/80 bg-muted/30">
+                        <CardContent class="p-6 md:p-8 text-center space-y-4">
+                            <div class="flex justify-center">
+                                <Sparkles class="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <h2 class="text-xl md:text-2xl font-semibold">Guidance Not Required</h2>
+                            <p class="text-sm md:text-base text-muted-foreground max-w-xl mx-auto">
+                                This project is set to auto mode, so we skip the guidance stage and head straight into the writing workspace.
+                            </p>
+                            <Button @click="goToWriting" size="lg" class="font-semibold px-6">
+                                Continue to Writing
+                                <ArrowRight class="ml-2 h-4 w-4" />
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <template v-else>
+                    <!-- Loading State for Guidance Generation -->
+                    <div v-if="isGeneratingGuidance" class="space-y-6">
                     <Card class="border border-border shadow-sm bg-card">
                         <CardContent class="p-6 md:p-8 text-center">
                             <div class="flex flex-col items-center space-y-6">
@@ -568,10 +406,10 @@ const getGuidanceTypeIcon = (type: string) => {
                             </div>
                         </CardContent>
                     </Card>
-                </div>
+                    </div>
 
-                <!-- AI-Powered Timeline -->
-                <div v-else-if="hasAnyGuidance" class="space-y-4 md:space-y-6">
+                    <!-- AI-Powered Timeline -->
+                    <div v-else-if="hasAnyGuidance" class="space-y-4 md:space-y-6">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 md:mb-6">
                         <div class="flex items-center gap-2">
                             <Sparkles class="h-4 w-4 md:h-5 md:w-5 text-muted-foreground" />
@@ -580,16 +418,6 @@ const getGuidanceTypeIcon = (type: string) => {
                                 Tailored for {{ facultyName }}
                             </Badge>
                         </div>
-                        <Button
-                            @click="regenerateAllGuidance"
-                            :disabled="isBulkGenerating"
-                            variant="outline"
-                            size="sm"
-                            class="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200 text-purple-700 w-full sm:w-auto"
-                        >
-                            <Wand2 :class="['h-3 w-3 md:h-4 md:w-4', isBulkGenerating ? 'animate-spin' : '']" />
-                            <span class="text-xs md:text-sm">{{ isBulkGenerating ? 'Generating...' : 'Regenerate All Guidance' }}</span>
-                        </Button>
                     </div>
 
                     <!-- Chapter Timeline -->
@@ -646,23 +474,7 @@ const getGuidanceTypeIcon = (type: string) => {
                                                                 </CardDescription>
                                                             </div>
                                                         </div>
-                                                        <div class="flex items-center gap-2 md:gap-3">
-                                                            <Button
-                                                                v-if="chapter.ai_guidance"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                @click.stop="regenerateChapterGuidance(chapter.number)"
-                                                                :disabled="regeneratingChapters.has(chapter.number)"
-                                                                class="text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 hidden md:inline-flex"
-                                                                title="Regenerate AI guidance"
-                                                            >
-                                                                <RefreshCw
-                                                                    :class="[
-                                                                        'h-4 w-4',
-                                                                        regeneratingChapters.has(chapter.number) ? 'animate-spin text-primary' : ''
-                                                                    ]"
-                                                                />
-                                                            </Button>
+                                                        <div class="flex items-center">
                                                             <div class="p-1.5 md:p-2 rounded-lg hover:bg-primary/10 transition-colors">
                                                                 <ChevronRight
                                                                     v-if="!expandedChapters[chapter.number]"
@@ -815,25 +627,15 @@ const getGuidanceTypeIcon = (type: string) => {
                                                              class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-lg p-4 md:p-6 border border-amber-200 dark:border-amber-800/30">
                                                             <div class="flex items-start gap-3">
                                                                 <div class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex-shrink-0">
-                                                                    <RefreshCw class="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                                                    <AlertCircle class="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                                                 </div>
                                                                 <div class="flex-1">
                                                                     <h4 class="font-semibold text-sm md:text-base text-amber-800 dark:text-amber-200 mb-2">
                                                                         Enhanced Guidance Available
                                                                     </h4>
                                                                     <p class="text-xs md:text-sm text-amber-700 dark:text-amber-300 leading-relaxed mb-3">
-                                                                        This chapter has basic guidance, but our new enhanced system provides detailed section-by-section guidance with specific tips, citation requirements, and faculty-specific advice.
+                                                                        This chapter has foundational guidance. Section-by-section recommendations will appear automatically once enhanced guidance is generated for your faculty.
                                                                     </p>
-                                                                    <Button
-                                                                        @click="regenerateChapterGuidance(chapter.number)"
-                                                                        :disabled="regeneratingChapters.has(chapter.number)"
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        class="bg-amber-100 hover:bg-amber-200 border-amber-300 text-amber-700"
-                                                                    >
-                                                                        <RefreshCw :class="['h-3 w-3 mr-2', regeneratingChapters.has(chapter.number) ? 'animate-spin' : '']" />
-                                                                        {{ regeneratingChapters.has(chapter.number) ? 'Upgrading...' : 'Upgrade to Enhanced Guidance' }}
-                                                                    </Button>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -849,12 +651,9 @@ const getGuidanceTypeIcon = (type: string) => {
                                                         </div>
                                                         <h4 class="font-semibold text-lg mb-2 text-gray-700">Generating AI Guidance</h4>
                                                         <p class="text-muted-foreground mb-4">Our AI is crafting personalized guidance for this chapter...</p>
-                                                        <div class="flex justify-center">
-                                                            <Button variant="outline" size="sm" @click="regenerateChapterGuidance(chapter.number)" :disabled="regeneratingChapters.has(chapter.number)">
-                                                                <RefreshCw :class="['h-4 w-4 mr-2', regeneratingChapters.has(chapter.number) ? 'animate-spin' : '']" />
-                                                                {{ regeneratingChapters.has(chapter.number) ? 'Generating...' : 'Generate Now' }}
-                                                            </Button>
-                                                        </div>
+                                                        <p class="text-xs text-muted-foreground">
+                                                            This will refresh automatically once the chapter guidance is ready.
+                                                        </p>
                                                     </div>
                                                 </CardContent>
                                             </CollapsibleContent>
@@ -864,10 +663,10 @@ const getGuidanceTypeIcon = (type: string) => {
                             </div>
                         </div>
                     </div>
-                </div>
+                    </div>
 
-                <!-- Action Section -->
-                <div class="mt-12 text-center">
+                    <!-- Action Section -->
+                    <div class="mt-12 text-center">
                     <Card>
                         <CardContent class="p-8">
                             <div class="space-y-4">
@@ -900,92 +699,9 @@ const getGuidanceTypeIcon = (type: string) => {
                         </CardContent>
                     </Card>
                 </div>
+                </template>
             </div>
         </div>
 
-        <!-- Bulk Generation Progress Modal -->
-        <Dialog :open="showBulkProgressModal" @update:open="closeBulkProgressModal">
-            <DialogContent class="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle class="flex items-center gap-2">
-                        <Brain class="h-5 w-5 text-primary" />
-                        Generating AI Guidance
-                    </DialogTitle>
-                    <DialogDescription>
-                        Please wait while we generate personalized guidance for all chapters
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div class="space-y-6 py-4">
-                    <!-- Progress Bar -->
-                    <div class="space-y-2">
-                        <div class="flex justify-between text-sm">
-                            <span class="text-muted-foreground">Progress</span>
-                            <span class="font-medium">{{ Math.round(bulkGenerationProgress) }}%</span>
-                        </div>
-                        <Progress :value="bulkGenerationProgress" class="h-2" />
-                    </div>
-
-                    <!-- Current Status -->
-                    <div v-if="isBulkGenerating" class="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-                        <div class="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
-                            <Sparkles class="h-4 w-4 text-primary animate-pulse" />
-                        </div>
-                        <div class="flex-1">
-                            <p class="font-medium text-sm">Generating guidance...</p>
-                            <p class="text-xs text-muted-foreground">
-                                {{ bulkGenerationCurrentChapter || 'Preparing...' }}
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Results Summary -->
-                    <div v-if="bulkGenerationResults.length > 0" class="space-y-3">
-                        <h4 class="font-medium text-sm">Generation Results:</h4>
-                        <div class="space-y-2 max-h-48 overflow-y-auto">
-                            <div
-                                v-for="result in bulkGenerationResults"
-                                :key="result.chapter_number"
-                                class="flex items-center gap-3 p-3 rounded-lg border"
-                                :class="result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
-                            >
-                                <div class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold"
-                                     :class="result.success ? 'bg-green-500 text-white' : 'bg-red-500 text-white'">
-                                    {{ result.success ? '✓' : '✗' }}
-                                </div>
-                                <div class="flex-1">
-                                    <p class="font-medium text-sm">Chapter {{ result.chapter_number }}</p>
-                                    <p class="text-xs text-muted-foreground">{{ result.chapter_title }}</p>
-                                    <p v-if="!result.success" class="text-xs text-red-600 mt-1">{{ result.error }}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="flex gap-2 pt-4">
-                        <Button
-                            v-if="!isBulkGenerating"
-                            @click="closeBulkProgressModal"
-                            variant="outline"
-                            size="sm"
-                            class="flex-1"
-                        >
-                            <X class="h-4 w-4 mr-2" />
-                            Close
-                        </Button>
-                        <Button
-                            v-if="bulkGenerationProgress === 100"
-                            @click="closeBulkProgressModal"
-                            size="sm"
-                            class="flex-1"
-                        >
-                            <CheckCircle class="h-4 w-4 mr-2" />
-                            Done
-                        </Button>
-                    </div>
-                </div>
-            </DialogContent>
-        </Dialog>
     </AppLayout>
 </template>

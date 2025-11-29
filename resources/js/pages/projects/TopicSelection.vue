@@ -23,6 +23,7 @@ interface Project {
     status: string;
     field_of_study: string;
     university: string;
+    full_university_name: string;
     course: string;
 }
 
@@ -59,12 +60,27 @@ const timelineFilter = ref('all');
 const expandedTopics = ref<Set<number>>(new Set());
 
 onMounted(() => {
+    // Debug: Log what data we received from the backend
+    console.log('📋 TOPIC SELECTION - Project data received:', {
+        topic: props.project.topic,
+        title: props.project.title,
+        description: props.project.description,
+        description_exists: !!props.project.description,
+        description_length: props.project.description?.length || 0
+    });
+
     // If user already has a topic, show it
     if (props.project.topic) {
         customTopic.value = props.project.topic;
         customDescription.value = props.project.description || '';
         customTitle.value = props.project.title || '';
         activeTab.value = 'existing';
+
+        console.log('✅ TOPIC SELECTION - Form fields populated:', {
+            customTopic: customTopic.value?.substring(0, 50),
+            customDescription: customDescription.value?.substring(0, 50),
+            customTitle: customTitle.value
+        });
     }
 
     // If we have saved topics, load them and switch to generated tab
@@ -547,6 +563,8 @@ const goBackToWizard = async () => {
                     toast('Success', {
                         description: 'Returned to project setup',
                     });
+                    // Navigate to project creation page after successful state update
+                    router.visit(route('projects.create'));
                 },
                 onError: () => {
                     toast('Error', {
@@ -567,330 +585,362 @@ const goBackToWizard = async () => {
 
 <template>
     <AppLayout title="Select Project Topic">
-        <div class="mx-auto max-w-4xl space-y-8 p-6">
-            <!-- Back Navigation -->
-            <div class="flex items-center justify-between">
-                <Button @click="goBackToWizard" variant="ghost" size="sm" class="text-muted-foreground hover:text-foreground">
-                    <ArrowLeft class="mr-2 h-4 w-4" />
-                    Back to Project Setup
-                </Button>
-            </div>
-
-            <!-- Header -->
-            <div class="space-y-3 text-center">
-                <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                    <Lightbulb class="h-8 w-8 text-primary" />
+        <div class="min-h-screen bg-gradient-to-b from-background via-background/95 to-muted/20">
+            <div class="mx-auto max-w-5xl space-y-10 p-6 pb-20 lg:p-10">
+                <!-- Back Navigation -->
+                <div class="flex items-center justify-between">
+                    <Button 
+                        @click="goBackToWizard" 
+                        variant="ghost" 
+                        size="sm" 
+                        class="group text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mr-2">
+                            <ArrowLeft class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+                        </div>
+                        Back to Project Setup
+                    </Button>
                 </div>
-                <h1 class="text-3xl font-bold">Choose Your Project Topic</h1>
-                <p class="mx-auto max-w-2xl text-muted-foreground">
-                    Select or generate a research topic for your {{ project.type }} {{ project.field_of_study }} project. This will be the foundation
-                    of your entire academic work.
-                </p>
-            </div>
 
-            <!-- Project Context -->
-            <Card class="border-[0.5px] border-border/50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-                <CardHeader>
-                    <CardTitle class="flex items-center gap-2">
-                        <BookOpen class="h-5 w-5" />
-                        Project Context
-                    </CardTitle>
-                </CardHeader>
-                <CardContent class="grid grid-cols-2 gap-6 text-sm">
-                    <div>
-                        <Label class="text-muted-foreground">Field of Study</Label>
-                        <p class="font-semibold">{{ project.field_of_study }}</p>
+                <!-- Header -->
+                <div class="space-y-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-lg shadow-primary/10 ring-1 ring-white/20">
+                        <Lightbulb class="h-10 w-10 text-primary" />
                     </div>
-                    <div>
-                        <Label class="text-muted-foreground">Academic Level</Label>
-                        <Badge variant="outline" class="capitalize">{{ project.type }}</Badge>
+                    <div class="space-y-2">
+                        <h1 class="text-4xl font-bold tracking-tight sm:text-5xl bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                            Choose Your Project Topic
+                        </h1>
+                        <p class="mx-auto max-w-2xl text-lg text-muted-foreground leading-relaxed">
+                            Select or generate a research topic for your <span class="font-medium text-foreground">{{ project.type }}</span> 
+                            <span class="font-medium text-foreground">{{ project.field_of_study }}</span> project.
+                        </p>
                     </div>
-                    <div>
-                        <Label class="text-muted-foreground">University</Label>
-                        <p class="font-semibold">{{ project.university }}</p>
-                    </div>
-                    <div>
-                        <Label class="text-muted-foreground">Course</Label>
-                        <p class="font-semibold">{{ project.course }}</p>
-                    </div>
-                </CardContent>
-            </Card>
+                </div>
 
-            <!-- Topic Selection Tabs -->
-            <Tabs v-model="activeTab" class="space-y-6">
-                <TabsList class="grid w-full grid-cols-2">
-                    <TabsTrigger value="existing">Enter Topic</TabsTrigger>
-                    <TabsTrigger value="generated">AI Generated Topics</TabsTrigger>
-                </TabsList>
-
-                <!-- Enter Existing Topic -->
-                <TabsContent value="existing" class="space-y-6">
-                    <Card class="border-[0.5px] border-border/50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-                        <CardHeader>
-                            <CardTitle>Enter Your Project Topic</CardTitle>
-                            <CardDescription>
-                                If you already have a project topic (approved by supervisor or from your own research), enter it below.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent class="space-y-4">
-                            <div class="space-y-2">
-                                <Label for="custom-title">Project Title</Label>
-                                <Input id="custom-title" v-model="customTitle" placeholder="A concise title for your project..." class="text-sm" />
+                <!-- Project Context -->
+                <div class="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
+                    <Card class="overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm shadow-sm">
+                        <div class="grid grid-cols-1 divide-y divide-border/40 md:grid-cols-4 md:divide-x md:divide-y-0">
+                            <div class="p-6 flex flex-col gap-2">
+                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Field of Study</span>
+                                <div class="flex items-center gap-2 font-semibold">
+                                    <div class="h-2 w-2 rounded-full bg-blue-500"></div>
+                                    {{ project.field_of_study }}
+                                </div>
                             </div>
-
-                            <div class="space-y-2">
-                                <Label for="custom-topic">Research Topic</Label>
-                                <Textarea
-                                    id="custom-topic"
-                                    v-model="customTopic"
-                                    placeholder="Enter your research topic or question..."
-                                    rows="3"
-                                    class="resize-none text-sm"
-                                />
-                                <p class="text-xs text-muted-foreground">The main research topic or question you want to investigate.</p>
+                            <div class="p-6 flex flex-col gap-2">
+                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Academic Level</span>
+                                <div class="flex items-center gap-2 font-semibold">
+                                    <div class="h-2 w-2 rounded-full bg-purple-500"></div>
+                                    <span class="capitalize">{{ project.type }}</span>
+                                </div>
                             </div>
-
-                            <div class="space-y-2">
-                                <Label for="custom-description">Project Description</Label>
-                                <Textarea
-                                    id="custom-description"
-                                    v-model="customDescription"
-                                    placeholder="Describe your research topic, problem statement, and what you plan to investigate..."
-                                    rows="6"
-                                    class="resize-none text-sm"
-                                />
-                                <p class="text-xs text-muted-foreground">
-                                    Provide a detailed description of your research focus, objectives, and scope.
-                                </p>
+                            <div class="p-6 flex flex-col gap-2">
+                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">University</span>
+                                <div class="flex items-center gap-2 font-semibold">
+                                    <div class="h-2 w-2 rounded-full bg-orange-500"></div>
+                                    <span class="truncate" :title="project.full_university_name || project.university">
+                                        {{ project.full_university_name || project.university }}
+                                    </span>
+                                </div>
                             </div>
-
-                            <Button @click="submitTopic" :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting" class="w-full">
-                                <Loader2 v-if="isSelecting" class="mr-2 h-4 w-4 animate-spin" />
-                                <ArrowRight v-else class="mr-2 h-4 w-4" />
-                                {{ isSelecting ? 'Setting Topic...' : 'Continue with This Topic' }}
-                            </Button>
-                        </CardContent>
+                            <div class="p-6 flex flex-col gap-2">
+                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Course</span>
+                                <div class="flex items-center gap-2 font-semibold">
+                                    <div class="h-2 w-2 rounded-full bg-green-500"></div>
+                                    {{ project.course }}
+                                </div>
+                            </div>
+                        </div>
                     </Card>
-                </TabsContent>
+                </div>
 
-                <!-- AI Generated Topics -->
-                <TabsContent value="generated" class="space-y-6">
-                    <Card class="border-[0.5px] border-border/50 shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-                        <CardHeader>
-                            <CardTitle class="flex items-center gap-2">
-                                <Lightbulb class="h-5 w-5" />
-                                AI Generated Topic Suggestions
-                            </CardTitle>
-                            <CardDescription>
-                                Let our AI suggest research topics tailored to your field of study and academic level.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent class="space-y-4">
-                            <div class="flex gap-3">
-                                <Button @click="generateTopics" :disabled="isGenerating" variant="default">
-                                    <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
-                                    <Lightbulb v-else class="mr-2 h-4 w-4" />
-                                    {{
-                                        isGenerating ? 'Generating Topics...' : generatedTopics.length > 0 ? 'Generate New Topics' : 'Generate Topics'
-                                    }}
-                                </Button>
+                <!-- Topic Selection Tabs -->
+                <div class="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
+                    <Tabs v-model="activeTab" class="space-y-8">
+                        <div class="flex justify-center">
+                            <TabsList class="grid w-full max-w-md grid-cols-2 p-1 bg-muted/50 backdrop-blur-sm">
+                                <TabsTrigger value="existing" class="data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all duration-300">
+                                    Enter Topic
+                                </TabsTrigger>
+                                <TabsTrigger value="generated" class="data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all duration-300">
+                                    AI Generated Topics
+                                </TabsTrigger>
+                            </TabsList>
+                        </div>
 
-                                <Button v-if="generatedTopics.length > 0" @click="generateTopics" :disabled="isGenerating" variant="outline">
-                                    <RefreshCw class="mr-2 h-4 w-4" />
-                                    Refresh
-                                </Button>
-                            </div>
+                        <!-- Enter Existing Topic -->
+                        <TabsContent value="existing" class="focus-visible:outline-none">
+                            <Card class="border-border/40 shadow-lg shadow-primary/5 overflow-hidden">
+                                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-20"></div>
+                                <CardHeader class="pb-2">
+                                    <CardTitle class="text-xl">Enter Your Project Topic</CardTitle>
+                                    <CardDescription>
+                                        If you already have a project topic (approved by supervisor or from your own research), enter it below.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent class="space-y-6 pt-6">
+                                    <div class="space-y-2">
+                                        <Label for="custom-title" class="text-sm font-medium text-foreground/80">Project Title</Label>
+                                        <Input 
+                                            id="custom-title" 
+                                            v-model="customTitle" 
+                                            placeholder="A concise title for your project..." 
+                                            class="h-12 bg-muted/30 border-border/50 focus:bg-background transition-all" 
+                                        />
+                                    </div>
 
-                            <!-- Topic Filters -->
-                            <div v-if="generatedTopics.length > 0" class="flex gap-4 rounded-lg bg-muted/30 p-4">
-                                <div class="flex items-center gap-2">
-                                    <Label class="text-xs font-medium">Difficulty:</Label>
-                                    <select v-model="difficultyFilter" class="rounded border bg-background px-2 py-1 text-xs">
-                                        <option value="all">All Levels</option>
-                                        <option value="beginner">Beginner Friendly</option>
-                                        <option value="intermediate">Intermediate</option>
-                                        <option value="advanced">Advanced</option>
-                                    </select>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <Label class="text-xs font-medium">Timeline:</Label>
-                                    <select v-model="timelineFilter" class="rounded border bg-background px-2 py-1 text-xs">
-                                        <option value="all">Any Duration</option>
-                                        <option value="6-9 months">6-9 months</option>
-                                        <option value="9-12 months">9-12 months</option>
-                                        <option value="12+ months">12+ months</option>
-                                    </select>
-                                </div>
-                                <div class="ml-auto flex items-center gap-2">
-                                    <Badge variant="outline" class="text-xs">{{ filteredTopics.length }} topics</Badge>
-                                </div>
-                            </div>
+                                    <div class="space-y-2">
+                                        <Label for="custom-topic" class="text-sm font-medium text-foreground/80">Research Topic</Label>
+                                        <Textarea
+                                            id="custom-topic"
+                                            v-model="customTopic"
+                                            placeholder="Enter your research topic or question..."
+                                            rows="3"
+                                            class="resize-none bg-muted/30 border-border/50 focus:bg-background transition-all min-h-[100px]"
+                                        />
+                                        <p class="text-xs text-muted-foreground">The main research topic or question you want to investigate.</p>
+                                    </div>
 
-                            <!-- Enhanced Topics List -->
-                            <div v-if="generatedTopics.length > 0" class="space-y-3">
-                                <h4 class="flex items-center gap-2 text-sm font-medium">
-                                    Choose a topic that interests you:
-                                    <Badge variant="secondary" class="text-xs">Sorted by feasibility</Badge>
-                                    <Badge v-if="props.savedTopics && props.savedTopics.length > 0" variant="outline" class="text-xs">
-                                        Previously Generated
-                                    </Badge>
-                                </h4>
-                                <div class="max-h-[600px] space-y-4 overflow-y-auto">
-                                    <div
-                                        v-for="topic in filteredTopics"
-                                        :key="topic.id"
-                                        class="rounded-xl border border-border/50 bg-card p-5 transition-all duration-200 hover:shadow-md"
-                                    >
-                                        <div class="space-y-4">
-                                            <!-- Topic Title & Select Button -->
-                                            <div class="flex items-start justify-between gap-4">
-                                                <h3 class="flex-1 text-base leading-relaxed font-semibold text-foreground">
-                                                    {{ topic.title }}
-                                                </h3>
-                                                <Button size="sm" variant="default" class="shrink-0" @click="selectGeneratedTopic(topic)">
-                                                    <CheckCircle class="mr-2 h-4 w-4" />
-                                                    Select
-                                                </Button>
-                                            </div>
+                                    <div class="space-y-2">
+                                        <Label for="custom-description" class="text-sm font-medium text-foreground/80">Project Description</Label>
+                                        <Textarea
+                                            id="custom-description"
+                                            v-model="customDescription"
+                                            placeholder="Describe your research topic, problem statement, and what you plan to investigate..."
+                                            rows="6"
+                                            class="resize-none bg-muted/30 border-border/50 focus:bg-background transition-all min-h-[160px]"
+                                        />
+                                        <p class="text-xs text-muted-foreground">
+                                            Provide a detailed description of your research focus, objectives, and scope.
+                                        </p>
+                                    </div>
 
-                                            <!-- Topic Description -->
-                                            <div class="space-y-2">
-                                                <div class="text-sm leading-relaxed text-muted-foreground">
-                                                    <p v-if="!expandedTopics.has(topic.id)">
-                                                        {{ truncateDescription(topic.description) }}
-                                                    </p>
-                                                    <p v-else>
-                                                        {{ topic.description }}
-                                                    </p>
+                                    <div class="pt-4">
+                                        <Button 
+                                            @click="submitTopic" 
+                                            :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting" 
+                                            class="w-full h-12 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all"
+                                        >
+                                            <Loader2 v-if="isSelecting" class="mr-2 h-5 w-5 animate-spin" />
+                                            <span v-else class="flex items-center">
+                                                Continue with This Topic
+                                                <ArrowRight class="ml-2 h-5 w-5" />
+                                            </span>
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        <!-- AI Generated Topics -->
+                        <TabsContent value="generated" class="focus-visible:outline-none">
+                            <Card class="border-border/40 shadow-lg shadow-primary/5 overflow-hidden min-h-[500px] flex flex-col">
+                                <CardHeader class="border-b border-border/40 bg-muted/10 pb-6">
+                                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div class="space-y-1">
+                                            <CardTitle class="flex items-center gap-2 text-xl">
+                                                <div class="p-1.5 rounded-md bg-primary/10 text-primary">
+                                                    <Lightbulb class="h-5 w-5" />
                                                 </div>
-
-                                                <!-- Read More/Less Button -->
-                                                <button
-                                                    v-if="isDescriptionTruncated(topic.description)"
-                                                    @click="toggleDescription(topic.id)"
-                                                    class="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-                                                >
-                                                    <span>{{ expandedTopics.has(topic.id) ? 'Read less' : 'Read more' }}</span>
-                                                    <ChevronDown v-if="!expandedTopics.has(topic.id)" class="h-3 w-3" />
-                                                    <ChevronUp v-else class="h-3 w-3" />
-                                                </button>
-                                            </div>
-
-                                            <!-- Topic Metadata -->
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <Badge :variant="getDifficultyVariant(topic.difficulty)" class="text-xs">
-                                                    {{ topic.difficulty }}
-                                                </Badge>
-                                                <Badge variant="outline" class="text-xs"> 📅 {{ topic.timeline }} </Badge>
-                                                <Badge :variant="getResourceVariant(topic.resource_level)" class="text-xs">
-                                                    🔧 {{ topic.resource_level }} Resources
-                                                </Badge>
-                                                <Badge variant="secondary" class="text-xs"> 🔬 {{ topic.research_type }} </Badge>
-
-                                                <!-- Feasibility Score -->
-                                                <div class="ml-auto flex items-center gap-2">
-                                                    <span class="text-xs text-muted-foreground">Feasibility:</span>
-                                                    <div class="h-2 w-20 rounded-full bg-muted">
-                                                        <div
-                                                            class="h-2 rounded-full transition-all"
-                                                            :class="
-                                                                topic.feasibility_score >= 80
-                                                                    ? 'bg-green-500'
-                                                                    : topic.feasibility_score >= 60
-                                                                      ? 'bg-yellow-500'
-                                                                      : 'bg-red-500'
-                                                            "
-                                                            :style="`width: ${topic.feasibility_score}%`"
-                                                        ></div>
-                                                    </div>
-                                                    <span class="text-xs font-medium">{{ topic.feasibility_score }}%</span>
-                                                </div>
-                                            </div>
-
-                                            <!-- Keywords -->
-                                            <div class="flex flex-wrap gap-2">
-                                                <span
-                                                    v-for="keyword in topic.keywords"
-                                                    :key="keyword"
-                                                    class="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
-                                                >
-                                                    #{{ keyword }}
-                                                </span>
-                                            </div>
+                                                AI Generated Suggestions
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Tailored research topics based on your academic profile.
+                                            </CardDescription>
+                                        </div>
+                                        
+                                        <div class="flex items-center gap-3">
+                                            <Button 
+                                                @click="generateTopics" 
+                                                :disabled="isGenerating" 
+                                                :variant="generatedTopics.length > 0 ? 'outline' : 'default'"
+                                                class="h-10 transition-all"
+                                                :class="generatedTopics.length === 0 ? 'shadow-lg shadow-primary/20 hover:shadow-primary/30' : ''"
+                                            >
+                                                <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
+                                                <RefreshCw v-else-if="generatedTopics.length > 0" class="mr-2 h-4 w-4" />
+                                                <Lightbulb v-else class="mr-2 h-4 w-4" />
+                                                {{ isGenerating ? 'Generating...' : generatedTopics.length > 0 ? 'Regenerate' : 'Generate Topics' }}
+                                            </Button>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
 
-                            <!-- Enhanced Loading State with Progress Stages -->
-                            <div v-else-if="isGenerating" class="space-y-6 py-12 text-center">
-                                <div class="relative">
-                                    <Loader2 class="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-                                    <!-- Pulsing background circle for better visual effect -->
-                                    <div class="absolute inset-0 mx-auto mb-4 h-12 w-12 animate-pulse rounded-full bg-primary/20"></div>
-                                </div>
-                                
-                                <div class="space-y-4">
-                                    <h3 class="text-lg font-semibold text-foreground">Generating Research Topics</h3>
-                                    
-                                    <!-- Progress Message -->
-                                    <p class="text-sm font-medium text-primary">
-                                        {{ generationProgress || 'AI is generating personalized topics for your project...' }}
-                                    </p>
-                                    
-                                    <!-- Process Steps Indicator -->
-                                    <div class="mx-auto max-w-md space-y-3">
-                                        <div class="flex items-center justify-between text-xs text-muted-foreground">
-                                            <div class="flex items-center space-x-2">
-                                                <div :class="getStepIndicatorClass('connecting')"></div>
-                                                <span>Connecting</span>
-                                            </div>
-                                            <div class="flex items-center space-x-2">
-                                                <div :class="getStepIndicatorClass('analyzing')"></div>
-                                                <span>Analyzing</span>
-                                            </div>
-                                            <div class="flex items-center space-x-2">
-                                                <div :class="getStepIndicatorClass('generating')"></div>
-                                                <span>Generating</span>
-                                            </div>
-                                            <div class="flex items-center space-x-2">
-                                                <div :class="getStepIndicatorClass('enriching')"></div>
-                                                <span>Enriching</span>
+                                    <!-- Filters -->
+                                    <div v-if="generatedTopics.length > 0" class="mt-6 flex flex-wrap items-center gap-4 animate-in fade-in slide-in-from-top-2">
+                                        <div class="flex items-center gap-2 bg-background/50 p-1 rounded-lg border border-border/50">
+                                            <span class="text-xs font-medium px-2 text-muted-foreground">Difficulty</span>
+                                            <select v-model="difficultyFilter" class="h-8 rounded-md border-0 bg-transparent text-xs font-medium focus:ring-0 cursor-pointer hover:bg-muted/50 transition-colors">
+                                                <option value="all">All Levels</option>
+                                                <option value="beginner">Beginner Friendly</option>
+                                                <option value="intermediate">Intermediate</option>
+                                                <option value="advanced">Advanced</option>
+                                            </select>
+                                        </div>
+                                        <div class="flex items-center gap-2 bg-background/50 p-1 rounded-lg border border-border/50">
+                                            <span class="text-xs font-medium px-2 text-muted-foreground">Timeline</span>
+                                            <select v-model="timelineFilter" class="h-8 rounded-md border-0 bg-transparent text-xs font-medium focus:ring-0 cursor-pointer hover:bg-muted/50 transition-colors">
+                                                <option value="all">Any Duration</option>
+                                                <option value="6-9 months">6-9 months</option>
+                                                <option value="9-12 months">9-12 months</option>
+                                                <option value="12+ months">12+ months</option>
+                                            </select>
+                                        </div>
+                                        <div class="ml-auto">
+                                            <Badge variant="secondary" class="h-8 px-3 text-xs font-medium">
+                                                {{ filteredTopics.length }} results
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+
+                                <CardContent class="p-0 flex-1 bg-muted/5">
+                                    <!-- Loading State -->
+                                    <div v-if="isGenerating" class="flex flex-col items-center justify-center h-[400px] p-8 text-center space-y-8 animate-in fade-in duration-500">
+                                        <div class="relative">
+                                            <div class="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-75"></div>
+                                            <div class="relative flex items-center justify-center h-20 w-20 rounded-full bg-background border-2 border-primary/20 shadow-xl">
+                                                <Loader2 class="h-10 w-10 text-primary animate-spin" />
                                             </div>
                                         </div>
                                         
-                                        <!-- Progress Bar -->
-                                        <div class="w-full bg-muted rounded-full h-2">
-                                            <div 
-                                                class="bg-primary h-2 rounded-full transition-all duration-500 ease-out"
-                                                :style="`width: ${getProgressPercentage()}%`"
-                                            ></div>
+                                        <div class="space-y-4 max-w-md w-full">
+                                            <h3 class="text-xl font-semibold bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-transparent">
+                                                Crafting Your Topics
+                                            </h3>
+                                            
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between text-xs font-medium text-muted-foreground px-1">
+                                                    <span>{{ generationProgress || 'Initializing...' }}</span>
+                                                    <span>{{ Math.round(getProgressPercentage()) }}%</span>
+                                                </div>
+                                                <div class="h-2 w-full bg-muted/50 rounded-full overflow-hidden">
+                                                    <div 
+                                                        class="h-full bg-primary transition-all duration-500 ease-out relative overflow-hidden"
+                                                        :style="`width: ${getProgressPercentage()}%`"
+                                                    >
+                                                        <div class="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="grid grid-cols-4 gap-2 pt-4">
+                                                <div v-for="(step, key) in progressSteps" :key="key" 
+                                                    class="flex flex-col items-center gap-2"
+                                                    :class="key === 'complete' ? 'hidden' : ''"
+                                                >
+                                                    <div class="h-2 w-2 rounded-full transition-colors duration-300"
+                                                        :class="getStepIndicatorClass(key as string)"
+                                                    ></div>
+                                                    <span class="text-[10px] uppercase tracking-wider font-medium text-muted-foreground"
+                                                        :class="currentProgressStep === key ? 'text-primary' : ''"
+                                                    >
+                                                        {{ key }}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    
-                                    <!-- Additional Context -->
-                                    <div class="text-xs text-muted-foreground max-w-md mx-auto">
-                                        <p>Our AI is analyzing your field of study and academic level to create personalized research topics tailored to your requirements.</p>
-                                    </div>
-                                    
-                                    <!-- Estimated Time -->
-                                    <div class="text-xs text-muted-foreground">
-                                        <p>⏱️ Estimated time: 30-60 seconds</p>
-                                    </div>
-                                </div>
-                            </div>
 
-                            <!-- Empty State -->
-                            <div v-else class="rounded-lg border-2 border-dashed border-border/50 py-12 text-center">
-                                <Lightbulb class="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                                <p class="mb-4 text-sm text-muted-foreground">
-                                    Click "Generate Topics" to get AI-powered suggestions tailored to your field of study.
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+                                    <!-- Empty State -->
+                                    <div v-else-if="generatedTopics.length === 0" class="flex flex-col items-center justify-center h-[400px] p-8 text-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                                        <div class="h-24 w-24 rounded-3xl bg-muted/30 flex items-center justify-center mb-2">
+                                            <Lightbulb class="h-12 w-12 text-muted-foreground/50" />
+                                        </div>
+                                        <div class="max-w-sm space-y-2">
+                                            <h3 class="text-lg font-semibold">No Topics Generated Yet</h3>
+                                            <p class="text-muted-foreground text-sm">
+                                                Click the "Generate Topics" button to let our AI analyze your profile and suggest personalized research topics.
+                                            </p>
+                                        </div>
+                                        <Button @click="generateTopics" size="lg" class="shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
+                                            <Lightbulb class="mr-2 h-5 w-5" />
+                                            Generate Topics
+                                        </Button>
+                                    </div>
+
+                                    <!-- Topics List -->
+                                    <div v-else class="p-6 grid gap-6 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-1">
+                                        <div
+                                            v-for="topic in filteredTopics"
+                                            :key="topic.id"
+                                            class="group relative rounded-xl border border-border/50 bg-card p-6 transition-all duration-300 hover:shadow-lg hover:border-primary/20 hover:-translate-y-0.5"
+                                        >
+                                            <div class="flex flex-col gap-4">
+                                                <div class="flex items-start justify-between gap-4">
+                                                    <div class="space-y-1">
+                                                        <h3 class="text-lg font-semibold leading-tight text-foreground group-hover:text-primary transition-colors">
+                                                            {{ topic.title }}
+                                                        </h3>
+                                                        <div class="flex flex-wrap gap-2 pt-1">
+                                                            <Badge :variant="getDifficultyVariant(topic.difficulty)" class="text-[10px] uppercase tracking-wider font-medium bg-opacity-10 hover:bg-opacity-20">
+                                                                {{ topic.difficulty }}
+                                                            </Badge>
+                                                            <Badge variant="outline" class="text-[10px] uppercase tracking-wider font-medium border-primary/20 text-primary/80">
+                                                                {{ topic.timeline }}
+                                                            </Badge>
+                                                            <Badge variant="secondary" class="text-[10px] uppercase tracking-wider font-medium">
+                                                                {{ topic.research_type }}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                    <Button size="sm" class="shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-md translate-x-2 group-hover:translate-x-0" @click="selectGeneratedTopic(topic)">
+                                                        Select
+                                                        <ArrowRight class="ml-2 h-4 w-4" />
+                                                    </Button>
+                                                </div>
+
+                                                <div class="relative">
+                                                    <p class="text-sm text-muted-foreground leading-relaxed" :class="!expandedTopics.has(topic.id) ? 'line-clamp-2' : ''">
+                                                        {{ topic.description }}
+                                                    </p>
+                                                    <button
+                                                        v-if="isDescriptionTruncated(topic.description)"
+                                                        @click="toggleDescription(topic.id)"
+                                                        class="mt-1 text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                                                    >
+                                                        {{ expandedTopics.has(topic.id) ? 'Show less' : 'Read more' }}
+                                                        <ChevronDown class="h-3 w-3 transition-transform" :class="expandedTopics.has(topic.id) ? 'rotate-180' : ''" />
+                                                    </button>
+                                                </div>
+
+                                                <div class="flex items-center justify-between pt-2 border-t border-border/30 mt-2">
+                                                    <div class="flex gap-2">
+                                                        <span 
+                                                            v-for="keyword in topic.keywords.slice(0, 3)" 
+                                                            :key="keyword"
+                                                            class="text-xs text-muted-foreground/70 bg-muted/30 px-2 py-0.5 rounded-full"
+                                                        >
+                                                            #{{ keyword }}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div class="flex items-center gap-2" title="Feasibility Score">
+                                                        <div class="flex flex-col items-end">
+                                                            <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Feasibility</span>
+                                                            <span class="text-sm font-bold" :class="topic.feasibility_score >= 80 ? 'text-green-500' : topic.feasibility_score >= 60 ? 'text-yellow-500' : 'text-red-500'">
+                                                                {{ topic.feasibility_score }}%
+                                                            </span>
+                                                        </div>
+                                                        <div class="h-8 w-1 rounded-full bg-muted overflow-hidden">
+                                                            <div 
+                                                                class="w-full rounded-full transition-all duration-500 bg-current"
+                                                                :class="topic.feasibility_score >= 80 ? 'text-green-500' : topic.feasibility_score >= 60 ? 'text-yellow-500' : 'text-red-500'"
+                                                                :style="`height: ${topic.feasibility_score}%`"
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    </Tabs>
+                </div>
+            </div>
         </div>
     </AppLayout>
 </template>

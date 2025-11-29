@@ -251,7 +251,7 @@ class DefenseController extends Controller
         $context = "Project Title: {$project->title}\n";
         $context .= "Topic: {$project->topic}\n";
         $context .= "Field of Study: {$project->field_of_study}\n";
-        $context .= "University: {$project->university}\n";
+        $context .= "University: {$project->universityRelation?->name}\n";
         $context .= "Course: {$project->course}\n";
 
         // Enhanced context: Include content from multiple chapters (only those with sufficient content)

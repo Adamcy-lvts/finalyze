@@ -131,10 +131,10 @@ watch(() => props.questions, () => {
 </script>
 
 <template>
-    <Card class="border-[0.5px] border-border/50">
+    <Card class="border border-border/60 shadow-sm dark:border-border/50 dark:shadow-none transition-all duration-300 hover:shadow-md">
         <Collapsible :open="showDefensePrep" @update:open="handleToggle">
             <CollapsibleTrigger class="w-full">
-                <CardHeader class="pb-3 transition-colors hover:bg-muted/30">
+                <CardHeader class="pb-3 transition-colors bg-muted/40 hover:bg-muted/60 dark:bg-transparent dark:hover:bg-muted/30">
                     <CardTitle class="flex items-center justify-between text-sm">
                         <span class="flex items-center gap-2">
                             <Shield class="h-4 w-4 text-muted-foreground" />
@@ -156,19 +156,19 @@ watch(() => props.questions, () => {
 
             <CollapsibleContent>
                 <CardContent class="space-y-4 pt-0">
-                    <!-- Info Footer -->
-                    <div class="space-y-3 p-3 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/30 dark:border-blue-800">
+                    <!-- Info Banner -->
+                    <div class="space-y-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg dark:from-blue-950/30 dark:to-indigo-950/30 dark:border-blue-800">
                         <!-- Info Header -->
                         <div class="flex items-center justify-center gap-2">
                             <Shield class="h-4 w-4 text-blue-600 flex-shrink-0" />
                             <div class="text-center">
-                                <div class="text-sm font-medium text-blue-800 dark:text-blue-300">Smart Defense Preparation</div>
-                                <div class="text-xs text-blue-600 dark:text-blue-400">Questions are AI-generated and tailored to Chapter {{ chapterContext.chapter_number }} content.</div>
+                                <div class="text-sm font-medium text-blue-800 dark:text-blue-300">AI-Powered Defense Preparation</div>
+                                <div class="text-xs text-blue-600 dark:text-blue-400">Generate practice questions tailored to Chapter {{ chapterContext.chapter_number }} content</div>
                             </div>
                         </div>
                         <!-- Additional Info -->
                         <div class="text-center">
-                            <p class="text-xs text-blue-700 dark:text-blue-300">💡 Click any question to reveal suggested answers and key talking points.</p>
+                            <p class="text-xs text-blue-700 dark:text-blue-300">💡 Click "Generate Questions" below to create personalized defense questions</p>
                         </div>
                     </div>
 
@@ -337,12 +337,15 @@ watch(() => props.questions, () => {
                                     <Shield class="h-24 w-24" />
                                 </div>
                                 <div class="relative">
-                                    <Shield class="mx-auto h-12 w-12 text-muted-foreground/40 mb-4" />
+                                    <Shield class="mx-auto h-12 w-12 text-amber-500/60 mb-4" />
                                     <h3 class="text-sm font-medium text-foreground mb-2">
-                                        Keep Writing to Unlock Defense Questions
+                                        Write More to Generate Questions
                                     </h3>
-                                    <p class="text-xs text-muted-foreground mb-4">
-                                        {{ defenseWatcher.statusMessage }}
+                                    <p class="text-xs text-muted-foreground mb-1">
+                                        Minimum {{ defenseWatcher.threshold }} words required
+                                    </p>
+                                    <p class="text-xs text-muted-foreground/80 mb-4">
+                                        Keep writing to enable the "Generate Questions" button
                                     </p>
 
                                     <!-- Progress bar -->
@@ -350,7 +353,7 @@ watch(() => props.questions, () => {
                                         <Progress :value="defenseWatcher.progressPercentage" class="h-2" />
                                         <div class="flex justify-between text-xs text-muted-foreground">
                                             <span>{{ chapterContext.word_count }} words</span>
-                                            <span>{{ defenseWatcher.threshold }} words needed</span>
+                                            <span class="font-medium">{{ defenseWatcher.threshold }} words needed</span>
                                         </div>
                                     </div>
                                 </div>
@@ -365,13 +368,13 @@ watch(() => props.questions, () => {
                             <div class="relative">
                                 <Shield class="mx-auto h-12 w-12 text-muted-foreground/40 mb-4" />
                                 <h3 class="text-sm font-medium text-foreground mb-2">
-                                    Ready to Practice?
+                                    No Questions Yet
                                 </h3>
                                 <p class="text-xs text-muted-foreground mb-1">
-                                    No defense questions generated yet for this chapter
+                                    Click the "Generate Questions" button below to create
                                 </p>
                                 <p class="text-xs text-muted-foreground/80">
-                                    {{ defenseWatcher?.statusMessage || 'Click "Generate Questions" below to create tailored practice questions' }}
+                                    AI-powered defense questions based on your chapter content
                                 </p>
                             </div>
                         </div>
@@ -383,7 +386,12 @@ watch(() => props.questions, () => {
                             :disabled="isGenerating || (defenseWatcher && !defenseWatcher.meetsThreshold)"
                             size="sm"
                             :variant="questions.length ? 'outline' : 'default'"
-                            class="text-xs font-medium hover:scale-105 transition-all duration-200 shadow-sm hover:shadow-md">
+                            :class="[
+                                'text-xs font-medium transition-all duration-200 shadow-sm',
+                                !questions.length && (!defenseWatcher || defenseWatcher.meetsThreshold)
+                                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg hover:scale-105 ring-2 ring-blue-300 dark:ring-blue-800'
+                                    : 'hover:scale-105 hover:shadow-md'
+                            ]">
                             <Wand2 :class="[
                                 'mr-2 h-4 w-4',
                                 isGenerating ? 'animate-spin' : ''

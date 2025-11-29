@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CheckboxRootEmits, CheckboxRootProps } from 'reka-ui'
 import { cn } from '@/lib/utils'
-import { Check } from 'lucide-vue-next'
+import { Check, Minus } from 'lucide-vue-next'
 import { CheckboxIndicator, CheckboxRoot, useForwardPropsEmits } from 'reka-ui'
 import { computed, type HTMLAttributes } from 'vue'
 
@@ -30,7 +30,8 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       class="flex items-center justify-center text-current transition-none"
     >
       <slot>
-        <Check class="size-3.5" />
+        <Minus v-if="props.checked === 'indeterminate'" class="size-3.5" />
+        <Check v-else class="size-3.5" />
       </slot>
     </CheckboxIndicator>
   </CheckboxRoot>

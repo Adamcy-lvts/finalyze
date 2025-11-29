@@ -1,44 +1,48 @@
 <!-- /resources/js/pages/projects/BulkGeneration.vue -->
 <script setup lang="ts">
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
+import { Card } from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import AppLayout from '@/layouts/AppLayout.vue'
+import { useGenerationWebSocket } from '@/composables/useGenerationWebSocket'
 import { router } from '@inertiajs/vue3'
+import axios from 'axios'
 import {
     ArrowLeft,
-    BookOpen,
-    Brain,
-    CheckCircle,
-    Circle,
+    AlertTriangle,
+    Check,
     Clock,
-    Download,
+    Edit,
     FileText,
-    Loader2,
     Play,
     Search,
     Sparkles,
-    Target,
-    Zap
+    Terminal,
+    Wifi,
+    WifiOff,
+    RefreshCw,
+    Download,
+    Eye,
+    Loader2,
 } from 'lucide-vue-next'
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { route } from 'ziggy-js'
 
 interface Project {
     id: number
     slug: string
-    title: string
-    topic: string
+    title: string | null
+    topic: string | null
     type: string
     status: string
     mode: 'auto' | 'manual'
     field_of_study: string
     university: string
+    full_university_name: string
     course: string
-    faculty: string
+    faculty: string | null
     chapters: any[]
     category: any
 }
@@ -49,697 +53,497 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Generation state
-const isGenerating = ref(false)
-const isCompleted = ref(false)
-const hasError = ref(false)
-const errorMessage = ref('')
-const overallProgress = ref(0)
-const currentStage = ref('')
-const currentMessage = ref('')
-const downloadLinks = ref<any>(null)
+// WebSocket composable
+const {
+    state,
+    stages,
+    activityLog,
+    metadata,
+    downloadLinks,
+    isGenerating,
+    isCompleted,
+    hasFailed,
+    canResume,
+    estimatedTimeRemaining,
+    connect,
+    disconnect,
+    reset,
+} = useGenerationWebSocket(props.project.id)
 
-// Stage definitions
-const stages = ref([
-    {
-        id: 'literature_mining',
-        name: 'Literature Mining',
-        description: 'Collecting relevant academic papers and sources',
-        icon: Search,
-        progress: 0,
-        status: 'pending', // pending, active, completed, error
-        details: [] as string[],
-        range: [0, 20]
-    },
-    {
-        id: 'chapter_generation',
-        name: 'Chapter Generation',
-        description: 'Generating chapters with real citations and references',
-        icon: FileText,
-        progress: 0,
-        status: 'pending',
-        details: [] as string[],
-        range: [20, 70]
-    },
-    {
-        id: 'preliminary_pages',
-        name: 'Preliminary Pages',
-        description: 'Creating title page, abstract, and table of contents',
-        icon: BookOpen,
-        progress: 0,
-        status: 'pending',
-        details: [] as string[],
-        range: [70, 85]
-    },
-    {
-        id: 'appendices',
-        name: 'Appendices & Supplements',
-        description: 'Generating appendices and supplementary materials',
-        icon: Target,
-        progress: 0,
-        status: 'pending',
-        details: [] as string[],
-        range: [85, 95]
-    },
-    {
-        id: 'document_assembly',
-        name: 'Document Assembly',
-        description: 'Combining all parts into final document',
-        icon: Circle,
-        progress: 0,
-        status: 'pending',
-        details: [] as string[],
-        range: [95, 99]
-    },
-    {
-        id: 'defense_prep',
-        name: 'Defense Preparation',
-        description: 'Preparing defense questions and summaries',
-        icon: Brain,
-        progress: 0,
-        status: 'pending',
-        details: [] as string[],
-        range: [99, 100]
-    }
-])
+// Local state
+const isStarting = ref(false)
+const showDownloadMenu = ref(false)
 
-// Activity feed for live updates
-const activityFeed = ref<Array<{
-    timestamp: Date
-    message: string
-    type: 'info' | 'success' | 'error' | 'stage'
-}>>([])
-
-// Server-Sent Events connection
-let eventSource: EventSource | null = null
-
-// Computed properties
-const activeStageIndex = computed(() => {
-    return stages.value.findIndex(stage => stage.status === 'active')
+// Computed
+const connectionStatusColor = computed(() => {
+    if (state.value.isConnected) return 'text-green-500'
+    if (state.value.error) return 'text-red-500'
+    return 'text-yellow-500'
 })
 
-const completedStagesCount = computed(() => {
-    return stages.value.filter(stage => stage.status === 'completed').length
+const pageTitle = computed(() => {
+    if (isCompleted.value) return 'Project Ready!'
+    if (isGenerating.value) return 'Generating Your Project'
+    if (canResume.value) return 'Resume Generation'
+    return 'Ready to Generate'
 })
 
-const estimatedTime = computed(() => {
-    if (isCompleted.value) return 'Completed'
-    if (hasError.value) return 'Error occurred'
-    if (!isGenerating.value) return '15-20 minutes'
+const progressDescription = computed(() => {
+    if (isCompleted.value) {
+        return 'Your project has been successfully generated. You can now download it or view the chapters.'
+    }
 
-    // Rough time estimation based on progress
-    const remaining = 100 - overallProgress.value
-    const timePerPercent = 12 // seconds
-    const remainingSeconds = remaining * timePerPercent
+    if (metadata.value?.current_chapter) {
+        const chapterNum = metadata.value.current_chapter
+        const chapterProg = metadata.value.chapter_progress || 0
+        return `Generating Chapter ${chapterNum} (${chapterProg}% complete)...`
+    }
 
-    if (remainingSeconds < 60) return `~${Math.ceil(remainingSeconds)} seconds`
-    const remainingMinutes = Math.ceil(remainingSeconds / 60)
-    return `~${remainingMinutes} minutes`
+    if (state.value.currentStage === 'literature_mining') {
+        return 'Analyzing academic databases and collecting relevant sources...'
+    }
+
+    if (state.value.currentStage?.includes('chapter_generation')) {
+        return 'Writing your chapters with proper citations and formatting...'
+    }
+
+    if (state.value.currentStage === 'html_conversion') {
+        return 'Finalizing formatting and preparing your document...'
+    }
+
+    if (hasFailed.value) {
+        return 'Generation failed. You can resume from where it left off.'
+    }
+
+    if (canResume.value) {
+        return 'Click "Resume Generation" to continue from the last completed step.'
+    }
+
+    return 'Click the button below to start generating your complete project.'
 })
 
-/**
- * Start the bulk generation process
- */
-const startGeneration = () => {
-    if (isGenerating.value) return
-
-    isGenerating.value = true
-    hasError.value = false
-    errorMessage.value = ''
-    overallProgress.value = 0
-    currentStage.value = ''
-    currentMessage.value = ''
-    downloadLinks.value = null
-    isCompleted.value = false
-
-    // Reset all stages
-    stages.value.forEach(stage => {
-        stage.progress = 0
-        stage.status = 'pending'
-        stage.details = []
-    })
-
-    // Clear activity feed
-    activityFeed.value = []
-
-    addToActivityFeed('Starting comprehensive project generation...', 'info')
-
-    // Start SSE connection
-    connectToGenerationStream()
+const getStageIcon = (stageId: string) => {
+    if (stageId === 'literature_mining') return Search
+    if (stageId === 'html_conversion') return Sparkles
+    return FileText
 }
 
-/**
- * Connect to Server-Sent Events stream for real-time updates
- */
-const connectToGenerationStream = () => {
-    if (eventSource) {
-        eventSource.close()
+// Methods
+const startGeneration = async (resume = false) => {
+    if (isStarting.value || isGenerating.value) return
+
+    isStarting.value = true
+
+    if (!resume) {
+        reset()
     }
 
-    eventSource = new EventSource(`/api/projects/${props.project.slug}/bulk-generate/stream`)
+    try {
+        const response = await axios.post(
+            route('api.projects.bulk-generate.start', props.project.slug),
+            { resume }
+        )
 
-    eventSource.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data)
-            handleStreamEvent(data)
-        } catch (error) {
-            console.error('Failed to parse SSE data:', error)
-        }
-    }
-
-    eventSource.onerror = (error) => {
-        console.error('SSE connection error:', error)
-        handleGenerationError('Connection lost. Please try again.')
-        eventSource?.close()
-        eventSource = null
-    }
-}
-
-/**
- * Handle incoming stream events
- */
-const handleStreamEvent = (data: any) => {
-    switch (data.type) {
-        case 'start':
-            currentMessage.value = data.message
-            addToActivityFeed(data.message, 'info')
-            break
-
-        case 'stage_start':
-            handleStageStart(data)
-            break
-
-        case 'stage_complete':
-            handleStageComplete(data)
-            break
-
-        case 'progress':
-            handleProgressUpdate(data)
-            break
-
-        case 'stage_error':
-            handleStageError(data)
-            break
-
-        case 'complete':
-            handleGenerationComplete(data)
-            break
-
-        case 'error':
-            handleGenerationError(data.message)
-            break
-
-        default:
-            console.log('Unknown event type:', data.type)
-    }
-}
-
-/**
- * Handle stage start events
- */
-const handleStageStart = (data: any) => {
-    const stage = stages.value.find(s => s.id === data.stage)
-    if (stage) {
-        stage.status = 'active'
-        stage.progress = 0
-        currentStage.value = stage.name
-        currentMessage.value = data.message
-        overallProgress.value = data.progress || 0
-
-        addToActivityFeed(`Started: ${stage.name}`, 'stage')
-    }
-}
-
-/**
- * Handle stage completion events
- */
-const handleStageComplete = (data: any) => {
-    const stage = stages.value.find(s => s.id === data.stage)
-    if (stage) {
-        stage.status = 'completed'
-        stage.progress = 100
-        overallProgress.value = data.progress || 0
-
-        // Add detailed results if available
-        if (data.details && Array.isArray(data.details)) {
-            stage.details = [...stage.details, ...data.details]
-        }
-
-        // Special handling for literature mining completion
-        if (data.stage === 'literature_mining' && data.papers_collected) {
-            addToActivityFeed(`🎉 Literature mining complete! Collected ${data.papers_collected} high-quality papers`, 'success')
+        if (response.data.generation_id) {
+            toast.success(resume ? 'Resuming generation...' : 'Generation started!')
+            // WebSocket will handle the rest
         } else {
-            addToActivityFeed(data.message, 'success')
+            throw new Error('No generation ID returned')
         }
+    } catch (error: any) {
+        console.error('Failed to start generation:', error)
+        toast.error(error.response?.data?.message || 'Failed to start generation')
+        state.value.error = error.response?.data?.message || 'Failed to start generation'
+    } finally {
+        isStarting.value = false
     }
 }
 
-/**
- * Handle stage errors
- */
-const handleStageError = (data: any) => {
-    const stage = stages.value.find(s => s.id === data.stage)
-    if (stage) {
-        stage.status = 'error'
-        stage.progress = 0
-    }
-
-    overallProgress.value = data.progress || 0
-    addToActivityFeed(`❌ Stage error: ${data.message}`, 'error')
-}
-
-/**
- * Handle progress updates within stages
- */
-const handleProgressUpdate = (data: any) => {
-    const stage = stages.value.find(s => s.id === data.stage)
-    if (stage) {
-        // Calculate stage-specific progress based on stage range
-        const stageRange = stage.range[1] - stage.range[0]
-        const stageProgress = ((data.progress - stage.range[0]) / stageRange) * 100
-        stage.progress = Math.max(0, Math.min(100, stageProgress))
-
-        if (data.detail) {
-            stage.details.push(data.detail)
-            // Keep only last 5 details to avoid overflow
-            if (stage.details.length > 5) {
-                stage.details = stage.details.slice(-5)
-            }
-        }
-    }
-
-    overallProgress.value = data.progress || 0
-    currentMessage.value = data.message
-
-    // Add progress updates to activity feed
-    if (data.detail) {
-        addToActivityFeed(data.detail, 'info')
+const cancelGeneration = async () => {
+    try {
+        await axios.post(route('api.projects.bulk-generate.cancel', props.project.slug))
+        toast.info('Generation cancelled')
+    } catch (error: any) {
+        console.error('Failed to cancel generation:', error)
+        toast.error('Failed to cancel generation')
     }
 }
 
-/**
- * Handle generation completion
- */
-const handleGenerationComplete = (data: any) => {
-    isGenerating.value = false
-    isCompleted.value = true
-    overallProgress.value = 100
-    currentMessage.value = data.message
-    downloadLinks.value = data.download_links
-
-    // Mark all stages as completed
-    stages.value.forEach(stage => {
-        stage.status = 'completed'
-        stage.progress = 100
-    })
-
-    addToActivityFeed('🎉 Project generation completed!', 'success')
-
-    toast('Success!', {
-        description: 'Your complete project has been generated successfully!',
-        duration: 5000,
-    })
-
-    // Close SSE connection
-    if (eventSource) {
-        eventSource.close()
-        eventSource = null
+const downloadFile = async (format: 'docx' | 'pdf') => {
+    const link = downloadLinks.value?.[format]
+    if (link) {
+        window.open(link, '_blank')
     }
 }
 
-/**
- * Handle generation errors
- */
-const handleGenerationError = (message: string) => {
-    isGenerating.value = false
-    hasError.value = true
-    errorMessage.value = message
-
-    // Mark current active stage as error
-    const activeStage = stages.value.find(s => s.status === 'active')
-    if (activeStage) {
-        activeStage.status = 'error'
-    }
-
-    addToActivityFeed(`Error: ${message}`, 'error')
-
-    toast('Generation Failed', {
-        description: message,
-        duration: 10000,
-    })
-
-    // Close SSE connection
-    if (eventSource) {
-        eventSource.close()
-        eventSource = null
-    }
+const viewProject = () => {
+    router.visit(route('projects.show', props.project.slug))
 }
 
-/**
- * Add message to activity feed
- */
-const addToActivityFeed = (message: string, type: 'info' | 'success' | 'error' | 'stage') => {
-    activityFeed.value.unshift({
-        timestamp: new Date(),
-        message,
-        type
-    })
-
-    // Keep only last 50 items
-    if (activityFeed.value.length > 50) {
-        activityFeed.value = activityFeed.value.slice(0, 50)
-    }
-
-    // Scroll to top of activity feed
-    nextTick(() => {
-        const feedElement = document.getElementById('activity-feed')
-        if (feedElement) {
-            feedElement.scrollTop = 0
-        }
-    })
-}
-
-/**
- * Cancel generation
- */
-const cancelGeneration = () => {
-    if (!isGenerating.value) return
-
-    if (confirm('Are you sure you want to cancel the generation process?')) {
-        if (eventSource) {
-            eventSource.close()
-            eventSource = null
-        }
-
-        isGenerating.value = false
-        addToActivityFeed('Generation cancelled by user', 'error')
-
-        toast('Cancelled', {
-            description: 'Generation process has been cancelled',
-        })
-    }
-}
-
-/**
- * Go back to writing page
- */
 const goBack = () => {
-    if (isGenerating.value) {
-        if (!confirm('Generation is in progress. Are you sure you want to leave?')) {
-            return
-        }
-        cancelGeneration()
-    }
-
     router.visit(route('projects.writing', props.project.slug))
 }
 
-/**
- * Get stage status icon
- */
-const getStageIcon = (stage: any) => {
-    switch (stage.status) {
-        case 'completed':
-            return CheckCircle
-        case 'active':
-            return Loader2
-        case 'error':
-            return Circle // You might want to use an error icon
-        default:
-            return Circle
-    }
+const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    })
 }
 
-/**
- * Get stage status color classes
- */
-const getStageStatusClasses = (stage: any) => {
-    switch (stage.status) {
-        case 'completed':
-            return 'text-green-600 bg-green-50 border-green-200'
-        case 'active':
-            return 'text-blue-600 bg-blue-50 border-blue-200'
-        case 'error':
-            return 'text-red-600 bg-red-50 border-red-200'
-        default:
-            return 'text-gray-400 bg-gray-50 border-gray-200'
-    }
-}
-
-/**
- * Format timestamp for activity feed
- */
-const formatTimestamp = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-// Lifecycle
-onMounted(() => {
-    // Auto-start generation if URL has ?start=true
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get('start') === 'true') {
-        setTimeout(startGeneration, 1000)
-    }
-})
-
-onUnmounted(() => {
-    if (eventSource) {
-        eventSource.close()
-        eventSource = null
+// Check for existing generation on mount
+onMounted(async () => {
+    try {
+        const response = await axios.get(
+            route('api.projects.bulk-generate.status', props.project.slug)
+        )
+        
+        if (['processing', 'pending'].includes(response.data.status)) {
+            // Generation is in progress, WebSocket will pick it up
+            state.value.status = response.data.status
+            state.value.progress = response.data.progress
+            state.value.currentStage = response.data.current_stage
+            state.value.message = response.data.message
+        } else if (response.data.status === 'completed') {
+            state.value.status = 'completed'
+            state.value.progress = 100
+            downloadLinks.value = response.data.download_links
+        } else if (response.data.status === 'failed' && response.data.progress > 0) {
+            state.value.status = 'failed'
+            state.value.progress = response.data.progress
+        }
+    } catch (error) {
+        console.error('Failed to check generation status:', error)
     }
 })
 </script>
 
 <template>
-    <AppLayout :title="`Bulk Generation: ${project.title}`">
-        <div class="mx-auto max-w-7xl space-y-6 p-6">
-            <!-- Header -->
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <Button @click="goBack" variant="ghost" size="sm">
-                        <ArrowLeft class="mr-2 h-4 w-4" />
-                        Back to Writing
-                    </Button>
-                    <div class="h-6 border-l border-gray-300" />
-                    <div>
-                        <h1 class="text-2xl font-bold">Complete Project Generation</h1>
-                        <p class="text-sm text-muted-foreground">{{ project.title }}</p>
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-3">
-                    <Badge variant="outline">{{ project.type }}</Badge>
-                    <Badge variant="outline">{{ estimatedTime }}</Badge>
-                </div>
-            </div>
-
-            <!-- Overall Progress -->
-            <Card>
-                <CardHeader>
-                    <div class="flex items-center justify-between">
+    <AppLayout :title="pageTitle">
+        <div class="min-h-screen bg-gradient-to-b from-background to-muted/20 p-4 md:p-8">
+            <div class="max-w-6xl mx-auto space-y-6">
+                <!-- Header -->
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <Button variant="ghost" size="icon" @click="goBack">
+                            <ArrowLeft class="h-5 w-5" />
+                        </Button>
                         <div>
-                            <CardTitle class="flex items-center gap-2">
-                                <Sparkles class="h-5 w-5 text-purple-600" />
-                                Overall Progress
-                            </CardTitle>
-                            <CardDescription>
-                                {{ isCompleted ? 'Generation completed!' : currentMessage || 'Ready to start comprehensive project generation' }}
-                            </CardDescription>
+                            <h1 class="text-2xl md:text-3xl font-bold tracking-tight">
+                                {{ pageTitle }}
+                            </h1>
+                            <p class="text-muted-foreground mt-1">
+                                {{ project.title || project.topic }}
+                            </p>
                         </div>
+                    </div>
 
-                        <div class="text-right">
-                            <div class="text-2xl font-bold text-purple-600">{{ Math.round(overallProgress) }}%</div>
-                            <div class="text-xs text-muted-foreground">
-                                {{ completedStagesCount }}/{{ stages.length }} stages
+                    <!-- Connection Status -->
+                    <div class="flex items-center gap-2 text-sm">
+                        <component
+                            :is="state.isConnected ? Wifi : WifiOff"
+                            :class="['h-4 w-4', connectionStatusColor]"
+                        />
+                        <span :class="connectionStatusColor">
+                            {{ state.isConnected ? 'Connected' : 'Connecting...' }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Error Alert -->
+                <Alert v-if="state.error && !isGenerating" variant="destructive">
+                    <AlertTriangle class="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>
+                        {{ state.error }}
+                    </AlertDescription>
+                </Alert>
+
+                <!-- Main Content -->
+                <div class="grid gap-6 lg:grid-cols-12">
+                    <!-- Progress Section -->
+                    <div class="lg:col-span-7 space-y-6">
+                        <!-- Progress Card -->
+                        <Card class="p-6">
+                            <div class="space-y-4">
+                                <!-- Overall Progress -->
+                                <div class="space-y-2">
+                                    <div class="flex justify-between text-sm">
+                                        <span class="font-medium">Overall Progress</span>
+                                        <span class="text-muted-foreground">
+                                            {{ Math.round(state.progress) }}%
+                                        </span>
+                                    </div>
+                                    <div class="h-3 w-full overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            class="h-full bg-primary transition-all duration-500 ease-out"
+                                            :style="{ width: `${state.progress}%` }"
+                                        />
+                                    </div>
+                                    <p class="text-sm text-muted-foreground">
+                                        {{ progressDescription }}
+                                    </p>
+                                </div>
+
+                                <!-- Time Estimate -->
+                                <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Clock class="h-4 w-4" />
+                                    <span>{{ estimatedTimeRemaining }}</span>
+                                </div>
+
+                                <!-- Action Buttons -->
+                                <div class="flex flex-wrap gap-3 pt-2">
+                                    <Button
+                                        v-if="!isGenerating && !isCompleted"
+                                        @click="startGeneration(canResume)"
+                                        :disabled="isStarting || !state.isConnected"
+                                        size="lg"
+                                    >
+                                        <Loader2 v-if="isStarting" class="mr-2 h-5 w-5 animate-spin" />
+                                        <Play v-else class="mr-2 h-5 w-5" />
+                                        {{ canResume ? 'Resume Generation' : 'Start Generation' }}
+                                    </Button>
+
+                                    <Button
+                                        v-if="isGenerating"
+                                        variant="destructive"
+                                        @click="cancelGeneration"
+                                    >
+                                        Cancel
+                                    </Button>
+
+                                    <template v-if="isCompleted">
+                                        <Button @click="viewProject">
+                                            <Eye class="mr-2 h-4 w-4" />
+                                            View Project
+                                        </Button>
+                                        <Button variant="outline" @click="downloadFile('docx')">
+                                            <Download class="mr-2 h-4 w-4" />
+                                            Download DOCX
+                                        </Button>
+                                    </template>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent class="space-y-4">
-                    <Progress :model-value="overallProgress" class="h-3" />
+                        </Card>
 
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <template v-if="!isGenerating && !isCompleted && !hasError">
-                                <Button @click="startGeneration" size="lg" class="bg-gradient-to-r from-purple-600 to-blue-600">
-                                    <Play class="mr-2 h-5 w-5" />
-                                    Start Generation
-                                </Button>
-                            </template>
+                        <!-- Stages -->
+                        <div class="space-y-3">
+                            <h2 class="text-lg font-semibold tracking-tight">Generation Stages</h2>
 
-                            <template v-else-if="isGenerating">
-                                <Button @click="cancelGeneration" variant="outline" size="lg">
-                                    Cancel Generation
-                                </Button>
-                            </template>
-
-                            <template v-else-if="isCompleted && downloadLinks">
-                                <Button v-if="downloadLinks.word" as="a" :href="downloadLinks.word" size="lg" class="bg-green-600 hover:bg-green-700">
-                                    <Download class="mr-2 h-5 w-5" />
-                                    Download Word Document
-                                </Button>
-                            </template>
-                        </div>
-
-                        <div v-if="currentStage" class="text-sm text-muted-foreground">
-                            Current: {{ currentStage }}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <!-- Error Alert -->
-            <Alert v-if="hasError" class="border-red-200 bg-red-50">
-                <AlertDescription class="text-red-800">
-                    {{ errorMessage }}
-                </AlertDescription>
-            </Alert>
-
-            <div class="grid gap-6 lg:grid-cols-3">
-                <!-- Generation Stages -->
-                <div class="lg:col-span-2 space-y-4">
-                    <h2 class="text-lg font-semibold">Generation Stages</h2>
-
-                    <div class="space-y-3">
-                        <Card
-                            v-for="(stage, index) in stages"
-                            :key="stage.id"
-                            class="transition-all duration-200"
-                            :class="{
-                                'ring-2 ring-blue-200 bg-blue-50/30': stage.status === 'active',
-                                'bg-green-50/30': stage.status === 'completed',
-                                'bg-red-50/30': stage.status === 'error'
-                            }"
-                        >
-                            <CardHeader class="pb-3">
-                                <div class="flex items-start justify-between">
-                                    <div class="flex items-start gap-3">
-                                        <div class="flex h-10 w-10 items-center justify-center rounded-full border-2"
-                                             :class="getStageStatusClasses(stage)">
+                            <div class="space-y-0">
+                                <div
+                                    v-for="(stage, index) in stages"
+                                    :key="stage.id"
+                                    class="flex gap-4"
+                                >
+                                    <!-- Stage Indicator -->
+                                    <div class="flex flex-col items-center">
+                                        <div
+                                            class="flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300"
+                                            :class="{
+                                                'border-muted bg-background': stage.status === 'pending',
+                                                'border-primary bg-primary/10 animate-pulse': stage.status === 'active',
+                                                'border-green-500 bg-green-500': stage.status === 'completed',
+                                                'border-red-500 bg-red-500/10': stage.status === 'error',
+                                            }"
+                                        >
+                                            <Check
+                                                v-if="stage.status === 'completed'"
+                                                class="h-5 w-5 text-white"
+                                            />
+                                            <Loader2
+                                                v-else-if="stage.status === 'active'"
+                                                class="h-5 w-5 text-primary animate-spin"
+                                            />
+                                            <AlertTriangle
+                                                v-else-if="stage.status === 'error'"
+                                                class="h-5 w-5 text-red-500"
+                                            />
                                             <component
-                                                :is="getStageIcon(stage)"
-                                                class="h-5 w-5"
-                                                :class="{ 'animate-spin': stage.status === 'active' }"
+                                                v-else
+                                                :is="getStageIcon(stage.id)"
+                                                class="h-5 w-5 text-muted-foreground"
                                             />
                                         </div>
 
-                                        <div class="flex-1">
-                                            <CardTitle class="text-base">{{ stage.name }}</CardTitle>
-                                            <CardDescription class="text-sm">{{ stage.description }}</CardDescription>
-
-                                            <!-- Stage progress -->
-                                            <div v-if="stage.status === 'active' || stage.status === 'completed'" class="mt-2">
-                                                <Progress :model-value="stage.progress" class="h-1.5" />
-                                            </div>
+                                        <!-- Connecting Line -->
+                                        <div
+                                            v-if="index < stages.length - 1"
+                                            class="relative w-0.5 h-16 my-2"
+                                        >
+                                            <div class="absolute left-0 top-0 w-full h-full bg-muted/30" />
+                                            <div
+                                                class="absolute left-0 top-0 w-full bg-green-500 origin-top transition-transform duration-1000 ease-out"
+                                                :class="{
+                                                    'scale-y-0': stage.status === 'pending',
+                                                    'scale-y-100': stage.status === 'completed',
+                                                }"
+                                                :style="{ height: '100%' }"
+                                            />
                                         </div>
                                     </div>
 
-                                    <Badge
-                                        variant="outline"
-                                        class="text-xs"
-                                        :class="{
-                                            'bg-blue-100 text-blue-800': stage.status === 'active',
-                                            'bg-green-100 text-green-800': stage.status === 'completed',
-                                            'bg-red-100 text-red-800': stage.status === 'error',
-                                            'bg-gray-100 text-gray-600': stage.status === 'pending'
-                                        }"
-                                    >
-                                        {{
-                                            stage.status === 'pending' ? 'Waiting' :
-                                            stage.status === 'active' ? 'In Progress' :
-                                            stage.status === 'completed' ? 'Completed' :
-                                            'Error'
-                                        }}
-                                    </Badge>
-                                </div>
-                            </CardHeader>
+                                    <!-- Stage Content -->
+                                    <div class="flex-1 py-1.5 min-w-0">
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <h3
+                                                class="font-semibold text-base transition-colors duration-300"
+                                                :class="{
+                                                    'text-muted-foreground': stage.status === 'pending',
+                                                    'text-foreground': stage.status === 'active',
+                                                    'text-green-600 dark:text-green-400': stage.status === 'completed',
+                                                    'text-red-600': stage.status === 'error',
+                                                }"
+                                            >
+                                                {{ stage.name }}
+                                            </h3>
 
-                            <!-- Stage details -->
-                            <CardContent v-if="stage.details.length > 0" class="pt-0">
-                                <div class="space-y-1">
-                                    <div
-                                        v-for="detail in stage.details.slice(-3)"
-                                        :key="detail"
-                                        class="text-xs text-muted-foreground pl-13"
-                                    >
-                                        {{ detail }}
+                                            <span
+                                                v-if="stage.status === 'active' && stage.chapterProgress !== undefined"
+                                                class="text-xs font-semibold text-primary tabular-nums"
+                                            >
+                                                {{ Math.round(stage.chapterProgress) }}%
+                                            </span>
+                                        </div>
+
+                                        <p
+                                            class="text-sm mb-2 transition-colors duration-300"
+                                            :class="{
+                                                'text-muted-foreground/60': stage.status === 'pending',
+                                                'text-muted-foreground': stage.status === 'active',
+                                                'text-green-600/80 dark:text-green-400/80': stage.status === 'completed',
+                                                'text-red-600/80': stage.status === 'error',
+                                            }"
+                                        >
+                                            {{ stage.description }}
+                                        </p>
+
+                                        <!-- Word Count & Progress Bar for chapter stages -->
+                                        <div
+                                            v-if="stage.id.startsWith('chapter_generation_')"
+                                            class="flex items-center gap-3"
+                                        >
+                                            <div
+                                                v-if="(stage.wordCount ?? 0) > 0 || (stage.targetWordCount ?? 0) > 0"
+                                                class="text-xs tabular-nums"
+                                                :class="{
+                                                    'text-muted-foreground/50': stage.status === 'pending',
+                                                    'text-muted-foreground': stage.status === 'active',
+                                                    'text-green-600/80': stage.status === 'completed',
+                                                }"
+                                            >
+                                                <span :class="{ 'text-primary font-medium': stage.status === 'active' }">
+                                                    {{ stage.wordCount?.toLocaleString() ?? 0 }}
+                                                </span>
+                                                <span class="text-muted-foreground/50"> / </span>
+                                                {{ stage.targetWordCount?.toLocaleString() ?? 0 }} words
+                                            </div>
+
+                                            <!-- Progress Bar -->
+                                            <div
+                                                v-if="stage.status === 'active' && stage.chapterProgress !== undefined"
+                                                class="flex-1"
+                                            >
+                                                <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted/30">
+                                                    <div
+                                                        class="h-full bg-primary transition-all duration-500 ease-out"
+                                                        :style="{ width: `${stage.chapterProgress}%` }"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div v-else-if="stage.status === 'completed'" class="flex-1">
+                                                <div class="h-1.5 w-full overflow-hidden rounded-full bg-green-200 dark:bg-green-900/30">
+                                                    <div class="h-full bg-green-500 w-full" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Generation Time Badge -->
+                                        <div
+                                            v-if="stage.status === 'completed' && stage.generationTime"
+                                            class="mt-1"
+                                        >
+                                            <Badge variant="secondary" class="text-xs">
+                                                {{ stage.generationTime }}s
+                                            </Badge>
+                                        </div>
                                     </div>
                                 </div>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Activity Feed -->
-                <div class="space-y-4">
-                    <h2 class="text-lg font-semibold">Live Activity</h2>
+                    <!-- Activity Feed Section -->
+                    <div class="lg:col-span-5">
+                        <div class="sticky top-24">
+                            <div class="mb-4 flex items-center gap-2">
+                                <Terminal class="h-4 w-4 text-muted-foreground" />
+                                <h2 class="text-lg font-semibold tracking-tight">System Activity</h2>
+                            </div>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle class="text-base flex items-center gap-2">
-                                <Clock class="h-4 w-4" />
-                                Real-time Updates
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent class="p-0">
-                            <div
-                                id="activity-feed"
-                                class="max-h-96 overflow-y-auto space-y-2 p-4"
-                            >
-                                <div
-                                    v-for="(activity, index) in activityFeed"
-                                    :key="index"
-                                    class="flex items-start gap-2 text-sm"
-                                >
-                                    <div class="text-xs text-muted-foreground pt-0.5 w-16 flex-shrink-0">
-                                        {{ formatTimestamp(activity.timestamp) }}
-                                    </div>
+                            <Card class="overflow-hidden border-muted bg-card/50 shadow-sm">
+                                <div class="h-[400px] overflow-y-auto p-4 font-mono text-xs scrollbar-thin">
                                     <div
-                                        class="flex-1"
-                                        :class="{
-                                            'text-blue-700': activity.type === 'info',
-                                            'text-green-700': activity.type === 'success',
-                                            'text-red-700': activity.type === 'error',
-                                            'font-medium text-purple-700': activity.type === 'stage'
-                                        }"
+                                        v-if="activityLog.length === 0"
+                                        class="flex h-full flex-col items-center justify-center text-muted-foreground/50"
                                     >
-                                        {{ activity.message }}
+                                        <Terminal class="mb-2 h-8 w-8 opacity-20" />
+                                        <p>Waiting to start...</p>
+                                    </div>
+
+                                    <div v-else class="space-y-3">
+                                        <div
+                                            v-for="(activity, index) in activityLog"
+                                            :key="index"
+                                            class="group flex gap-3 transition-opacity duration-500"
+                                            :class="{ 'opacity-50': index > 5 }"
+                                        >
+                                            <span class="shrink-0 text-muted-foreground/50 select-none">
+                                                {{ formatTimestamp(activity.timestamp) }}
+                                            </span>
+                                            <span
+                                                :class="{
+                                                    'text-blue-600 dark:text-blue-400': activity.type === 'info',
+                                                    'text-green-600 dark:text-green-400 font-medium':
+                                                        activity.type === 'success' || activity.type === 'chapter_completed',
+                                                    'text-red-600 dark:text-red-400 font-medium': activity.type === 'error',
+                                                    'text-purple-600 dark:text-purple-400 font-bold': activity.type === 'stage',
+                                                    'text-cyan-600 dark:text-cyan-400': activity.type === 'chapter_progress',
+                                                    'text-amber-600 dark:text-amber-400': activity.type === 'mining',
+                                                    'text-pink-600 dark:text-pink-400': activity.type === 'conversion',
+                                                }"
+                                            >
+                                                {{ activity.message }}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-
-                                <div v-if="activityFeed.length === 0" class="text-center text-muted-foreground py-8">
-                                    No activity yet. Click "Start Generation" to begin.
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <!-- Project Info -->
-                    <Card>
-                        <CardHeader>
-                            <CardTitle class="text-base">Project Details</CardTitle>
-                        </CardHeader>
-                        <CardContent class="space-y-3 text-sm">
-                            <div>
-                                <span class="font-medium">Field:</span>
-                                <span class="ml-2 text-muted-foreground">{{ project.field_of_study }}</span>
-                            </div>
-                            <div>
-                                <span class="font-medium">University:</span>
-                                <span class="ml-2 text-muted-foreground">{{ project.university }}</span>
-                            </div>
-                            <div>
-                                <span class="font-medium">Faculty:</span>
-                                <span class="ml-2 text-muted-foreground">{{ project.faculty }}</span>
-                            </div>
-                            <div>
-                                <span class="font-medium">Type:</span>
-                                <span class="ml-2 text-muted-foreground">{{ project.type }}</span>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </Card>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+.scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.3);
+    border-radius: 20px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.5);
+}
+</style>

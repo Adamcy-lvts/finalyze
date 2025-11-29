@@ -8,14 +8,30 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { Highlight } from '@tiptap/extension-highlight'
 import { Link } from '@tiptap/extension-link'
+import { Progress } from '@/components/ui/progress'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table'
 import { TableHeader } from '@tiptap/extension-table'
 import { TableCell } from '@tiptap/extension-table'
-import { Gapcursor } from '@tiptap/extension-gapcursor'
+// import { Gapcursor } from '@tiptap/extension-gapcursor' // Removed to avoid duplicate with StarterKit
 import { Extension } from '@tiptap/core'
 // import Underline from '@tiptap/extension-underline' // Commented out to avoid duplicate with StarterKit
 import { Citation } from '@/tiptap-extensions/CitationExtension.js'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import TextAlign from '@tiptap/extension-text-align'
+import { common, createLowlight } from 'lowlight'
+import mermaid from 'mermaid'
+
+// Initialize lowlight with common languages
+const lowlight = createLowlight(common)
+
+// Initialize Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'loose',
+  fontFamily: 'Arial, sans-serif',
+})
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -71,7 +87,8 @@ import {
   Table as TableIcon,
   Columns,
   Rows,
-  Trash2
+  Trash2,
+  Loader2
 } from 'lucide-vue-next'
 
 interface Props {
@@ -80,13 +97,21 @@ interface Props {
   readonly?: boolean
   minHeight?: string
   showToolbar?: boolean
+  isGenerating?: boolean
+  generationProgress?: string
+  generationPercentage?: number
+  generationPhase?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placeholder: 'Start writing...',
   readonly: false,
   minHeight: '200px',
-  showToolbar: true
+  showToolbar: true,
+  isGenerating: false,
+  generationProgress: '',
+  generationPercentage: 0,
+  generationPhase: ''
 })
 
 const emit = defineEmits<{
@@ -253,30 +278,75 @@ const parseMarkdownTable = (lines: string[], startIndex: number): { html: string
   return { html: tableHTML, nextIndex: currentIndex }
 }
 
+// Helper function to convert Mermaid markdown code blocks to HTML
+const convertMermaidBlocks = (text: string): string => {
+  if (!text) return ''
+
+  // Match ```mermaid ... ``` blocks (with proper backticks)
+  text = text.replace(/```mermaid\n?([\s\S]*?)```/g, (_match, code) => {
+    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  })
+
+  // Match malformed mermaid blocks like ``mermaid ... `` (two backticks)
+  text = text.replace(/``mermaid\n?([\s\S]*?)``/g, (_match, code) => {
+    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  })
+
+  // Match inline mermaid text wrapped in backticks
+  text = text.replace(/`mermaid\n?([\s\S]*?)`/g, (_match, code) => {
+    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  })
+
+  return text
+}
+
+// Helper function to convert code blocks
+const convertCodeBlocks = (text: string): string => {
+  if (!text) return ''
+
+  // Match ```language\n code \n``` blocks
+  text = text.replace(/```(\w+)\n?([\s\S]*?)```/g, (_match, language, code) => {
+    return `<pre><code class="language-${language}">${code.trim()}</code></pre>`
+  })
+
+  // Match ``` code ``` blocks without language
+  text = text.replace(/```\n?([\s\S]*?)```/g, (_match, code) => {
+    return `<pre><code>${code.trim()}</code></pre>`
+  })
+
+  return text
+}
+
 // Helper function to convert markdown/plain text to proper HTML
 const convertTextToHTML = (text: string): string => {
   if (!text) return ''
-  
+
   // If it's already HTML (contains HTML tags), return as is
   if (text.includes('<p>') || text.includes('<h1>') || text.includes('<h2>') || text.includes('<div>')) {
     return text
   }
-  
+
   // Convert markdown/text content to HTML
   let html = text
-  
+
+  // Process Mermaid diagrams FIRST (before other conversions)
+  html = convertMermaidBlocks(html)
+
+  // Process code blocks (before inline code conversion)
+  html = convertCodeBlocks(html)
+
   // Convert headings with proper hierarchy
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>')  // H3 first (most specific)
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>')   // H2 second
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>')    // H1 last (least specific)
-  
+
   // Convert bold text
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-  
+
   // Convert italic text
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-  
-  // Convert inline code
+
+  // Convert inline code (but not if already in code blocks)
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
 
   // Convert Markdown tables to HTML tables
@@ -284,15 +354,15 @@ const convertTextToHTML = (text: string): string => {
 
   // Split into blocks (paragraphs/sections)
   const blocks = html.split('\n\n').filter(block => block.trim())
-  
+
   return blocks.map(block => {
     const trimmed = block.trim()
-    
+
     // If it's already a heading, return as is
     if (trimmed.startsWith('<h1>') || trimmed.startsWith('<h2>') || trimmed.startsWith('<h3>')) {
       return trimmed
     }
-    
+
     // Handle numbered/bulleted lists
     if (trimmed.includes('\n') && (trimmed.match(/^\d+\./) || trimmed.match(/^-\s/) || trimmed.match(/^\*\s/))) {
       const listItems = trimmed.split('\n').map(line => {
@@ -304,18 +374,39 @@ const convertTextToHTML = (text: string): string => {
         }
         return cleanLine
       }).filter(item => item.startsWith('<li>'))
-      
+
       if (trimmed.match(/^\d+\./)) {
         return `<ol>${listItems.join('')}</ol>`
       } else {
         return `<ul>${listItems.join('')}</ul>`
       }
     }
-    
+
     // Regular paragraphs
     const content = trimmed.replace(/\n/g, '<br>')
     return `<p>${content}</p>`
   }).join('')
+}
+
+// Helper function to render Mermaid diagrams
+const renderMermaidDiagrams = async (element: HTMLElement) => {
+  const mermaidBlocks = element.querySelectorAll('pre code.language-mermaid, .mermaid-diagram')
+
+  for (let i = 0; i < mermaidBlocks.length; i++) {
+    const block = mermaidBlocks[i] as HTMLElement
+    const code = block.textContent || ''
+
+    try {
+      const { svg } = await mermaid.render(`mermaid-editor-${Date.now()}-${i}`, code)
+      const container = document.createElement('div')
+      container.className = 'mermaid-container'
+      container.innerHTML = svg
+      block.parentElement?.replaceWith(container)
+    } catch (error) {
+      console.error('Mermaid rendering error:', error)
+      block.parentElement?.classList.add('mermaid-error')
+    }
+  }
 }
 
 // Initialize Tiptap editor
@@ -326,7 +417,14 @@ const editor = useEditor({
     StarterKit.configure({
       heading: {
         levels: [1, 2, 3]
-      }
+      },
+      codeBlock: false, // Disable default code block to use our custom one
+    }),
+    CodeBlockLowlight.configure({
+      lowlight,
+      HTMLAttributes: {
+        class: 'code-block-highlighted',
+      },
     }),
     Placeholder.configure({
       placeholder: props.placeholder
@@ -344,7 +442,7 @@ const editor = useEditor({
         class: 'prose-link text-primary hover:text-primary/80 underline decoration-primary/50'
       }
     }),
-    Gapcursor,
+    // Gapcursor, // Removed duplicate
     Table.configure({
       resizable: true,
     }),
@@ -352,7 +450,10 @@ const editor = useEditor({
     TableHeader,
     TableCell,
     // Underline, // Commented out - StarterKit might include this
-    Citation
+    Citation,
+    TextAlign.configure({
+      types: ['heading', 'paragraph'],
+    }),
   ],
   editorProps: {
     attributes: {
@@ -366,14 +467,15 @@ const editor = useEditor({
   },
   onSelectionUpdate: ({ editor }) => {
     updateCurrentFontSize()
-    
+
     // Track selected text for AI features (optimized for performance)
     const { from, to, empty } = editor.state.selection
-    
+
     if (!empty) {
+      if (!editor.state.doc) return
       const selectedContent = editor.state.doc.textBetween(from, to)
       const wordCount = selectedContent.split(/\s+/).filter(word => word.length > 0).length
-      
+
       // Only emit for selections under 200 words (rephrase limit)
       if (wordCount <= 200) {
         emit('update:selectedText', selectedContent)
@@ -395,11 +497,18 @@ const editor = useEditor({
 })
 
 // Watch for external changes
-watch(() => props.modelValue, (newValue) => {
+watch(() => props.modelValue, async (newValue) => {
   if (editor.value && editor.value.getHTML() !== newValue) {
     const processedContent = convertTextToHTML(newValue)
     editor.value.commands.setContent(processedContent, { emitUpdate: false })
-    
+
+    // Render Mermaid diagrams after content update
+    await nextTick()
+    const editorElement = document.querySelector('.ProseMirror')
+    if (editorElement) {
+      await renderMermaidDiagrams(editorElement as HTMLElement)
+    }
+
     // Emit the processed HTML content back to parent after conversion
     nextTick(() => {
       if (editor.value) {
@@ -418,9 +527,16 @@ watch(() => props.readonly, (readonly) => {
 
 // Initialize editor state on mount
 onMounted(() => {
-  setTimeout(() => {
+  setTimeout(async () => {
     if (editor.value) {
       updateCurrentFontSize()
+
+      // Render Mermaid diagrams on initial load
+      await nextTick()
+      const editorElement = document.querySelector('.ProseMirror')
+      if (editorElement) {
+        await renderMermaidDiagrams(editorElement as HTMLElement)
+      }
     }
   }, 100)
 })
@@ -466,7 +582,7 @@ const colorForm = ref({
 const openLinkDialog = () => {
   const { from, to } = editor.value?.state.selection || { from: 0, to: 0 }
   const selectedText = editor.value?.state.doc.textBetween(from, to) || ''
-  
+
   if (editor.value?.isActive('link')) {
     // Remove link if already active
     editor.value.chain().focus().unsetLink().run()
@@ -480,7 +596,7 @@ const openLinkDialog = () => {
 
 const applyLink = () => {
   if (!linkForm.value.url) return
-  
+
   if (linkForm.value.text) {
     // Replace selection with link
     const { from, to } = editor.value?.state.selection || { from: 0, to: 0 }
@@ -493,7 +609,7 @@ const applyLink = () => {
     // Just apply link to current selection
     editor.value?.chain().focus().setLink({ href: linkForm.value.url }).run()
   }
-  
+
   linkDialogOpen.value = false
 }
 
@@ -530,10 +646,9 @@ const toggleHighlight = () => {
 }
 
 // Text alignment functionality
+// Text alignment functionality
 const setTextAlign = (alignment: 'left' | 'center' | 'right' | 'justify') => {
-  // Note: StarterKit doesn't include text-align by default, but we can add it later
-  console.log(`Text alignment ${alignment} would be applied here`)
-  // For now, just log - we'd need to add the TextAlign extension
+  editor.value?.chain().focus().setTextAlign(alignment).run()
 }
 
 // Table functionality
@@ -618,7 +733,7 @@ const sizeProgression = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '
 
 const changeFontSize = (size: string | null) => {
   if (!editor.value || !size) return
-  
+
   if (size === 'default') {
     fontSize.value = '12pt'
     editor.value.chain().focus().unsetFontSize().run()
@@ -627,7 +742,7 @@ const changeFontSize = (size: string | null) => {
     // Apply font size to current selection or cursor position
     editor.value.chain().focus().setFontSize(size).run()
   }
-  
+
   // Small delay to ensure the command has been applied before updating UI
   setTimeout(() => {
     updateCurrentFontSize()
@@ -666,7 +781,7 @@ const getCurrentFontSizeValue = () => {
   // Get the font size from the current selection or cursor position
   const { from, to } = editor.value?.state.selection || { from: 0, to: 0 }
   let fontSize = ''
-  
+
   editor.value?.state.doc.nodesBetween(from, to, (node) => {
     if (node.marks) {
       node.marks.forEach(mark => {
@@ -676,7 +791,7 @@ const getCurrentFontSizeValue = () => {
       })
     }
   })
-  
+
   return fontSize || '12pt' // Default to 12pt if no size is set
 }
 
@@ -685,12 +800,6 @@ const updateCurrentFontSize = () => {
   const currentSize = getCurrentFontSizeValue()
   // If the current size is the default 12pt, show it as such
   fontSize.value = currentSize || '12pt'
-}
-
-const resetFontSize = () => {
-  editor.value?.chain().focus().unsetFontSize().run()
-  fontSize.value = '12pt'
-  updateCurrentFontSize()
 }
 
 // Check if commands are active
@@ -727,23 +836,23 @@ const replaceSelection = (newText: string, range?: { from: number, to: number })
     console.error('❌ RichTextEditor - Cannot replace selection: editor not available')
     return false
   }
-  
+
   try {
     const replaceRange = range || editor.value.state.selection
-    
+
     console.log('🔄 RichTextEditor - Starting text replacement:', {
       range: replaceRange,
       newTextLength: newText.length,
       newTextPreview: newText.substring(0, 100) + (newText.length > 100 ? '...' : '')
     })
-    
+
     // Use insertContentAt to replace the selected text with proper content parsing
     // This ensures headers and formatting are interpreted correctly
     editor.value
       .chain()
       .focus()
       .insertContentAt(
-        { from: replaceRange.from, to: replaceRange.to }, 
+        { from: replaceRange.from, to: replaceRange.to },
         newText,
         {
           parseOptions: {
@@ -752,7 +861,7 @@ const replaceSelection = (newText: string, range?: { from: number, to: number })
         }
       )
       .run()
-    
+
     console.log('✅ RichTextEditor - Text replacement successful')
     return true
   } catch (error) {
@@ -763,14 +872,14 @@ const replaceSelection = (newText: string, range?: { from: number, to: number })
 
 const replaceTextAt = (position: { from: number, to: number }, newText: string) => {
   if (!editor.value) return false
-  
+
   try {
     editor.value
       .chain()
       .focus()
       .insertContentAt(position, newText)
       .run()
-    
+
     return true
   } catch (error) {
     console.error('Error replacing text at position:', error)
@@ -787,7 +896,7 @@ const getCursorPosition = () => {
 // Set cursor to specific position
 const setCursorPosition = (position: number) => {
   if (!editor.value) return false
-  
+
   try {
     editor.value.commands.setTextSelection(position)
     return true
@@ -814,410 +923,250 @@ defineExpose({
 </script>
 
 <template>
-  <div class="w-full border rounded-md bg-background">
-    <!-- Toolbar -->
-    <div v-if="showToolbar && !readonly" class="sticky top-0 z-10 flex items-center gap-1 p-2 border-b bg-muted/30 backdrop-blur-sm">
-      <!-- Text Formatting -->
-      <Button
-        @click="toggleBold"
-        :variant="isActive('bold') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Bold (Ctrl+B)"
-      >
-        <Bold class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleItalic"
-        :variant="isActive('italic') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Italic (Ctrl+I)"
-      >
-        <Italic class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleStrike"
-        :variant="isActive('strike') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Strikethrough"
-      >
-        <Strikethrough class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleCode"
-        :variant="isActive('code') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Inline Code"
-      >
-        <Code class="w-4 h-4" />
-      </Button>
+  <div class="relative flex flex-col w-full h-full group">
+    <!-- Floating Toolbar -->
+    <div v-if="showToolbar && !readonly"
+      class="sticky top-0 z-20 mx-2 md:mx-4 mt-1 md:mt-2 mb-2 md:mb-4 flex flex-wrap items-center gap-0.5 md:gap-1 rounded-lg md:rounded-xl border border-border/40 bg-background/80 p-1 md:p-1.5 shadow-sm backdrop-blur-md transition-all duration-200 supports-[backdrop-filter]:bg-background/60">
 
-      <Button
-        @click="toggleUnderline"
-        :variant="isActive('underline') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Underline (Ctrl+U)"
-      >
-        <UnderlineIcon class="w-4 h-4" />
-      </Button>
-
-      <Separator orientation="vertical" class="h-6" />
-      
-      <!-- Headings -->
-      <Button
-        @click="setParagraph"
-        :variant="isActive('paragraph') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Normal Text"
-      >
-        <Type class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleHeading1"
-        :variant="isActive('heading', { level: 1 }) ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Heading 1 (Ctrl+Alt+1)"
-      >
-        <Heading1 class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleHeading2"
-        :variant="isActive('heading', { level: 2 }) ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Heading 2 (Ctrl+Alt+2)"
-      >
-        <Heading2 class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleHeading3"
-        :variant="isActive('heading', { level: 3 }) ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Heading 3 (Ctrl+Alt+3)"
-      >
-        <Heading3 class="w-4 h-4" />
-      </Button>
-
-      <Separator orientation="vertical" class="h-6" />
-      
-      <!-- Lists -->
-      <Button
-        @click="toggleBulletList"
-        :variant="isActive('bulletList') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Bullet List"
-      >
-        <List class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleOrderedList"
-        :variant="isActive('orderedList') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Numbered List"
-      >
-        <ListOrdered class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="toggleBlockquote"
-        :variant="isActive('blockquote') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Blockquote"
-      >
-        <Quote class="w-4 h-4" />
-      </Button>
-
-      <Separator orientation="vertical" class="h-6" />
-
-      <!-- Advanced Formatting -->
-      <Button
-        @click="openLinkDialog"
-        :variant="isActive('link') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Insert/Edit Link (Ctrl+K)"
-      >
-        <LinkIcon class="w-4 h-4" />
-      </Button>
-
-      <Button
-        @click="openColorDialog"
-        variant="ghost"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Text Color"
-      >
-        <Palette class="w-4 h-4" />
-      </Button>
-
-      <Button
-        @click="toggleHighlight"
-        :variant="isActive('highlight') ? 'default' : 'ghost'"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Highlight Text"
-      >
-        <Highlighter class="w-4 h-4" />
-      </Button>
-
-      <Separator orientation="vertical" class="h-6" />
-
-      <!-- Table Controls -->
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="h-8 w-8 p-0"
-            title="Table Tools"
-          >
-            <TableIcon class="w-4 h-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" class="w-48">
-          <DropdownMenuItem @click="insertTable">
-            <TableIcon class="w-4 h-4 mr-2" />
-            Insert Table
-          </DropdownMenuItem>
-          
-          <template v-if="isInTable()">
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem @click="addColumnBefore">
-              <Columns class="w-4 h-4 mr-2" />
-              Add Column Before
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="addColumnAfter">
-              <Columns class="w-4 h-4 mr-2" />
-              Add Column After
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="deleteColumn">
-              <Trash2 class="w-4 h-4 mr-2" />
-              Delete Column
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem @click="addRowBefore">
-              <Rows class="w-4 h-4 mr-2" />
-              Add Row Before
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="addRowAfter">
-              <Rows class="w-4 h-4 mr-2" />
-              Add Row After
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="deleteRow">
-              <Trash2 class="w-4 h-4 mr-2" />
-              Delete Row
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem @click="mergeCells">
-              Merge Cells
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="splitCell">
-              Split Cell
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem @click="toggleHeaderRow">
-              Toggle Header Row
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="toggleHeaderColumn">
-              Toggle Header Column
-            </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            <DropdownMenuItem @click="deleteTable" class="text-destructive">
-              <Trash2 class="w-4 h-4 mr-2" />
-              Delete Table
-            </DropdownMenuItem>
-          </template>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Separator orientation="vertical" class="h-6" />
-      
-      <!-- Font Size Controls -->
-      <div class="flex items-center gap-1">
-        <!-- Font Size Selector - Hidden in preview mode -->
-        <Select 
-          v-if="!readonly"
-          :model-value="fontSize" 
-          @update:model-value="changeFontSize"
-        >
-          <SelectTrigger class="w-32 h-8">
-            <SelectValue>
-              <span class="text-sm">{{ fontSize || 'Default' }}</span>
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="default">Default (12pt)</SelectItem>
-            <SelectItem v-for="size in fontSizes" :key="size.value" :value="size.value">
-              {{ size.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <!-- Quick Size Buttons -->
-        <Button
-          @click="decreaseFontSize"
-          variant="ghost"
-          size="sm"
-          class="h-8 w-8 p-0"
-          title="Decrease Font Size"
-        >
-          <Minus class="w-3 h-3" />
+      <!-- History Controls -->
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1 md:pr-1.5 mr-1 md:mr-1.5">
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80" @click="undo"
+          :disabled="!editor?.can().undo()">
+          <Undo class="h-3.5 w-3.5 md:h-4 md:w-4" />
         </Button>
-        
-        <Button
-          @click="increaseFontSize"
-          variant="ghost"
-          size="sm"
-          class="h-8 w-8 p-0"
-          title="Increase Font Size"
-        >
-          <Plus class="w-3 h-3" />
-        </Button>
-
-        <Button
-          @click="resetFontSize"
-          variant="ghost"
-          size="sm"
-          class="h-8 px-2"
-          title="Reset Font Size"
-        >
-          <RotateCcw class="w-3 h-3" />
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80" @click="redo"
+          :disabled="!editor?.can().redo()">
+          <Redo class="h-3.5 w-3.5 md:h-4 md:w-4" />
         </Button>
       </div>
 
-      <Separator orientation="vertical" class="h-6" />
-      
-      <!-- Undo/Redo -->
-      <Button
-        @click="undo"
-        :disabled="!canUndo()"
-        variant="ghost"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Undo (Ctrl+Z)"
-      >
-        <Undo class="w-4 h-4" />
-      </Button>
-      
-      <Button
-        @click="redo"
-        :disabled="!canRedo()"
-        variant="ghost"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Redo (Ctrl+Y)"
-      >
-        <Redo class="w-4 h-4" />
-      </Button>
+      <!-- Text Style -->
+      <div class="hidden md:flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" class="h-8 gap-1.5 rounded-lg px-2 font-normal hover:bg-muted/80">
+              <span class="w-20 truncate text-left text-xs">
+                {{ editor?.isActive('heading', { level: 1 }) ? 'Heading 1' :
+                  editor?.isActive('heading', { level: 2 }) ? 'Heading 2' :
+                    editor?.isActive('heading', { level: 3 }) ? 'Heading 3' :
+                      'Paragraph' }}
+              </span>
+              <Type class="h-3.5 w-3.5 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" class="w-48">
+            <DropdownMenuItem @click="setParagraph" :class="{ 'bg-accent': editor?.isActive('paragraph') }">
+              <span class="text-sm">Paragraph</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="toggleHeading1"
+              :class="{ 'bg-accent': editor?.isActive('heading', { level: 1 }) }">
+              <Heading1 class="mr-2 h-4 w-4" />
+              <span class="text-lg font-bold">Heading 1</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="toggleHeading2"
+              :class="{ 'bg-accent': editor?.isActive('heading', { level: 2 }) }">
+              <Heading2 class="mr-2 h-4 w-4" />
+              <span class="text-base font-bold">Heading 2</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="toggleHeading3"
+              :class="{ 'bg-accent': editor?.isActive('heading', { level: 3 }) }">
+              <Heading3 class="mr-2 h-4 w-4" />
+              <span class="text-sm font-bold">Heading 3</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <!-- Font Size Controls -->
+        <div class="hidden sm:flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" class="h-7 md:h-8 w-5 md:w-6 rounded-l-lg hover:bg-muted/80"
+            @click="decreaseFontSize">
+            <Minus class="h-3 w-3" />
+          </Button>
+          <div
+            class="flex h-7 md:h-8 w-8 md:w-10 items-center justify-center border-y border-border/20 bg-muted/20 text-xs font-medium">
+            {{ fontSize.replace('pt', '') }}
+          </div>
+          <Button variant="ghost" size="icon" class="h-7 md:h-8 w-5 md:w-6 rounded-r-lg hover:bg-muted/80"
+            @click="increaseFontSize">
+            <Plus class="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+
+      <!-- Basic Formatting -->
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1 md:pr-1.5 mr-1 md:mr-1.5">
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('bold') }" @click="toggleBold">
+          <Bold class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('italic') }" @click="toggleItalic">
+          <Italic class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('underline') }" @click="toggleUnderline">
+          <UnderlineIcon class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('strike') }" @click="toggleStrike">
+          <Strikethrough class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('code') }" @click="toggleCode">
+          <Code class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+      </div>
+
+      <!-- Lists & Alignment -->
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1 md:pr-1.5 mr-1 md:mr-1.5">
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('bulletList') }" @click="toggleBulletList">
+          <List class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('orderedList') }" @click="toggleOrderedList">
+          <ListOrdered class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('blockquote') }" @click="toggleBlockquote">
+          <Quote class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'left' }) }"
+          @click="setTextAlign('left')">
+          <AlignLeft class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'center' }) }"
+          @click="setTextAlign('center')">
+          <AlignCenter class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'right' }) }"
+          @click="setTextAlign('right')">
+          <AlignRight class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'justify' }) }"
+          @click="setTextAlign('justify')">
+          <AlignJustify class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+      </div>
+
+      <!-- Insert & Extras -->
+      <div class="flex items-center gap-0.5">
+        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('link') }" @click="openLinkDialog">
+          <LinkIcon class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+              :class="{ 'bg-primary/10 text-primary': editor?.isActive('table') }">
+              <TableIcon class="h-3.5 w-3.5 md:h-4 md:w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem @click="insertTable">Insert Table (3x3)</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="addColumnBefore" :disabled="!isInTable()">Add Column Before</DropdownMenuItem>
+            <DropdownMenuItem @click="addColumnAfter" :disabled="!isInTable()">Add Column After</DropdownMenuItem>
+            <DropdownMenuItem @click="deleteColumn" :disabled="!isInTable()">Delete Column</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="addRowBefore" :disabled="!isInTable()">Add Row Before</DropdownMenuItem>
+            <DropdownMenuItem @click="addRowAfter" :disabled="!isInTable()">Add Row After</DropdownMenuItem>
+            <DropdownMenuItem @click="deleteRow" :disabled="!isInTable()">Delete Row</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @click="deleteTable" :disabled="!isInTable()" class="text-destructive">Delete Table
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.isActive('highlight') }" @click="toggleHighlight">
+          <Highlighter class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+
+        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+          :class="{ 'bg-primary/10 text-primary': editor?.getAttributes('textStyle').color }" @click="openColorDialog">
+          <Palette class="h-3.5 w-3.5 md:h-4 md:w-4" />
+        </Button>
+      </div>
     </div>
 
     <!-- Editor Content -->
-    <div class="relative">
-      <EditorContent 
-        :editor="editor" 
-        class="prose-editor"
-        :class="{ 'cursor-default': readonly }"
-      />
+    <div class="relative flex-1 min-h-0">
+      <EditorContent :editor="editor" class="h-full w-full outline-none" />
+
+      <!-- AI Generation Overlay -->
+      <div v-if="isGenerating"
+        class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/50 backdrop-blur-[2px] transition-all duration-500">
+        <div
+          class="flex flex-col items-center gap-4 rounded-2xl border border-border/50 bg-background/90 p-8 shadow-xl backdrop-blur-xl">
+          <div class="relative h-16 w-16">
+            <div class="absolute inset-0 animate-ping rounded-full bg-primary/20"></div>
+            <div
+              class="relative flex h-full w-full items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20">
+              <Loader2 class="h-8 w-8 animate-spin text-primary" />
+            </div>
+          </div>
+          <div class="text-center">
+            <h3 class="text-lg font-semibold tracking-tight">{{ generationPhase || 'Generating...' }}</h3>
+            <p class="text-sm text-muted-foreground">{{ generationProgress || 'AI is writing your chapter...' }}</p>
+          </div>
+          <Progress :model-value="generationPercentage" class="h-2 w-64" />
+        </div>
+      </div>
     </div>
 
-    <!-- Status Bar -->
-    <div v-if="showToolbar && !readonly" class="flex items-center justify-between px-3 py-2 border-t bg-muted/30 text-xs text-muted-foreground">
-      <span>{{ fontSize || 'Default (12pt)' }}</span>
-      <span>Words: {{ wordCount }}</span>
-    </div>
-
-    <!-- Link Dialog -->
-    <Dialog v-model:open="linkDialogOpen">
-      <DialogContent class="sm:max-w-md">
+    <!-- Dialogs -->
+    <Dialog :open="linkDialogOpen" @update:open="linkDialogOpen = $event">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Insert Link</DialogTitle>
-          <DialogDescription>
-            Add a hyperlink to your text.
-          </DialogDescription>
+          <DialogDescription>Enter the URL for the link.</DialogDescription>
         </DialogHeader>
         <div class="grid gap-4 py-4">
           <div class="grid gap-2">
-            <Label for="link-url">URL</Label>
-            <Input
-              id="link-url"
-              v-model="linkForm.url"
-              placeholder="https://example.com"
-              type="url"
-            />
+            <Label htmlFor="link-text">Text</Label>
+            <Input id="link-text" v-model="linkForm.text" placeholder="Link text" />
           </div>
           <div class="grid gap-2">
-            <Label for="link-text">Link Text</Label>
-            <Input
-              id="link-text"
-              v-model="linkForm.text"
-              placeholder="Link text (optional)"
-            />
+            <Label htmlFor="link-url">URL</Label>
+            <Input id="link-url" v-model="linkForm.url" placeholder="https://example.com" />
           </div>
         </div>
         <DialogFooter>
-          <Button @click="linkDialogOpen = false" variant="outline">Cancel</Button>
-          <Button @click="applyLink">Add Link</Button>
+          <Button variant="outline" @click="linkDialogOpen = false">Cancel</Button>
+          <Button @click="applyLink">Insert</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
-    <!-- Color Dialog -->
-    <Dialog v-model:open="colorDialogOpen">
-      <DialogContent class="sm:max-w-md">
+    <Dialog :open="colorDialogOpen" @update:open="colorDialogOpen = $event">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Text Color</DialogTitle>
-          <DialogDescription>
-            Choose a color for the selected text.
-          </DialogDescription>
+          <DialogDescription>Choose a color for the selected text.</DialogDescription>
         </DialogHeader>
         <div class="grid gap-4 py-4">
-          <div class="grid gap-2">
-            <Label for="text-color">Color</Label>
-            <div class="flex gap-2">
-              <Input
-                id="text-color"
-                v-model="colorForm.color"
-                type="color"
-                class="w-16 h-10 p-1 border-0"
-              />
-              <Input
-                v-model="colorForm.color"
-                placeholder="#000000"
-                class="flex-1"
-              />
-            </div>
+          <div class="flex items-center gap-4">
+            <Input type="color" v-model="colorForm.color" class="h-12 w-12 p-1" />
+            <Input v-model="colorForm.color" placeholder="#000000" class="flex-1" />
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="color in ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899']"
+              :key="color"
+              class="h-8 w-8 rounded-full border border-border shadow-sm transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              :style="{ backgroundColor: color }" @click="colorForm.color = color"></button>
           </div>
         </div>
         <DialogFooter>
-          <Button @click="removeTextColor" variant="outline">Remove Color</Button>
-          <Button @click="colorDialogOpen = false" variant="outline">Cancel</Button>
-          <Button @click="applyColor">Apply Color</Button>
+          <Button variant="outline" @click="removeTextColor">Reset</Button>
+          <Button @click="applyColor">Apply</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1225,294 +1174,100 @@ defineExpose({
 </template>
 
 <style scoped>
+@reference "../../../../css/app.css";
+
 :deep(.ProseMirror) {
-  outline: none !important;
-  border: none !important;
-  min-height: v-bind(minHeight);
-  padding: 12px;
-  font-size: 14pt; /* Default font size in points like MS Word */
+  @apply min-h-full outline-none;
+
+  /* Academic Typography Improvements */
+  p {
+    @apply mb-4 leading-relaxed text-foreground/90;
+    text-align: justify;
+    hyphens: auto;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-bold tracking-tight text-foreground mt-8 mb-4;
+  }
+
+  h1 {
+    @apply text-3xl border-b pb-2;
+  }
+
+  h2 {
+    @apply text-2xl;
+  }
+
+  h3 {
+    @apply text-xl;
+  }
+
+  ul,
+  ol {
+    @apply pl-6 mb-4 space-y-1;
+  }
+
+  ul {
+    @apply list-disc;
+  }
+
+  ol {
+    @apply list-decimal;
+  }
+
+  blockquote {
+    @apply border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-6 bg-muted/10 py-2 pr-2 rounded-r-lg;
+  }
+
+  code {
+    @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-primary;
+  }
+
+  pre {
+    @apply bg-muted/50 p-4 rounded-lg overflow-x-auto my-6 border border-border/50;
+
+    code {
+      @apply bg-transparent p-0 text-foreground;
+    }
+  }
+
+  /* Table Styles */
+  table {
+    @apply w-full border-collapse my-6 text-sm;
+
+    th,
+    td {
+      @apply border border-border p-2 relative;
+    }
+
+    th {
+      @apply bg-muted/30 font-bold text-left;
+    }
+
+    .selectedCell:after {
+      @apply absolute inset-0 bg-primary/10 pointer-events-none content-[''];
+    }
+  }
+
+  /* Link Styles */
+  a {
+    @apply text-primary underline decoration-primary/30 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary;
+    cursor: pointer;
+  }
+
+  /* Selection Color */
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
 }
 
-:deep(.ProseMirror p.is-editor-empty:first-child::before) {
-  content: attr(data-placeholder);
-  float: left;
-  color: hsl(var(--muted-foreground));
-  pointer-events: none;
-  height: 0;
-}
-
-:deep(.ProseMirror h1) {
-  font-size: 1.8rem;
-  font-weight: 700;
-  line-height: 1.2;
-  margin-top: 2rem;
-  margin-bottom: 1rem;
-  color: hsl(var(--foreground));
-  page-break-after: avoid;
-}
-
-:deep(.ProseMirror h2) {
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1.3;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-  color: hsl(var(--foreground));
-  page-break-after: avoid;
-}
-
-:deep(.ProseMirror h3) {
-  font-size: 1.2rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
-  color: hsl(var(--foreground));
-  page-break-after: avoid;
-}
-
-:deep(.ProseMirror ul) {
-  list-style: disc;
-  padding-left: 1.5rem;
-  margin: 1rem 0;
-}
-
-:deep(.ProseMirror ol) {
-  list-style: decimal;
-  padding-left: 1.5rem;
-  margin: 1rem 0;
-}
-
-:deep(.ProseMirror li) {
-  margin: 0.25rem 0;
-}
-
-:deep(.ProseMirror blockquote) {
-  border-left: 4px solid hsl(var(--border));
-  padding-left: 1rem;
-  margin: 1rem 0;
-  font-style: italic;
-}
-
-:deep(.ProseMirror code) {
-  background: hsl(var(--muted));
-  padding: 0.25rem 0.375rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-}
-
-:deep(.ProseMirror pre) {
-  background: hsl(var(--muted));
-  border-radius: 0.5rem;
-  padding: 1rem;
-  margin: 1rem 0;
-  overflow-x: auto;
-}
-
-:deep(.ProseMirror pre code) {
-  background: none;
-  padding: 0;
-  border-radius: 0;
-  font-size: inherit;
-}
-
-.prose-editor {
-  line-height: 1.6;
-  font-family: 'Times New Roman', 'Liberation Serif', serif;
-}
-
-/* Academic formatting improvements */
-:deep(.ProseMirror p) {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  line-height: 1.6;
-  text-align: justify;
-  text-indent: 0;
-}
-
-/* Better spacing for academic structure */
-:deep(.ProseMirror h1 + p),
-:deep(.ProseMirror h2 + p),
-:deep(.ProseMirror h3 + p) {
-  margin-top: 0.5rem;
-}
-
-/* Ensure proper spacing between sections */
-:deep(.ProseMirror h1) {
-  border-bottom: none;
-  margin-top: 2.5rem;
-}
-
-:deep(.ProseMirror h1:first-child) {
-  margin-top: 0;
-}
-
-/* Better list formatting */
-:deep(.ProseMirror ol),
-:deep(.ProseMirror ul) {
-  margin-bottom: 1rem;
-}
-
-:deep(.ProseMirror li) {
-  margin-bottom: 0.25rem;
-  line-height: 1.6;
-}
-
-/* Link styles */
-:deep(.ProseMirror a) {
-  color: hsl(var(--primary));
-  text-decoration: underline;
-  text-decoration-color: hsl(var(--primary) / 0.5);
-}
-
-:deep(.ProseMirror a:hover) {
-  color: hsl(var(--primary) / 0.8);
-  text-decoration-color: hsl(var(--primary) / 0.8);
-}
-
-/* Highlight styles */
-:deep(.ProseMirror mark) {
-  background-color: hsl(var(--warning) / 0.3);
-  color: inherit;
-  padding: 0.125rem 0.25rem;
-  border-radius: 0.25rem;
-}
-
-/* Table styles - Enhanced visibility with proper contrast */
-:deep(.ProseMirror .tableWrapper) {
-  margin: 1.5rem 0;
-  overflow-x: auto;
-}
-
-:deep(.ProseMirror table) {
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-  width: 100%;
-  margin: 0;
-  overflow: hidden;
-  border: 1px solid #9ca3af;
-  background-color: #ffffff;
-}
-
-:deep(.ProseMirror table td),
-:deep(.ProseMirror table th) {
-  min-width: 1em;
-  border-right: 1px solid #9ca3af;
-  border-bottom: 1px solid #9ca3af;
-  padding: 10px 14px;
-  vertical-align: top;
-  box-sizing: border-box;
-  position: relative;
-  background-color: #ffffff;
-  color: #1f2937;
-}
-
-:deep(.ProseMirror table td:last-child),
-:deep(.ProseMirror table th:last-child) {
-  border-right: none;
-}
-
-:deep(.ProseMirror table tr:last-child td) {
-  border-bottom: none;
-}
-
-:deep(.ProseMirror table th) {
-  background-color: #f3f4f6;
-  font-weight: 600;
-  text-align: left;
-  color: #111827;
-}
-
-/* Dark mode table styles with better visibility */
-.dark :deep(.ProseMirror table) {
-  border: 1px solid #6b7280;
-  background-color: #111827;
-}
-
-.dark :deep(.ProseMirror table td),
-.dark :deep(.ProseMirror table th) {
-  border-right: 1px solid #6b7280;
-  border-bottom: 1px solid #6b7280;
-  background-color: #111827;
-  color: #f3f4f6;
-}
-
-.dark :deep(.ProseMirror table th) {
-  background-color: #374151;
-  color: #ffffff;
-}
-
-:deep(.ProseMirror table td p),
-:deep(.ProseMirror table th p) {
-  margin: 0;
-}
-
-/* Selected cell highlighting */
-:deep(.ProseMirror table .selectedCell:after) {
-  background: rgba(59, 130, 246, 0.15);
-  content: "";
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  pointer-events: none;
-  position: absolute;
-  z-index: 2;
-}
-
-.dark :deep(.ProseMirror table .selectedCell:after) {
-  background: rgba(147, 197, 253, 0.2);
-}
-
-/* Column resize handle */
-:deep(.ProseMirror table .column-resize-handle) {
-  background-color: #3b82f6;
-  bottom: -2px;
-  position: absolute;
-  right: -2px;
-  top: 0;
-  width: 4px;
-  pointer-events: none;
-}
-
-:deep(.ProseMirror.resize-cursor) {
-  cursor: ew-resize;
-  cursor: col-resize;
-}
-
-/* Table hover effects */
-:deep(.ProseMirror table td:hover) {
-  background-color: #f9fafb !important;
-}
-
-:deep(.ProseMirror table th:hover) {
-  background-color: #d1d5db !important;
-}
-
-.dark :deep(.ProseMirror table td:hover) {
-  background-color: #1f2937 !important;
-}
-
-.dark :deep(.ProseMirror table th:hover) {
-  background-color: #374151 !important;
-}
-
-/* Better table spacing in academic context */
-:deep(.ProseMirror table) {
-  margin: 2rem 0;
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
-/* Table caption support */
-:deep(.ProseMirror table caption) {
-  caption-side: bottom;
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
-  color: hsl(var(--muted-foreground));
-  text-align: left;
-  font-style: italic;
+/* Dark mode specific adjustments */
+.dark .ProseMirror {
+  blockquote {
+    @apply border-primary/50 bg-primary/5;
+  }
 }
 </style>

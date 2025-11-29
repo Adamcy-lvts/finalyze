@@ -235,10 +235,10 @@ onMounted(() => {
 </script>
 
 <template>
-    <Card class="border-[0.5px] border-border/50">
+    <Card class="border border-border/60 shadow-sm dark:border-border/50 dark:shadow-none transition-all duration-300 hover:shadow-md">
         <Collapsible :open="showCitationHelper" @update:open="handleToggle">
             <CollapsibleTrigger class="w-full">
-                <CardHeader class="pb-3 transition-colors hover:bg-muted/30">
+                <CardHeader class="pb-3 transition-colors bg-muted/40 hover:bg-muted/60 dark:bg-transparent dark:hover:bg-muted/30">
                     <CardTitle class="flex items-center justify-between text-sm">
                         <span class="flex items-center gap-2">
                             <Quote class="h-4 w-4 text-muted-foreground" />

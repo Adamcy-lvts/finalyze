@@ -38,23 +38,34 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-    'update:chapterTitle': [value: string];
-    'update:chapterContent': [value: string];
-    'update:selectedText': [value: string];
-    'update:showPreview': [value: boolean];
-    save: [autoSave: boolean];
-    undo: [];
-    redo: [];
-    exitChatMode: [];
+    (e: 'update:chapterTitle', value: string): void;
+    (e: 'update:chapterContent', value: string): void;
+    (e: 'update:selectedText', value: string): void;
+    (e: 'update:showPreview', value: boolean): void;
+    (e: 'save', autoSave: boolean): void;
+    (e: 'undo'): void;
+    (e: 'redo'): void;
+    (e: 'exitChatMode'): void;
 }>();
 
+interface ChatMessage {
+    id: number;
+    type: 'user' | 'ai' | 'system';
+    content: string;
+    timestamp: Date;
+    isStreaming?: boolean;
+    failed?: boolean;
+    lastPrompt?: string;
+    lastQuickAction?: string;
+}
+
 // Chat state
-const chatMessages = ref([]);
+const chatMessages = ref<ChatMessage[]>([]);
 const chatInput = ref('');
 const isTyping = ref(false);
-const currentSessionId = ref(null);
+const currentSessionId = ref<string | null>(null);
 const isLoadingHistory = ref(false);
-const currentStreamReader = ref(null);
+const currentStreamReader = ref<ReadableStreamDefaultReader | null>(null);
 
 // Content editor state (edit mode as default for chat mode)
 const showContentPreview = ref(false);
@@ -63,7 +74,7 @@ const showContentPreview = ref(false);
 
 // Chat UI state
 const isChatMinimized = ref(false);
-const currentChatMode = ref('review');
+const currentChatMode = ref<'review' | 'assist'>('review');
 
 // Mobile detection
 const isMobileView = ref(false);
@@ -98,7 +109,7 @@ const loadChatHistory = async () => {
 
         if (messages && messages.length > 0) {
             // Convert backend messages to frontend format
-            chatMessages.value = messages.map((msg) => ({
+            chatMessages.value = messages.map((msg: any) => ({
                 id: msg.id,
                 type: msg.type,
                 content: msg.content,
@@ -221,7 +232,7 @@ const handleSendMessage = async (quickAction?: string) => {
             }
         };
 
-        const handleStreamData = (data) => {
+        const handleStreamData = (data: any) => {
             switch (data.type) {
                 case 'start':
                     isTyping.value = true;
@@ -301,7 +312,7 @@ const handleSendMessage = async (quickAction?: string) => {
             }
         };
 
-        const handleStreamError = (error) => {
+        const handleStreamError = (error: any) => {
             isTyping.value = false;
             const errorMessageIndex = chatMessages.value.findIndex((msg) => msg.id === aiMessageId);
             if (errorMessageIndex !== -1) {
@@ -480,45 +491,17 @@ const toggleContentPreview = () => {
 <template>
     <!-- Split Screen Chat Mode Layout -->
     <div class="flex h-screen flex-col overflow-hidden bg-background">
-        <!-- Header -->
+        <!-- Minimal Header -->
         <div
-            class="flex flex-shrink-0 items-center justify-between border-b bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-        >
-            <div class="flex items-center gap-4">
-                <Button @click="emit('exitChatMode')" variant="ghost" size="icon">
+            class="flex flex-shrink-0 items-center justify-between border-b bg-background/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div class="flex items-center gap-2">
+                <Button @click="emit('exitChatMode')" variant="ghost" size="sm" class="gap-1">
                     <X class="h-4 w-4" />
+                    Exit Chat
                 </Button>
-
-                <div class="flex items-center gap-2">
-                    <MessageSquare class="h-5 w-5 text-primary" />
-                    <div>
-                        <h1 class="text-lg font-bold">{{ props.project.title }}</h1>
-                        <p class="text-sm text-muted-foreground">
-                            Chat Mode • Chapter {{ props.chapter.chapter_number }} • {{ currentWordCount }} / {{ targetWordCount }} words
-                        </p>
-                    </div>
-                </div>
             </div>
 
             <div class="flex items-center gap-2">
-                <!-- Mobile Chat Toggle -->
-                <Button
-                    v-if="isMobileView"
-                    @click="toggleChatMinimize"
-                    variant="outline"
-                    size="sm"
-                    class="flex items-center gap-1"
-                >
-                    <MessageSquare class="h-4 w-4" />
-                    <span class="text-xs">Chat</span>
-                    <Badge v-if="chatMessages.length > 1" variant="secondary" class="ml-1 text-xs">
-                        {{ chatMessages.length - 1 }}
-                    </Badge>
-                </Button>
-
-                <Badge :variant="chapter.status === 'approved' ? 'default' : 'secondary'">
-                    {{ chapter.status.replace('_', ' ') }}
-                </Badge>
                 <Badge variant="outline" class="text-xs"> {{ writingQualityScore }}% Quality </Badge>
             </div>
         </div>
@@ -527,107 +510,62 @@ const toggleContentPreview = () => {
         <div class="flex-shrink-0 bg-muted/30 px-3 py-2">
             <div class="mb-1 flex items-center justify-between">
                 <span class="text-xs font-medium">Writing Progress</span>
-                <span class="text-xs text-muted-foreground">{{ Math.round(progressPercentage) }}%</span>
+                <span class="text-xs text-muted-foreground">{{ Math.round(progressPercentage) }}% ({{ currentWordCount
+                    }} / {{ targetWordCount }} words)</span>
             </div>
-            <Progress :value="progressPercentage" class="h-1" />
+            <Progress :model-value="progressPercentage" class="h-1" />
         </div>
 
         <!-- Main Split Content -->
         <div class="flex flex-1 overflow-hidden">
             <!-- Mobile Chat Overlay -->
             <div v-if="isMobileView && !isChatMinimized" class="absolute inset-0 z-50 bg-background md:hidden">
-                <ChatAssistant
-                    :is-minimized="false"
-                    :messages="chatMessages"
-                    :is-typing="isTyping"
-                    :selected-text="selectedText"
-                    :chapter-content="chapterContent"
-                    :chapter-number="chapter.chapter_number"
-                    :current-mode="currentChatMode"
-                    :project-slug="project.slug"
-                    :session-id="currentSessionId || 'temp-session'"
-                    :is-mobile="true"
-                    @send-message="handleSendMessage"
-                    @quick-action="handleQuickAction"
-                    @retry-message="handleRetryMessage"
-                    @stop-generation="handleStopGeneration"
-                    @toggle-minimize="toggleChatMinimize"
-                    @change-mode="handleModeChange"
-                    @copy-message="handleCopyMessage"
-                    @rate-message="handleRateMessage"
-                    @new-session="handleNewSession"
-                    @chat-deleted="handleChatDeleted"
-                    @chat-cleared="handleChatCleared"
-                    v-model:input="chatInput"
-                    class="mobile-chat-overlay"
-                />
+                <ChatAssistant :is-minimized="false" :messages="chatMessages" :is-typing="isTyping"
+                    :selected-text="selectedText" :chapter-content="chapterContent"
+                    :chapter-number="chapter.chapter_number" :current-mode="currentChatMode"
+                    :project-slug="project.slug" :session-id="currentSessionId || 'temp-session'" :is-mobile="true"
+                    @send-message="handleSendMessage" @quick-action="handleQuickAction"
+                    @retry-message="handleRetryMessage" @stop-generation="handleStopGeneration"
+                    @toggle-minimize="toggleChatMinimize" @change-mode="handleModeChange"
+                    @copy-message="handleCopyMessage" @rate-message="handleRateMessage" @new-session="handleNewSession"
+                    @chat-deleted="handleChatDeleted" @chat-cleared="handleChatCleared" v-model:input="chatInput"
+                    class="mobile-chat-overlay" />
             </div>
             <!-- Left Panel - Editor -->
             <div class="flex min-h-0 flex-1 flex-col border-r">
                 <Card class="flex min-h-0 flex-1 flex-col rounded-none border-0 bg-transparent shadow-none">
-                    <CardHeader class="flex-shrink-0 border-b px-4 py-3">
-                        <div class="flex items-center justify-between">
-                            <CardTitle class="text-base">Chapter {{ chapter.chapter_number }} - Editor</CardTitle>
-                            <div class="flex items-center gap-2">
-                                <Button @click="emit('update:showPreview', !showPreview)" variant="outline" size="sm">
-                                    <Eye v-if="!showPreview" class="mr-1 h-3 w-3" />
-                                    <PenTool v-else class="mr-1 h-3 w-3" />
-                                    {{ showPreview ? 'Edit' : 'Preview' }}
-                                </Button>
-                            </div>
-                        </div>
-                    </CardHeader>
-
-                    <CardContent class="flex min-h-0 flex-1 flex-col space-y-3 p-4">
-                        <!-- Chapter Title Input -->
-                        <div class="flex-shrink-0 space-y-2">
-                            <Label for="chapter-title-chat" class="text-sm font-medium">Chapter Title</Label>
-                            <Input
-                                id="chapter-title-chat"
-                                :model-value="chapterTitle"
-                                @update:model-value="emit('update:chapterTitle', $event)"
-                                placeholder="Enter chapter title..."
-                                class="h-9 text-base font-medium"
-                            />
-                        </div>
-
+                    <CardContent class="flex min-h-0 flex-1 flex-col space-y-4 p-6">
                         <!-- Content Editor -->
                         <div class="flex min-h-0 flex-1 flex-col space-y-2">
-                            <div class="flex items-center justify-between">
-                                <Label for="chapter-content-chat" class="text-sm font-medium">Content</Label>
-                                <div class="flex items-center gap-2">
-                                    <Button @click="toggleContentPreview" :variant="showContentPreview ? 'default' : 'outline'" size="sm">
-                                        <PenTool v-if="showContentPreview" class="mr-1 h-3 w-3" />
-                                        <Eye v-else class="mr-1 h-3 w-3" />
-                                        {{ showContentPreview ? 'Edit Mode' : 'Preview Mode' }}
-                                    </Button>
-                                </div>
+                            <div class="flex items-center justify-end">
+                                <Button @click="toggleContentPreview"
+                                    :variant="showContentPreview ? 'default' : 'ghost'" size="sm" class="h-7 text-xs">
+                                    <PenTool v-if="showContentPreview" class="mr-1.5 h-3 w-3" />
+                                    <Eye v-else class="mr-1.5 h-3 w-3" />
+                                    {{ showContentPreview ? 'Edit' : 'Preview' }}
+                                </Button>
                             </div>
 
                             <!-- Rich Text Editor -->
                             <ScrollArea class="min-h-0 flex-1" v-show="!showContentPreview">
-                                <RichTextEditor
-                                    :model-value="chapterContent"
+                                <RichTextEditor :model-value="chapterContent"
                                     @update:model-value="emit('update:chapterContent', $event)"
-                                    placeholder="Start writing your chapter..."
-                                    min-height="400px"
-                                    class="text-sm leading-relaxed"
-                                />
+                                    placeholder="Start writing your chapter..." min-height="400px"
+                                    class="text-sm leading-relaxed" />
                             </ScrollArea>
 
                             <!-- Preview Mode -->
                             <ScrollArea class="min-h-0 flex-1" v-show="showContentPreview">
-                                <RichTextViewer
-                                    :content="chapterContent"
-                                    class="p-4"
-                                    style="font-family: 'Times New Roman', serif; line-height: 1.6"
-                                />
+                                <RichTextViewer :content="chapterContent" class="p-4"
+                                    style="font-family: 'Times New Roman', serif; line-height: 1.6" />
                             </ScrollArea>
                         </div>
 
                         <!-- Generation Progress -->
-                        <div v-if="isGenerating" class="flex flex-shrink-0 items-center gap-2 rounded-lg bg-muted/30 p-2">
-                            <div class="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                        <div v-if="isGenerating"
+                            class="flex flex-shrink-0 items-center gap-2 rounded-lg bg-muted/30 p-2">
+                            <div class="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent">
+                            </div>
                             <span class="text-xs">{{ generationProgress }}</span>
                         </div>
 
@@ -638,7 +576,8 @@ const toggleContentPreview = () => {
                                 {{ isSaving ? 'Saving...' : 'Save' }}
                             </Button>
 
-                            <Button @click="emit('save', false)" :disabled="!isValid || currentWordCount < targetWordCount * 0.8" size="sm">
+                            <Button @click="emit('save', false)"
+                                :disabled="!isValid || currentWordCount < targetWordCount * 0.8" size="sm">
                                 <CheckCircle class="mr-1 h-3 w-3" />
                                 Complete
                             </Button>
@@ -648,30 +587,19 @@ const toggleContentPreview = () => {
             </div>
 
             <!-- Right Panel - Chat Assistant (Desktop) -->
-            <div v-if="!isMobileView" :class="['flex min-h-0 flex-1 flex-col bg-muted/20', isChatMinimized ? 'w-16' : '']">
-                <ChatAssistant
-                    :is-minimized="isChatMinimized"
-                    :messages="chatMessages"
-                    :is-typing="isTyping"
-                    :selected-text="selectedText"
-                    :chapter-content="chapterContent"
-                    :chapter-number="chapter.chapter_number"
-                    :current-mode="currentChatMode"
-                    :project-slug="project.slug"
-                    :session-id="currentSessionId || 'temp-session'"
-                    @send-message="handleSendMessage"
-                    @quick-action="handleQuickAction"
-                    @retry-message="handleRetryMessage"
-                    @stop-generation="handleStopGeneration"
-                    @toggle-minimize="toggleChatMinimize"
-                    @change-mode="handleModeChange"
-                    @copy-message="handleCopyMessage"
-                    @rate-message="handleRateMessage"
-                    @new-session="handleNewSession"
-                    @chat-deleted="handleChatDeleted"
-                    @chat-cleared="handleChatCleared"
-                    v-model:input="chatInput"
-                />
+            <div v-if="!isMobileView" :class="[
+                'flex min-h-0 flex-col bg-muted/20 border-l transition-all duration-300 ease-in-out',
+                isChatMinimized ? 'w-[60px]' : 'w-[450px] xl:w-[500px]'
+            ]">
+                <ChatAssistant :is-minimized="isChatMinimized" :messages="chatMessages" :is-typing="isTyping"
+                    :selected-text="selectedText" :chapter-content="chapterContent"
+                    :chapter-number="chapter.chapter_number" :current-mode="currentChatMode"
+                    :project-slug="project.slug" :session-id="currentSessionId || 'temp-session'"
+                    @send-message="handleSendMessage" @quick-action="handleQuickAction"
+                    @retry-message="handleRetryMessage" @stop-generation="handleStopGeneration"
+                    @toggle-minimize="toggleChatMinimize" @change-mode="handleModeChange"
+                    @copy-message="handleCopyMessage" @rate-message="handleRateMessage" @new-session="handleNewSession"
+                    @chat-deleted="handleChatDeleted" @chat-cleared="handleChatCleared" v-model:input="chatInput" />
             </div>
         </div>
     </div>

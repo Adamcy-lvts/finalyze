@@ -1,62 +1,47 @@
 <script lang="ts" setup>
 import type { ToasterProps } from "vue-sonner"
+import { reactiveOmit } from "@vueuse/core"
+import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon, XIcon } from "lucide-vue-next"
 import { Toaster as Sonner } from "vue-sonner"
 
 const props = defineProps<ToasterProps>()
+const delegatedProps = reactiveOmit(props, "toastOptions")
 </script>
 
 <template>
   <Sonner
     class="toaster group"
-    v-bind="props"
-    :style="{
-      '--normal-bg': 'var(--popover)',
-      '--normal-text': 'var(--popover-foreground)',
-      '--normal-border': 'var(--border)',
-      'z-index': '9999',
+    :toast-options="{
+      classes: {
+        toast: 'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+        description: 'group-[.toast]:text-muted-foreground',
+        actionButton:
+          'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
+        cancelButton:
+          'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+      },
     }"
-  />
+    v-bind="delegatedProps"
+  >
+    <template #success-icon>
+      <CircleCheckIcon class="size-4" />
+    </template>
+    <template #info-icon>
+      <InfoIcon class="size-4" />
+    </template>
+    <template #warning-icon>
+      <TriangleAlertIcon class="size-4" />
+    </template>
+    <template #error-icon>
+      <OctagonXIcon class="size-4" />
+    </template>
+    <template #loading-icon>
+      <div>
+        <Loader2Icon class="size-4 animate-spin" />
+      </div>
+    </template>
+    <template #close-icon>
+      <XIcon class="size-4" />
+    </template>
+  </Sonner>
 </template>
-
-<style>
-/* Clean, modern toast styling */
-[data-sonner-toaster] {
-  z-index: 999999 !important;
-  position: fixed !important;
-  top: 24px !important;
-  right: 24px !important;
-  pointer-events: auto !important;
-  max-width: 300px !important;
-  width: auto !important;
-}
-
-[data-sonner-toast] {
-  background: hsl(var(--popover)) !important;
-  color: hsl(var(--popover-foreground)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: 6px !important;
-  padding: 12px 16px !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-  font-size: 14px !important;
-  font-weight: 500 !important;
-  min-width: 120px !important;
-  backdrop-filter: blur(8px) !important;
-}
-
-/* Success toast - subtle green accent */
-[data-sonner-toast][data-type="success"] {
-  border-left: 3px solid #10b981 !important;
-}
-
-/* Remove close button for cleaner look */
-[data-sonner-toast] [data-close-button] {
-  display: none !important;
-}
-
-/* Center text */
-[data-sonner-toast] [data-title] {
-  text-align: center !important;
-  margin: 0 !important;
-  font-weight: 500 !important;
-}
-</style>

@@ -76,29 +76,15 @@ export function useDefenseQuestionWatcher(
         console.log(`🔄 DEFENSE WATCHER: Reset generation trigger for Chapter ${chapter.chapter_number}`);
     };
 
-    // Debounced function to trigger defense question generation
+    // Debounced function to update word count tracking (automatic generation removed)
     const debouncedGenerationTrigger = debounce(async () => {
         if (!isWatching.value) return;
 
         const wordCount = currentWordCount.value;
         console.log(`📊 DEFENSE WATCHER: Word count check - Chapter ${chapter.chapter_number}: ${wordCount} words`);
 
-        // Check if we should trigger generation
-        if (wordCount >= DEFENSE_WORD_COUNT_THRESHOLD && !hasTriggeredGeneration.value) {
-            console.log(`🎯 DEFENSE WATCHER: Threshold reached! Triggering automatic generation for Chapter ${chapter.chapter_number}`);
-            console.log(`   Word Count: ${wordCount}/${DEFENSE_WORD_COUNT_THRESHOLD}`);
-
-            try {
-                markGenerationTriggered();
-                await generateDefenseQuestions();
-
-                console.log(`✅ DEFENSE WATCHER: Successfully generated questions for Chapter ${chapter.chapter_number}`);
-            } catch (error) {
-                console.error('❌ DEFENSE WATCHER: Failed to generate questions:', error);
-                // Reset trigger on failure so user can try again
-                resetGenerationTrigger();
-            }
-        }
+        // NO AUTOMATIC GENERATION - Users must click the "Generate Questions" button manually
+        // Just track the word count and update the UI state
 
         // Reset trigger if content drops significantly below threshold
         if (wordCount < DEFENSE_WORD_COUNT_THRESHOLD * 0.8 && hasTriggeredGeneration.value) {
