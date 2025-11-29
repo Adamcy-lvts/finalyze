@@ -15,15 +15,26 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => bcrypt('password'),
+            ]
+        );
 
         // Seed faculty structures first (required for faculty chapters)
         $this->call([
+            ProjectCategorySeeder::class,
             FacultyStructureSeeder::class,
             FacultyChapterSeeder::class,
+        ]);
+
+        // Seed universities, faculties, and departments
+        $this->call([
+            UniversitySeeder::class,
+            FacultySeeder::class,
+            DepartmentSeeder::class,
         ]);
     }
 }
