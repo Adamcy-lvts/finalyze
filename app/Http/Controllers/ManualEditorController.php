@@ -1,0 +1,530 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Enums\ChapterStatus;
+use App\Models\Chapter;
+use App\Models\ChapterContextAnalysis;
+use App\Models\Project;
+use App\Models\UserChapterSuggestion;
+use App\Services\AIContentGenerator;
+use App\Services\ChatService;
+use App\Services\FacultyStructureService;
+use App\Services\ProgressiveGuidanceService;
+use App\Services\SmartSuggestionService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class ManualEditorController extends Controller
+{
+    public function __construct(
+        private SmartSuggestionService $suggestionService,
+        private ChatService $chatService,
+        private ProgressiveGuidanceService $guidanceService,
+        private AIContentGenerator $aiGenerator,
+        private FacultyStructureService $facultyStructureService
+    ) {}
+
+    /**
+     * Show manual editor interface
+     */
+    public function show(Request $request, Project $project, int $chapterNumber): Response
+    {
+        abort_if($project->mode !== 'manual', 403, 'This editor is for manual mode only');
+
+        // Get faculty chapter structure to get proper chapter title
+        $facultyChapters = $this->facultyStructureService->getChapterStructure($project);
+        $chapterStructure = collect($facultyChapters)->firstWhere('chapter_number', $chapterNumber);
+
+        // Determine chapter title from faculty structure or use fallback
+        $chapterTitle = $chapterStructure['title'] ?? "Chapter $chapterNumber";
+
+        // Create chapter if it doesn't exist, or retrieve existing one
+        $chapter = Chapter::firstOrCreate(
+            [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+            ],
+            [
+                'title' => $chapterTitle,
+                'slug' => \Illuminate\Support\Str::slug($chapterTitle.'-'.\Illuminate\Support\Str::random(6)),
+                'content' => null,
+                'word_count' => 0,
+                'status' => 'not_started',
+                'target_word_count' => $chapterStructure['target_word_count'] ?? 2000,
+            ]
+        );
+
+        Log::info('🎨 MANUAL EDITOR - Show method called', [
+            'project_id' => $project->id,
+            'project_slug' => $project->slug,
+            'project_mode' => $project->mode,
+            'chapter_id' => $chapter->id,
+            'chapter_number' => $chapter->chapter_number,
+            'chapter_title' => $chapterTitle,
+            'chapter_was_created' => $chapter->wasRecentlyCreated,
+            'user_id' => auth()->id(),
+        ]);
+
+        // Get or generate initial suggestion
+        $currentSuggestion = UserChapterSuggestion::where('chapter_id', $chapter->id)
+            ->where('status', 'pending')
+            ->latest('shown_at')
+            ->first();
+
+        if (! $currentSuggestion && $chapter->word_count === 0) {
+            Log::info('💡 MANUAL EDITOR - Generating initial guidance for empty chapter');
+            $currentSuggestion = $this->suggestionService->generateInitialGuidance($chapter);
+        }
+
+        Log::info('✅ MANUAL EDITOR - Rendering ManualEditor view', [
+            'has_suggestion' => $currentSuggestion !== null,
+        ]);
+
+        return Inertia::render('projects/ManualEditor', [
+            'project' => $project->load([
+                'category',
+                'universityRelation',
+                'facultyRelation',
+                'departmentRelation',
+                'outlines.sections', // Load outlines for navigation
+            ]),
+            'chapter' => $chapter,
+            'allChapters' => $project->chapters()->orderBy('chapter_number')->get(), // For navigation
+            'facultyChapters' => $this->facultyStructureService->getChapterStructure($project), // For navigation context
+            'currentSuggestion' => $currentSuggestion,
+            'contextAnalysis' => ChapterContextAnalysis::where('chapter_id', $chapter->id)->first(),
+            'chatHistory' => [],
+        ]);
+    }
+
+    /**
+     * Auto-save chapter content
+     */
+    public function save(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'content' => 'required|string',
+        ]);
+
+        $chapter->update([
+            'content' => $validated['content'],
+            'word_count' => str_word_count(strip_tags($validated['content'])),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'chapter' => $chapter,
+        ]);
+    }
+
+    /**
+     * Mark chapter as complete
+     */
+    public function markComplete(Request $request, Project $project, int $chapterNumber)
+    {
+        Log::info('🟢 [BACKEND] markComplete method called', [
+            'project_id' => $project->id,
+            'project_slug' => $project->slug,
+            'chapter_number' => $chapterNumber,
+            'project_mode' => $project->mode,
+        ]);
+
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+
+        Log::info('🟢 [BACKEND] Chapter found', [
+            'chapter_id' => $chapter->id,
+            'chapter_title' => $chapter->title,
+            'current_status' => $chapter->status,
+            'word_count' => $chapter->word_count,
+        ]);
+
+        abort_if($project->mode !== 'manual', 403);
+
+        // Validate minimum word count
+        $minWordCount = 500;
+        if ($chapter->word_count < $minWordCount) {
+            Log::warning('🔴 [BACKEND] Word count validation failed', [
+                'chapter_id' => $chapter->id,
+                'word_count' => $chapter->word_count,
+                'min_required' => $minWordCount,
+            ]);
+
+            return redirect()->route('projects.manual-editor.show', [
+                'project' => $project->slug,
+                'chapter' => $chapterNumber,
+            ])->with('error', "Chapter must have at least {$minWordCount} words to be marked as complete. Current: {$chapter->word_count} words");
+        }
+
+        Log::info('🟢 [BACKEND] Updating chapter status to completed');
+
+        // Update chapter status to completed
+        $chapter->update([
+            'status' => ChapterStatus::Completed->value,
+        ]);
+
+        Log::info('✅ [BACKEND] Chapter marked as complete successfully', [
+            'chapter_id' => $chapter->id,
+            'new_status' => $chapter->status,
+        ]);
+
+        return redirect()->route('projects.manual-editor.show', [
+            'project' => $project->slug,
+            'chapter' => $chapterNumber,
+        ])->with('success', 'Chapter marked as complete successfully!');
+    }
+
+    /**
+     * Analyze chapter and generate suggestion based on frontend analysis
+     */
+    public function analyzeAndSuggest(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'analysis' => 'required|array',
+            'analysis.word_count' => 'required|integer',
+            'analysis.citation_count' => 'required|integer',
+            'analysis.table_count' => 'required|integer',
+            'analysis.figure_count' => 'required|integer',
+            'analysis.claim_count' => 'integer',
+            'analysis.has_introduction' => 'boolean',
+            'analysis.has_conclusion' => 'boolean',
+            'analysis.detected_issues' => 'array',
+            'analysis.quality_metrics' => 'array',
+        ]);
+
+        $suggestion = $this->suggestionService->generateFromAnalysis(
+            $chapter,
+            $validated['analysis']
+        );
+
+        return response()->json([
+            'suggestion' => $suggestion,
+            'analysis' => ChapterContextAnalysis::where('chapter_id', $chapter->id)->first(),
+        ]);
+    }
+
+    /**
+     * Save suggestion for later reference
+     */
+    public function saveSuggestion(
+        Request $request,
+        Project $project,
+        int $chapterNumber,
+        UserChapterSuggestion $suggestion
+    ) {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+        abort_if($suggestion->chapter_id !== $chapter->id, 404);
+
+        $suggestion->update([
+            'status' => 'saved',
+            'actioned_at' => now(),
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Clear/dismiss suggestion
+     */
+    public function clearSuggestion(
+        Request $request,
+        Project $project,
+        int $chapterNumber,
+        UserChapterSuggestion $suggestion
+    ) {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+        abort_if($suggestion->chapter_id !== $chapter->id, 404);
+
+        $suggestion->update([
+            'status' => 'dismissed',
+            'actioned_at' => now(),
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Mark suggestion as applied
+     */
+    public function applySuggestion(
+        Request $request,
+        Project $project,
+        int $chapterNumber,
+        UserChapterSuggestion $suggestion
+    ) {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+        abort_if($suggestion->chapter_id !== $chapter->id, 404);
+
+        $suggestion->update([
+            'status' => 'applied',
+            'actioned_at' => now(),
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Chat with AI assistant
+     */
+    public function chat(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'message' => 'required|string|max:5000',
+            'history' => 'array',
+        ]);
+
+        $response = $this->chatService->sendMessage(
+            $chapter,
+            $validated['message'],
+            $validated['history'] ?? []
+        );
+
+        return response()->json($response);
+    }
+
+    /**
+     * Get progressive guidance based on current content
+     */
+    public function progressiveGuidance(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'analysis' => 'required|array',
+            'analysis.word_count' => 'required|integer',
+            'analysis.citation_count' => 'integer',
+            'analysis.table_count' => 'integer',
+            'analysis.figure_count' => 'integer',
+            'analysis.claim_count' => 'integer',
+            'analysis.has_introduction' => 'boolean',
+            'analysis.has_conclusion' => 'boolean',
+            'analysis.detected_issues' => 'array',
+            'analysis.quality_metrics' => 'array',
+            'analysis.content' => 'string',
+        ]);
+
+        $guidance = $this->guidanceService->analyzeAndGuide(
+            $chapter,
+            $validated['analysis']
+        );
+
+        return response()->json($guidance);
+    }
+
+    /**
+     * Improve selected text with AI
+     */
+    public function improveText(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'text' => 'required|string|max:2000',
+            'context' => 'string|max:500',
+        ]);
+
+        $prompt = <<<PROMPT
+Improve the following text from an academic project (Chapter {$chapter->chapter_number}: {$chapter->title}).
+
+Original text:
+{$validated['text']}
+
+Task: Rewrite this text to be clearer, more academic, and better structured. Maintain the core meaning but improve:
+- Clarity and precision
+- Academic tone
+- Sentence structure
+- Word choice
+
+Return ONLY the improved text without any explanation or labels.
+PROMPT;
+
+        try {
+            $improvedText = $this->aiGenerator->generate($prompt, [
+                'temperature' => 0.6,
+                'max_tokens' => 800,
+            ]);
+
+            return response()->json([
+                'improvedText' => trim($improvedText),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to improve text. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Expand selected text with AI
+     */
+    public function expandText(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'text' => 'required|string|max:2000',
+            'context' => 'string|max:500',
+        ]);
+
+        $prompt = <<<PROMPT
+Expand the following text from an academic project (Chapter {$chapter->chapter_number}: {$chapter->title}).
+
+Original text:
+{$validated['text']}
+
+Task: Elaborate on this text by:
+- Adding more detail and explanation
+- Providing examples or context
+- Developing the ideas further
+- Maintaining academic tone
+
+Aim for about 50% more content. Return ONLY the expanded text without any labels.
+PROMPT;
+
+        try {
+            $expandedText = $this->aiGenerator->generate($prompt, [
+                'temperature' => 0.7,
+                'max_tokens' => 1000,
+            ]);
+
+            return response()->json([
+                'expandedText' => trim($expandedText),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to expand text. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get citation suggestions for selected text
+     */
+    public function suggestCitations(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'text' => 'required|string|max:2000',
+        ]);
+
+        $prompt = <<<PROMPT
+Analyze the following text from an academic project and suggest what types of citations would be appropriate.
+
+Text:
+{$validated['text']}
+
+Project context:
+- Title: {$chapter->project->title}
+- Field: {$chapter->project->field_of_study}
+- Chapter: {$chapter->title}
+
+Task: Identify claims or statements that need citation support and suggest:
+1. What type of sources to cite (journals, books, reports, etc.)
+2. What specific topics/keywords to search for
+3. Brief explanation of why citation is needed
+
+Format as HTML with <ul> and <li> tags. Be specific and actionable.
+PROMPT;
+
+        try {
+            $suggestions = $this->aiGenerator->generate($prompt, [
+                'temperature' => 0.6,
+                'max_tokens' => 600,
+            ]);
+
+            return response()->json([
+                'suggestions' => $suggestions,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to generate citation suggestions. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Rephrase selected text with AI
+     */
+    public function rephraseText(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'text' => 'required|string|max:2000',
+        ]);
+
+        $prompt = <<<PROMPT
+Rephrase the following text from an academic project in different words while maintaining the same meaning.
+
+Original text:
+{$validated['text']}
+
+Task: Provide 2-3 alternative ways to express this same idea. Each alternative should:
+- Use different words and sentence structure
+- Maintain academic tone
+- Keep the same meaning
+- Be clearly numbered (1., 2., 3.)
+
+Return the alternatives without labels like "Alternative 1:" - just use numbers.
+PROMPT;
+
+        try {
+            $alternatives = $this->aiGenerator->generate($prompt, [
+                'temperature' => 0.8,
+                'max_tokens' => 800,
+            ]);
+
+            return response()->json([
+                'alternatives' => $alternatives,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to rephrase text. Please try again.',
+            ], 500);
+        }
+    }
+}
