@@ -3,6 +3,7 @@
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\ManualEditorController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
 use App\Http\Controllers\TopicController;
@@ -14,11 +15,38 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
+// Test broadcast route (for testing Reverb)
+Route::get('/test-broadcast', function () {
+    broadcast(new class implements \Illuminate\Contracts\Broadcasting\ShouldBroadcastNow
+    {
+        public function broadcastOn()
+        {
+            return [new \Illuminate\Broadcasting\Channel('test-channel')];
+        }
+
+        public function broadcastAs()
+        {
+            return 'test-event';
+        }
+
+        public function broadcastWith()
+        {
+            return [
+                'message' => 'Hello from Laravel Reverb!',
+                'timestamp' => now()->toDateTimeString(),
+            ];
+        }
+    });
+
+    return response()->json(['status' => 'Broadcasted!']);
+});
+
 // Dashboard
 // Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+require __DIR__.'/payment.php';
 
 Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard - Main landing page after login
@@ -36,6 +64,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
     Route::delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])->name('projects.bulk-destroy');
 
+    // Project edit routes WITHOUT state middleware - allows editing regardless of setup state
+    Route::get('/projects/{project:slug}/edit', [ProjectController::class, 'edit'])->name('projects.edit');
+    Route::patch('/projects/{project:slug}', [ProjectController::class, 'update'])->name('projects.update');
+
     // Chapter deletion route WITHOUT state middleware - allows deletion regardless of setup state
     Route::delete('/projects/{project}/chapters/{chapter}', [ChapterController::class, 'destroy'])->name('chapters.destroy');
 
@@ -46,15 +78,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Export Routes
     Route::prefix('export')->name('export.')->group(function () {
-        // Export full project
+        // Export full project as Word
         Route::get('/project/{project:slug}/word', [ExportController::class, 'exportWord'])
             ->name('project.word');
 
-        // Export single chapter
+        // Export full project as PDF
+        Route::get('/project/{project:slug}/pdf', [ExportController::class, 'exportProjectPdf'])
+            ->name('project.pdf');
+
+        // Export single chapter as Word
         Route::get('/project/{project:slug}/chapter/{chapterNumber}/word', [ExportController::class, 'exportChapter'])
             ->name('chapter.word');
 
-        // Export multiple selected chapters
+        // Export single chapter as PDF
+        Route::get('/project/{project:slug}/chapter/{chapterNumber}/pdf', [ChapterController::class, 'exportChapterPdf'])
+            ->name('chapter.pdf');
+
+        // Export multiple selected chapters as Word
         Route::post('/project/{project:slug}/chapters/word', [ExportController::class, 'exportChapters'])
             ->name('chapters.word');
     });
@@ -105,6 +145,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/projects/{project}/chapters/{chapter}/chat/sessions/{sessionId}', [ChapterController::class, 'deleteChatSession'])->name('chapters.chat-session-delete');
         Route::delete('/projects/{project}/chapters/{chapter}/chat/messages/{messageId}', [ChapterController::class, 'deleteChatMessage'])->name('chapters.chat-message-delete');
         Route::delete('/projects/{project}/chapters/{chapter}/chat/clear', [ChapterController::class, 'clearChatHistory'])->name('chapters.chat-clear');
+
+        // Manual Editor Routes (Manual Mode Only)
+        Route::prefix('projects/{project:slug}/manual-editor')->name('projects.manual-editor.')->scopeBindings()->group(function () {
+            Route::get('/{chapter}', [ManualEditorController::class, 'show'])->name('show');
+            Route::post('/{chapter}/save', [ManualEditorController::class, 'save'])->name('save');
+            Route::post('/{chapter}/mark-complete', [ManualEditorController::class, 'markComplete'])->name('mark-complete');
+            Route::post('/{chapter}/analyze', [ManualEditorController::class, 'analyzeAndSuggest'])->name('analyze');
+            Route::post('/{chapter}/progressive-guidance', [ManualEditorController::class, 'progressiveGuidance'])->name('progressive-guidance');
+            Route::post('/{chapter}/suggestions/{suggestion}/save', [ManualEditorController::class, 'saveSuggestion'])->name('suggestion.save');
+            Route::post('/{chapter}/suggestions/{suggestion}/clear', [ManualEditorController::class, 'clearSuggestion'])->name('suggestion.clear');
+            Route::post('/{chapter}/suggestions/{suggestion}/apply', [ManualEditorController::class, 'applySuggestion'])->name('suggestion.apply');
+            Route::post('/{chapter}/chat', [ManualEditorController::class, 'chat'])->name('chat');
+            // Quick Actions
+            Route::post('/{chapter}/improve-text', [ManualEditorController::class, 'improveText'])->name('improve-text');
+            Route::post('/{chapter}/expand-text', [ManualEditorController::class, 'expandText'])->name('expand-text');
+            Route::post('/{chapter}/suggest-citations', [ManualEditorController::class, 'suggestCitations'])->name('suggest-citations');
+            Route::post('/{chapter}/rephrase-text', [ManualEditorController::class, 'rephraseText'])->name('rephrase-text');
+        });
 
         // Project Guidance routes
         Route::get('/projects/{project}/guidance', [ProjectGuidanceController::class, 'index'])->name('projects.guidance');

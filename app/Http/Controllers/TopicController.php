@@ -134,7 +134,7 @@ class TopicController extends Controller
 
             Log::info('🔄 TOPIC STREAM - About to create streaming response');
 
-            $streamingResponse = response()->stream(function () use ($project) {
+            $streamingResponse = response()->stream(function () use ($project, $request) {
                 Log::info('🚀 TOPIC STREAM - Inside stream function', [
                     'project_id' => $project->id,
                     'ob_level' => ob_get_level(),
@@ -177,7 +177,7 @@ class TopicController extends Controller
                         'has_recent' => $recentTopicRequest,
                     ]);
 
-                    if (! $recentTopicRequest && count($cachedTopics) >= 8) {
+                    if (! $recentTopicRequest && count($cachedTopics) >= 8 && ! $request->boolean('regenerate')) {
                         Log::info('📦 TOPIC STREAM - Using cached topics', [
                             'count' => count($cachedTopics),
                         ]);
@@ -232,8 +232,8 @@ class TopicController extends Controller
                     $academicContext = [
                         'field_of_study' => $project->field_of_study,
                         'academic_level' => $project->type,
-                        'faculty' => $project->faculty ?? '',
-                        'university' => $project->university,
+                        'faculty' => $project->facultyRelation?->name ?? '',
+                        'university' => $project->universityRelation?->name,
                     ];
 
                     Log::info('🎓 TOPIC STREAM - Academic context built', $academicContext);
@@ -581,16 +581,20 @@ class TopicController extends Controller
                     'project_id' => $project->id,
                 ]);
 
+                // Both auto and manual modes go directly to writing (skip guidance)
+                $nextStatus = 'writing';
+
                 try {
                     $project->update([
                         'topic_status' => 'topic_approved',
-                        'status' => 'guidance',
+                        'status' => $nextStatus,
                     ]);
 
                     Log::info('✅ TOPIC APPROVAL - Status update successful', [
                         'project_id' => $project->id,
-                        'new_status' => 'guidance',
+                        'new_status' => 'writing',
                         'new_topic_status' => 'topic_approved',
+                        'next_status' => $nextStatus,
                     ]);
 
                 } catch (\Exception $e) {
@@ -723,11 +727,16 @@ class TopicController extends Controller
             ]);
 
             try {
+                $targetRoute = $freshProject->status->value === 'writing' ? 'projects.writing' : 'projects.guidance';
+
                 $response = response()->json([
                     'success' => true,
                     'status' => $freshProject->status,
                     'topic_status' => $freshProject->topic_status,
                     'slug' => $freshProject->slug, // Return updated slug for correct redirects
+                    'mode' => $freshProject->mode,
+                    'redirect_route' => $targetRoute,
+                    'redirect_url' => route($targetRoute, $freshProject->slug),
                 ]);
 
                 Log::info('✅ TOPIC APPROVAL - Response prepared successfully', [
@@ -737,6 +746,8 @@ class TopicController extends Controller
                         'status' => $freshProject->status,
                         'topic_status' => $freshProject->topic_status,
                         'slug' => $freshProject->slug,
+                        'redirect_route' => $targetRoute,
+                        'redirect_url' => route($targetRoute, $freshProject->slug),
                     ],
                 ]);
 
@@ -1005,7 +1016,7 @@ class TopicController extends Controller
             Log::info('Using cached topics for academic context', [
                 'project_id' => $project->id,
                 'course' => $project->course,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
                 'cached_count' => count($cachedTopics),
             ]);
 
@@ -1033,8 +1044,8 @@ class TopicController extends Controller
             $academicContext = [
                 'field_of_study' => $project->field_of_study,
                 'academic_level' => $project->type,
-                'faculty' => $project->faculty ?? '',
-                'university' => $project->university,
+                'faculty' => $project->facultyRelation?->name ?? '',
+                'university' => $project->universityRelation?->name,
             ];
 
             Log::info('AI Topic Generation - Starting with intelligent selection', [
@@ -1131,7 +1142,7 @@ class TopicController extends Controller
 CONTEXT:
 - Academic Level: {$academicLevel}
 - Project Type: {$categoryName}
-- Institution: {$project->university}
+- Institution: {$project->universityRelation?->name}
 - Geographic Focus: Nigeria/West Africa
 
 REQUIREMENTS:
@@ -1161,7 +1172,7 @@ No additional text, explanations, or formatting.";
 
 FIELD OF STUDY: {$project->field_of_study}
 COURSE: {$project->course}  
-UNIVERSITY: {$project->university}
+UNIVERSITY: {$project->universityRelation?->name}
 PROJECT TYPE: {$categoryName}
 
 FOCUS AREAS:
@@ -1252,7 +1263,7 @@ Generate topics that are:
     private function generateEnhancedMockTopics(Project $project): array
     {
         $field = $project->field_of_study;
-        $university = $project->university;
+        $university = $project->universityRelation?->name;
 
         $templates = [
             'Development and Implementation of {technology} Solutions for {field} Applications in Nigerian Context',
@@ -1608,6 +1619,7 @@ Requirements:
 - Highlight the practical applications or benefits
 - Keep it student-friendly and motivating
 - Focus on learning outcomes and real-world relevance
+- Write entirely in the third-person perspective (e.g., \"the student will\", \"this project explores\"). Never address the reader as \"you\" or \"your\".
 - Maximum 150 words";
 
             $userPrompt = "Generate a description for this research topic:
@@ -1628,7 +1640,7 @@ The description should help a student understand what this topic involves and wh
             $academicContext = [
                 'field_of_study' => $project->field_of_study,
                 'academic_level' => $project->type,
-                'faculty' => $project->faculty ?? '',
+                'faculty' => $project->facultyRelation?->name ?? '',
             ];
 
             $aiStartTime = microtime(true);
@@ -1636,7 +1648,7 @@ The description should help a student understand what this topic involves and wh
             $aiEndTime = microtime(true);
             $aiDuration = ($aiEndTime - $aiStartTime) * 1000; // Convert to milliseconds
 
-            $description = trim($description);
+            $description = $this->enforceThirdPersonPerspective(trim($description));
             $totalDuration = (microtime(true) - $startTime) * 1000;
 
             Log::info('AI Topic Description Generation - Success', [
@@ -1667,8 +1679,47 @@ The description should help a student understand what this topic involves and wh
             ]);
 
             // Fallback to a generic description
-            return "This research topic focuses on {$project->field_of_study} and involves investigating current trends, methodologies, and practical applications in the field. The study will provide valuable insights and contribute to academic knowledge while developing your research and analytical skills.";
+            $fallback = "This research topic focuses on {$project->field_of_study} and involves investigating current trends, methodologies, and practical applications in the field. The study provides valuable insights and contributes to academic knowledge while helping the student strengthen research and analytical skills.";
+
+            return $this->enforceThirdPersonPerspective($fallback);
         }
+    }
+
+    private function enforceThirdPersonPerspective(string $text): string
+    {
+        $replacements = [
+            'you are' => 'the student is',
+            'you were' => 'the student was',
+            'you have' => 'the student has',
+            'you will' => 'the student will',
+            "you're" => 'the student is',
+            "you've" => 'the student has',
+            "you'll" => 'the student will',
+            'yourself' => 'the student',
+            'yourselves' => 'the students',
+            'your' => "the student's",
+            'yours' => "the student's",
+            'you' => 'the student',
+        ];
+
+        foreach ($replacements as $search => $replacement) {
+            $pattern = '/\b'.preg_quote($search, '/').'\b/i';
+            $text = preg_replace_callback($pattern, function ($matches) use ($replacement) {
+                $matchedText = $matches[0];
+
+                if (mb_strtoupper($matchedText) === $matchedText) {
+                    return mb_strtoupper($replacement);
+                }
+
+                if (mb_substr($matchedText, 0, 1) === mb_strtoupper(mb_substr($matchedText, 0, 1))) {
+                    return ucfirst($replacement);
+                }
+
+                return $replacement;
+            }, $text);
+        }
+
+        return preg_replace('/\s+/', ' ', $text ?? '') ?? '';
     }
 
     /**
@@ -1678,13 +1729,13 @@ The description should help a student understand what this topic involves and wh
     private function getProjectGeneratedTopics(Project $project): array
     {
         // Get faculty and department from project
-        $faculty = $project->faculty ?? null;
+        $faculty = $project->facultyRelation?->name ?? null;
         $department = $project->settings['department'] ?? null;
 
         // Look for topics with exact academic context match
         $savedTopics = ProjectTopic::where('course', $project->course)
             ->where('academic_level', $project->type)
-            ->where('university', $project->university)
+            ->where('university', $project->universityRelation?->name)
             ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
             ->when($department, fn ($q) => $q->where('department', $department))
             ->when($project->field_of_study, fn ($q) => $q->where('field_of_study', $project->field_of_study))
@@ -1709,7 +1760,7 @@ The description should help a student understand what this topic involves and wh
         Log::info('Retrieved saved project topics', [
             'project_id' => $project->id,
             'course' => $project->course,
-            'university' => $project->university,
+            'university' => $project->universityRelation?->name,
             'faculty' => $faculty,
             'department' => $department,
             'saved_topics_count' => count($savedTopics),
@@ -1725,13 +1776,13 @@ The description should help a student understand what this topic involves and wh
     private function getCachedTopicsForAcademicContext(Project $project): array
     {
         // Get faculty and department from project
-        $faculty = $project->faculty ?? null;
+        $faculty = $project->facultyRelation?->name ?? null;
         $department = $project->settings['department'] ?? null;
 
         // Look for topics with similar academic context stored directly in ProjectTopic
         $cachedTopics = ProjectTopic::where('course', $project->course)
             ->where('academic_level', $project->type)
-            ->where('university', $project->university)
+            ->where('university', $project->universityRelation?->name)
             ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
             ->when($department, fn ($q) => $q->where('department', $department))
             ->when($project->field_of_study, fn ($q) => $q->where('field_of_study', $project->field_of_study))
@@ -1749,7 +1800,7 @@ The description should help a student understand what this topic involves and wh
         Log::info('Retrieved cached topics for academic context', [
             'project_id' => $project->id,
             'course' => $project->course,
-            'university' => $project->university,
+            'university' => $project->universityRelation?->name,
             'faculty' => $faculty,
             'department' => $department,
             'cached_topics_count' => count($cachedTopics),
@@ -1765,7 +1816,7 @@ The description should help a student understand what this topic involves and wh
     {
         try {
             // Get faculty and department from project
-            $faculty = $project->faculty ?? null;
+            $faculty = $project->facultyRelation?->name ?? null;
             $department = $project->settings['department'] ?? null;
 
             foreach ($topics as $topic) {
@@ -1800,7 +1851,7 @@ The description should help a student understand what this topic involves and wh
                         'faculty' => $faculty,
                         'department' => $department,
                         'course' => $project->course,
-                        'university' => $project->university,
+                        'university' => $project->universityRelation?->name,
                         'academic_level' => $project->type,
                         'title' => $topicData['title'],
                         'description' => $topicData['description'] ?? 'Research topic in '.($project->field_of_study ?? $project->course),
@@ -1820,7 +1871,7 @@ The description should help a student understand what this topic involves and wh
                 'project_id' => $project->id,
                 'topics_count' => count($topics),
                 'course' => $project->course,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
             ]);
 
         } catch (\Exception $e) {
@@ -1909,7 +1960,7 @@ The description should help a student understand what this topic involves and wh
             'academic_context_hash' => $academicContextHash,
             'request_metadata' => json_encode([
                 'course' => $project->course,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
                 'academic_level' => $project->type,
                 'field_of_study' => $project->field_of_study,
             ]),
@@ -1931,7 +1982,7 @@ The description should help a student understand what this topic involves and wh
     {
         $contextData = [
             'course' => $project->course,
-            'university' => $project->university,
+            'university' => $project->universityRelation?->name,
             'academic_level' => $project->type,
             'field_of_study' => $project->field_of_study,
         ];

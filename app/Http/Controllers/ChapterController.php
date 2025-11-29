@@ -10,13 +10,19 @@ use App\Models\Project;
 use App\Services\AIContentGenerator;
 use App\Services\ChapterReviewService;
 use App\Services\DocumentAnalysisService;
+use App\Services\FacultyStructureService;
 use App\Services\PaperCollectionService;
 use App\Services\ProjectOutlineService;
+use App\Services\ProjectTypeDetector;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Spatie\Browsershot\Browsershot;
+use Spatie\LaravelPdf\Enums\Orientation;
+use Spatie\LaravelPdf\Facades\Pdf;
 
 class ChapterController extends Controller
 {
@@ -29,7 +35,9 @@ class ChapterController extends Controller
         PaperCollectionService $paperService,
         private ProjectOutlineService $outlineService,
         private ChapterReviewService $reviewService,
-        private DocumentAnalysisService $documentService
+        private DocumentAnalysisService $documentService,
+        private ProjectTypeDetector $projectTypeDetector,
+        private FacultyStructureService $facultyStructureService
     ) {
         $this->aiGenerator = $aiGenerator;
         $this->paperService = $paperService;
@@ -94,6 +102,10 @@ class ChapterController extends Controller
     {
         // Validate user owns project
         abort_if($project->user_id !== auth()->id(), 403);
+
+        // Extend execution time for long chapter generation (10 minutes)
+        set_time_limit(600);
+        ini_set('max_execution_time', 600);
 
         // For streaming requests, don't block on paper collection
         // Papers should already be collected when user reaches chapter editor
@@ -257,7 +269,8 @@ class ChapterController extends Controller
 
                 // For progressive generation, use simplified single-pass generation with stopping logic
                 if ($request->input('generation_type') === 'progressive') {
-                    $targetWordCount = $chapter->target_word_count ?? $this->getChapterWordCount($project, $chapterNumber);
+                    // ALWAYS recalculate target word count to use updated values (don't trust old DB values)
+                    $targetWordCount = $this->getChapterWordCount($project, $chapterNumber);
                     $maxWordCount = intval($targetWordCount * 1.1); // 110% of target (stop point)
 
                     Log::info('PROGRESSIVE STREAM - Starting simplified generation', [
@@ -450,8 +463,10 @@ class ChapterController extends Controller
      */
     public function write(Project $project, int $chapterNumber)
     {
-        Log::info('WRITE METHOD - Starting', [
+        Log::info('📝 WRITE METHOD - Starting', [
             'project_id' => $project->id,
+            'project_slug' => $project->slug,
+            'project_mode' => $project->mode,
             'chapter_number' => $chapterNumber,
             'user_id' => auth()->id(),
         ]);
@@ -471,8 +486,31 @@ class ChapterController extends Controller
             'status' => 'draft',
         ]);
 
-        // Load outlines for proper word count targeting
-        $project->load(['outlines.sections']);
+        Log::info('✅ WRITE METHOD - Chapter retrieved/created', [
+            'chapter_id' => $chapterModel->id,
+            'chapter_number' => $chapterModel->chapter_number,
+            'was_created' => $chapterModel->wasRecentlyCreated,
+        ]);
+
+        // Redirect to manual editor for manual mode projects
+        if ($project->mode === 'manual') {
+            $redirectUrl = route('projects.manual-editor.show', [
+                'project' => $project->slug,
+                'chapter' => $chapterModel->id,
+            ]);
+
+            Log::info('🔀 WRITE METHOD - Redirecting to manual editor', [
+                'redirect_url' => $redirectUrl,
+                'chapter_id' => $chapterModel->id,
+            ]);
+
+            return redirect()->route('projects.manual-editor.show', [
+                'project' => $project->slug,
+                'chapter' => $chapterModel->id,
+            ]);
+        }
+
+        Log::info('📄 WRITE METHOD - Rendering ChapterEditor for auto mode');
 
         return Inertia::render('projects/ChapterEditor', [
             'project' => [
@@ -484,9 +522,9 @@ class ChapterController extends Controller
                 'status' => $project->status,
                 'mode' => $project->mode,
                 'field_of_study' => $project->field_of_study,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
                 'course' => $project->course,
-                'outlines' => $project->outlines->map(function ($outline) {
+                'outlines' => Inertia::lazy(fn () => $project->load(['outlines.sections'])->outlines->map(function ($outline) {
                     return [
                         'id' => $outline->id,
                         'chapter_number' => $outline->chapter_number,
@@ -507,10 +545,11 @@ class ChapterController extends Controller
                             ];
                         }),
                     ];
-                }),
+                })),
             ],
             'chapter' => $chapterModel,
-            'allChapters' => $project->chapters()->orderBy('chapter_number')->get(),
+            'allChapters' => Inertia::lazy(fn () => $project->chapters()->orderBy('chapter_number')->get()),
+            'facultyChapters' => Inertia::lazy(fn () => $this->facultyStructureService->getChapterStructure($project)),
             'mode' => 'write', // Indicate this is writing mode
         ]);
     }
@@ -536,8 +575,13 @@ class ChapterController extends Controller
             'status' => 'draft',
         ]);
 
-        // Load outlines for proper word count targeting
-        $project->load(['outlines.sections']);
+        // Redirect to manual editor for manual mode projects
+        if ($project->mode === 'manual') {
+            return redirect()->route('projects.manual-editor.show', [
+                'project' => $project->slug,
+                'chapter' => $chapter->id,
+            ]);
+        }
 
         return Inertia::render('projects/ChapterEditor', [
             'project' => [
@@ -549,9 +593,9 @@ class ChapterController extends Controller
                 'status' => $project->status,
                 'mode' => $project->mode,
                 'field_of_study' => $project->field_of_study,
-                'university' => $project->university,
+                'university' => $project->universityRelation?->name,
                 'course' => $project->course,
-                'outlines' => $project->outlines->map(function ($outline) {
+                'outlines' => Inertia::lazy(fn () => $project->load(['outlines.sections'])->outlines->map(function ($outline) {
                     return [
                         'id' => $outline->id,
                         'chapter_number' => $outline->chapter_number,
@@ -572,10 +616,11 @@ class ChapterController extends Controller
                             ];
                         }),
                     ];
-                }),
+                })),
             ],
             'chapter' => $chapter,
-            'allChapters' => $project->chapters()->orderBy('chapter_number')->get(),
+            'allChapters' => Inertia::lazy(fn () => $project->chapters()->orderBy('chapter_number')->get()),
+            'facultyChapters' => Inertia::lazy(fn () => $this->facultyStructureService->getChapterStructure($project)),
             'mode' => 'edit', // Indicate this is edit mode
         ]);
     }
@@ -726,8 +771,8 @@ Project Details:
 - Title: {$project->title}
 - Topic: {$project->topic}
 - Field of Study: {$project->field_of_study}
-- Faculty: {$project->faculty}
-- University: {$project->university}
+- Faculty: {$project->facultyRelation?->name}
+- University: {$project->universityRelation?->name}
 - Course: {$project->course}
 - Academic Level: {$project->type}";
 
@@ -746,11 +791,11 @@ Project Details:
 
         $prompt .= "\n\nCRITICAL REQUIREMENTS:
 - TARGET WORD COUNT: EXACTLY {$targetWordCount} WORDS (This is mandatory - the chapter must be comprehensive and reach this word count)
-- Write in formal academic style appropriate for {$project->faculty} faculty
+- Write in formal academic style appropriate for {$project->facultyRelation?->name} faculty
 - Include proper citations and references in APA format
 - Use clear headings and subheadings with substantial content under each
 - Ensure content is original, well-researched, and in-depth
-- Follow {$project->faculty} faculty conventions and standards
+- Follow {$project->facultyRelation?->name} faculty conventions and standards
 - Provide detailed explanations, examples, and analysis
 - Each section should be thoroughly developed with multiple paragraphs
 
@@ -767,7 +812,7 @@ CITATION REQUIREMENTS:
 - If you're unsure about a source's accuracy or existence, mark it as [UNVERIFIED] instead of creating a fake citation
 - Only include citations when they genuinely support your arguments and content
 
-Focus on making this chapter comprehensive and academically rigorous according to {$project->faculty} faculty standards.";
+Focus on making this chapter comprehensive and academically rigorous according to {$project->facultyRelation?->name} faculty standards.";
 
         return $prompt;
     }
@@ -829,7 +874,7 @@ Focus on making this chapter comprehensive and academically rigorous according t
             Log::info('Generating real AI content for chapter', ['prompt_length' => strlen($prompt)]);
 
             $response = $this->aiGenerator->generate($prompt, [
-                'model' => 'gpt-4',
+                'model' => 'gpt-4o',
                 'temperature' => 0.7,
                 'max_tokens' => 8000, // Increased for longer content
             ]);
@@ -854,7 +899,7 @@ Focus on making this chapter comprehensive and academically rigorous according t
      * Generate chapter content with target word count validation
      * Ensures at least 90% of target word count is reached
      */
-    private function callAiServiceWithWordTarget(string $prompt, int $targetWordCount): string
+    public function callAiServiceWithWordTarget(string $prompt, int $targetWordCount): string
     {
         $minWordCount = intval($targetWordCount * 0.9); // 90% of target
         $maxAttempts = 3;
@@ -981,29 +1026,37 @@ ORIGINAL PROMPT CONTEXT:
      * GET TARGET WORD COUNT PER CHAPTER
      * Based on project category and chapter number
      */
-    private function getChapterWordCount(Project $project, int $chapterNumber): int
+    public function getChapterWordCount(Project $project, int $chapterNumber): int
     {
         // Try to get faculty-specific word count first
-        $facultyStructure = \App\Models\FacultyStructure::with(['chapters' => function ($query) use ($chapterNumber) {
-            $query->where('chapter_number', $chapterNumber);
-        }])->where('faculty_slug', $project->faculty)->first();
+        // Load faculty relationship if not loaded
+        $project->loadMissing('facultyRelation.structure');
+
+        $facultyStructure = $project->facultyRelation?->structure;
+
+        // Load the specific chapter if faculty structure exists
+        if ($facultyStructure) {
+            $facultyStructure->load(['chapters' => function ($query) use ($chapterNumber) {
+                $query->where('chapter_number', $chapterNumber);
+            }]);
+        }
 
         if ($facultyStructure && ! $facultyStructure->chapters->isEmpty()) {
             $facultyChapter = $facultyStructure->chapters->first();
 
-            // Use reduced word count (60% of faculty structure) for more manageable generation
-            return intval($facultyChapter->target_word_count * 0.6);
+            // Use FULL word count from faculty structure (removed artificial 60% reduction)
+            return intval($facultyChapter->target_word_count);
         }
 
-        // Fallback to reduced target word counts for more manageable generation
+        // Fallback to FULL target word counts (removed artificial reduction)
         return match ($chapterNumber) {
-            1 => 1500,  // Introduction
-            2 => 2000,  // Literature Review
-            3 => 2000,  // Methodology
-            4 => 2500,  // Results/Analysis
-            5 => 2000,  // Discussion
-            6 => 1500,  // Conclusion
-            default => 2000, // Default for any additional chapters
+            1 => 2800,  // Introduction - full target
+            2 => 3500,  // Literature Review - full target
+            3 => 3000,  // Methodology - full target
+            4 => 3500,  // Results/Analysis - full target
+            5 => 3000,  // Discussion - full target
+            6 => 2500,  // Conclusion - full target
+            default => 3000, // Default for any additional chapters
         };
     }
 
@@ -1022,7 +1075,7 @@ ORIGINAL PROMPT CONTEXT:
         $context .= "- Title: {$project->title}\n";
         $context .= "- Topic: {$project->topic}\n";
         $context .= "- Field of Study: {$project->field_of_study}\n";
-        $context .= "- University: {$project->university}\n";
+        $context .= "- University: {$project->universityRelation?->name}\n";
         $context .= "- Course: {$project->course}\n";
         $context .= "- Academic Level: {$project->type}\n\n";
 
@@ -1064,7 +1117,7 @@ ORIGINAL PROMPT CONTEXT:
         return $context;
     }
 
-    private function buildProgressivePrompt($project, $chapterNumber)
+    public function buildProgressivePrompt($project, $chapterNumber)
     {
         // Get previous chapters for context
         $previousChapters = Chapter::where('project_id', $project->id)
@@ -1093,10 +1146,18 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= $this->getFacultySpecificInstructions($project, $chapterNumber);
 
         // Add comprehensive writing guidelines for depth and quality
-        $prompt .= "\n\nCOMPREHENSIVE WRITING GUIDELINES:\n";
-        $prompt .= "1. Write with DEPTH and SUBSTANCE ensuring each section is comprehensive and well-developed\n";
-        $prompt .= "2. Provide detailed explanations, examples, and analysis in each section\n";
-        $prompt .= "3. Ensure each section is substantial (aim for 250-500 words per major section)\n";
+        // Calculate words per section dynamically based on target word count
+        $targetWordCount = $this->getChapterWordCount($project, $chapterNumber);
+        $wordsPerSection = intval($targetWordCount / 3); // Assume 3 major sections typically
+
+        $prompt .= "\n\n⚠️ CRITICAL LENGTH REQUIREMENT ⚠️\n";
+        $prompt .= "TARGET: You MUST write AT LEAST {$targetWordCount} words for this ENTIRE chapter.\n";
+        $prompt .= "DO NOT STOP until you reach this word count with comprehensive, detailed content.\n\n";
+
+        $prompt .= "COMPREHENSIVE WRITING GUIDELINES:\n";
+        $prompt .= "1. Write with MAXIMUM DEPTH and SUBSTANCE - each section must be comprehensive and well-developed\n";
+        $prompt .= "2. Provide EXTENSIVE explanations, multiple examples, and thorough analysis in EVERY section\n";
+        $prompt .= "3. Each major section MUST be {$wordsPerSection}-".intval($wordsPerSection * 1.3)." words minimum (NOT 250-500)\n";
         $prompt .= "4. Include relevant examples, case studies, or illustrations where appropriate\n";
         $prompt .= "5. Elaborate on key points with thorough explanations and supporting details\n";
         $prompt .= "6. Connect ideas between sections to create a cohesive narrative\n";
@@ -1118,6 +1179,9 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "- If you're unsure about a source's accuracy or existence, mark it as [UNVERIFIED] instead of creating a fake citation\n";
         $prompt .= "- Only include citations when they genuinely support your arguments and content\n";
 
+        // Add context-aware content generation instructions based on project type
+        $prompt .= $this->projectTypeDetector->getContextualInstructions($project, $chapterNumber);
+
         return $prompt;
     }
 
@@ -1127,7 +1191,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Project Topic: {$project->topic}\n";
         $prompt .= "Field of Study: {$project->field_of_study}\n";
         $prompt .= "Academic Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Course: {$project->course}\n\n";
 
         // Add collected papers for citation constraint
@@ -1170,7 +1234,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Academic Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Course: {$project->course}\n\n";
 
         $prompt .= "CURRENT CHAPTER CONTENT:\n";
@@ -1212,7 +1276,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Academic Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Course: {$project->course}\n\n";
 
         $prompt .= "SELECTED TEXT TO REPHRASE:\n";
@@ -1255,7 +1319,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Academic Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Course: {$project->course}\n";
         $prompt .= "Chapter: {$chapter->title}\n\n";
 
@@ -1437,33 +1501,35 @@ ORIGINAL PROMPT CONTEXT:
      */
     private function getFacultySpecificInstructions(Project $project, int $chapterNumber): string
     {
-        // Get faculty structure based on project's faculty field
-        $facultyStructure = \App\Models\FacultyStructure::with(['chapters' => function ($query) use ($chapterNumber, $project) {
-            $query->where('chapter_number', $chapterNumber)
-                ->where(function ($q) use ($project) {
-                    $q->where('academic_level', $project->type)
-                        ->orWhere('academic_level', 'all');
-                })
-                ->with('sections');
-        }])->where('faculty_slug', $project->faculty)->first();
+        // Get faculty structure through relationship
+        $project->loadMissing('facultyRelation.structure.chapters.sections');
+
+        $facultyStructure = $project->facultyRelation?->structure;
 
         if (! $facultyStructure) {
             // Fallback to generic instructions if no faculty structure found
-            error_log("No faculty structure found for faculty: {$project->faculty}");
+            error_log("No faculty structure found for faculty: {$project->facultyRelation?->name}");
 
             return $this->getChapterSpecificInstructions($chapterNumber);
         }
 
-        if ($facultyStructure->chapters->isEmpty()) {
+        // Filter chapters by chapter number and academic level
+        $facultyChapter = $facultyStructure->chapters
+            ->where('chapter_number', $chapterNumber)
+            ->filter(function ($chapter) use ($project) {
+                return $chapter->academic_level === $project->type || $chapter->academic_level === 'all';
+            })
+            ->first();
+
+        if (! $facultyChapter) {
             // Fallback to generic instructions if no chapter found
-            error_log("No chapters found for faculty: {$project->faculty}, chapter: {$chapterNumber}, academic_level: {$project->type}");
+            error_log("No chapters found for faculty: {$project->facultyRelation?->name}, chapter: {$chapterNumber}, academic_level: {$project->type}");
 
             return $this->getChapterSpecificInstructions($chapterNumber);
         }
 
-        error_log("Using database structure for faculty: {$project->faculty}, chapter: {$chapterNumber}, academic_level: {$project->type}");
+        error_log("Using database structure for faculty: {$project->facultyRelation?->name}, chapter: {$chapterNumber}, academic_level: {$project->type}");
 
-        $facultyChapter = $facultyStructure->chapters->first();
         $instructions = "Write a comprehensive {$facultyChapter->chapter_title} chapter that includes:\n";
 
         foreach ($facultyChapter->sections as $section) {
@@ -1516,7 +1582,10 @@ ORIGINAL PROMPT CONTEXT:
      */
     private function getLastChapterNumber(Project $project): int
     {
-        $facultyStructure = \App\Models\FacultyStructure::where('faculty_slug', $project->faculty)->first();
+        // Load faculty relationship if not loaded
+        $project->loadMissing('facultyRelation.structure.chapters');
+
+        $facultyStructure = $project->facultyRelation?->structure;
 
         if (! $facultyStructure) {
             // Default to 5 chapters if no faculty structure found
@@ -2155,7 +2224,7 @@ ORIGINAL PROMPT CONTEXT:
         $context .= "- Topic: {$project->topic}\n";
         $context .= "- Field: {$project->field_of_study}\n";
         $context .= "- Level: {$project->type}\n";
-        $context .= "- University: {$project->university}\n";
+        $context .= "- University: {$project->universityRelation?->name}\n";
         $context .= "- Course: {$project->course}\n\n";
 
         $context .= "Current Chapter: {$chapter->chapter_number} - {$chapter->title}\n\n";
@@ -2208,7 +2277,7 @@ ORIGINAL PROMPT CONTEXT:
         $context .= "- Topic: {$project->topic}\n";
         $context .= "- Field: {$project->field_of_study}\n";
         $context .= "- Level: {$project->type}\n";
-        $context .= "- University: {$project->university}\n";
+        $context .= "- University: {$project->universityRelation?->name}\n";
         $context .= "- Course: {$project->course}\n\n";
 
         $context .= "Current Chapter: {$chapter->chapter_number} - {$chapter->title}\n\n";
@@ -2591,7 +2660,7 @@ ORIGINAL PROMPT CONTEXT:
         $context .= "- Topic: {$project->topic}\n";
         $context .= "- Field of Study: {$project->field_of_study}\n";
         $context .= "- Academic Level: {$project->type}\n";
-        $context .= "- University: {$project->university}\n";
+        $context .= "- University: {$project->universityRelation?->name}\n";
         $context .= "- Course: {$project->course}\n\n";
 
         // Current chapter context
@@ -2767,7 +2836,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Chapter: {$chapterTitle}\n\n";
 
         $prompt .= "CURRENT WRITING STATUS:\n";
@@ -2820,7 +2889,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Chapter: {$chapterTitle}\n";
         $prompt .= "Section: {$sectionNumber} {$sectionTitle}\n\n";
 
@@ -3077,7 +3146,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Chapter {$chapterNumber}: {$chapterTitle}\n\n";
 
         if (trim($existingContent)) {
@@ -3380,7 +3449,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Topic: {$project->topic}\n";
         $prompt .= "Field: {$project->field_of_study}\n";
         $prompt .= "Level: {$project->type}\n";
-        $prompt .= "University: {$project->university}\n";
+        $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Chapter {$chapterNumber}: {$chapterTitle}\n\n";
 
         $contentLength = strlen(trim($currentContent));
@@ -4194,9 +4263,9 @@ ORIGINAL PROMPT CONTEXT:
             $fullContent .= $chunk;
             $wordCount = str_word_count($fullContent);
 
-            // Stop if we've reached a reasonable word count (ensure good depth)
-            if ($wordCount >= $targetWordCount * 0.90) { // Stop at 90% or higher for better depth
-                Log::info('PROGRESSIVE STREAM - Stopping: reached good word count', [
+            // Stop if we've reached target word count (allow completion)
+            if ($wordCount >= $targetWordCount) { // Changed from 90% to 100% to ensure chapters are complete
+                Log::info('PROGRESSIVE STREAM - Stopping: reached target word count', [
                     'current_word_count' => $wordCount,
                     'target_word_count' => $targetWordCount,
                     'percentage_achieved' => round(($wordCount / $targetWordCount) * 100),
@@ -4274,17 +4343,17 @@ ORIGINAL PROMPT CONTEXT:
                 'id' => $project->id,
                 'slug' => $project->slug,
                 'user_id' => $project->user_id,
-                'title' => $project->title
+                'title' => $project->title,
             ],
             'chapter' => [
                 'id' => $chapter->id,
                 'slug' => $chapter->slug,
                 'project_id' => $chapter->project_id,
                 'title' => $chapter->title,
-                'chapter_number' => $chapter->chapter_number
+                'chapter_number' => $chapter->chapter_number,
             ],
             'current_user_id' => auth()->id(),
-            'is_authenticated' => auth()->check()
+            'is_authenticated' => auth()->check(),
         ]);
 
         // Check if user owns the project
@@ -4292,7 +4361,7 @@ ORIGINAL PROMPT CONTEXT:
             \Illuminate\Support\Facades\Log::error('❌ AUTHORIZATION FAILED - User does not own project', [
                 'project_user_id' => $project->user_id,
                 'current_user_id' => auth()->id(),
-                'project_id' => $project->id
+                'project_id' => $project->id,
             ]);
             abort(403, 'You do not own this project');
         }
@@ -4303,7 +4372,7 @@ ORIGINAL PROMPT CONTEXT:
                 'chapter_project_id' => $chapter->project_id,
                 'route_project_id' => $project->id,
                 'chapter_id' => $chapter->id,
-                'project_id' => $project->id
+                'project_id' => $project->id,
             ]);
             abort(403, 'Chapter does not belong to this project');
         }
@@ -4311,7 +4380,7 @@ ORIGINAL PROMPT CONTEXT:
         \Illuminate\Support\Facades\Log::info('✅ AUTHORIZATION PASSED - Proceeding with deletion', [
             'chapter_id' => $chapter->id,
             'project_id' => $project->id,
-            'user_id' => auth()->id()
+            'user_id' => auth()->id(),
         ]);
 
         // Delete the chapter
@@ -4320,7 +4389,7 @@ ORIGINAL PROMPT CONTEXT:
         \Illuminate\Support\Facades\Log::info('🏁 DELETION COMPLETED', [
             'deleted' => $deleted,
             'chapter_id' => $chapter->id,
-            'chapter_slug' => $chapter->slug
+            'chapter_slug' => $chapter->slug,
         ]);
 
         // If this is an Inertia request, handle accordingly
@@ -4333,7 +4402,7 @@ ORIGINAL PROMPT CONTEXT:
                 // Redirect to project writing page with flash message
                 return redirect()->route('projects.writing', $project->slug)->with('flash', [
                     'type' => 'success',
-                    'message' => 'Chapter deleted successfully'
+                    'message' => 'Chapter deleted successfully',
                 ]);
             }
         }
@@ -4341,7 +4410,342 @@ ORIGINAL PROMPT CONTEXT:
         // For other cases, redirect back with flash message
         return back()->with('flash', [
             'type' => 'success',
-            'message' => 'Chapter deleted successfully'
+            'message' => 'Chapter deleted successfully',
         ]);
+    }
+
+    /**
+     * EXPORT CHAPTER TO PDF
+     * Generates a professional PDF document for the chapter
+     * Uses Browsershot for reliable PDF generation
+     */
+    public function exportChapterPdf(Project $project, int $chapterNumber)
+    {
+        $startTime = microtime(true);
+
+        Log::info('Chapter PDF Export Request Received', [
+            'project_id' => $project->id,
+            'chapter_number' => $chapterNumber,
+            'user_id' => auth()->id(),
+            'project_slug' => $project->slug,
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        try {
+            // Ensure user owns the project
+            Log::info('Chapter PDF Export: Checking user authorization', [
+                'project_user_id' => $project->user_id,
+                'auth_user_id' => auth()->id(),
+                'is_authorized' => $project->user_id === auth()->id(),
+            ]);
+            abort_if($project->user_id !== auth()->id(), 403);
+
+            // Get the chapter
+            $chapter = Chapter::where('project_id', $project->id)
+                ->where('chapter_number', $chapterNumber)
+                ->firstOrFail();
+
+            Log::info('Chapter PDF Export: Chapter found', [
+                'chapter_id' => $chapter->id,
+                'chapter_title' => $chapter->title,
+                'has_content' => ! empty($chapter->content),
+                'word_count' => $chapter->word_count,
+            ]);
+
+            // Ensure chapter has content to export
+            abort_if(empty($chapter->content), 404, 'No content available for export');
+
+            // Load project with all necessary relationships for PDF generation
+            $project->load(['user', 'category']);
+
+            Log::info('Chapter PDF Export: Project data loaded', [
+                'project_id' => $project->id,
+                'has_user_relation' => $project->user !== null,
+                'has_category_relation' => $project->category !== null,
+                'user_name' => $project->user->name ?? 'N/A',
+            ]);
+
+            // Convert Tiptap JSON content to HTML for PDF
+            $chapterContent = $this->convertTiptapToHtml($chapter->content);
+
+            // Create a unique filename
+            $fileName = sprintf(
+                'chapter_%d_%s_%s.pdf',
+                $chapterNumber,
+                Str::slug($chapter->title),
+                now()->format('Ymd-His')
+            );
+
+            // Create directory if it doesn't exist
+            $directory = storage_path('app/public/chapter-exports/'.date('Y/m'));
+            if (! File::isDirectory($directory)) {
+                File::makeDirectory($directory, 0755, true);
+            }
+
+            $filePath = $directory.'/'.$fileName;
+
+            try {
+                // Generate PDF using Spatie PDF with Browsershot for reliability
+                $pdf = Pdf::view('pdf.chapter', [
+                    'project' => $project,
+                    'chapter' => $chapter,
+                    'chapterContent' => $chapterContent,
+                    'isPdfMode' => true,
+                ])
+                    ->format('A4')
+                    ->orientation(Orientation::Portrait)
+                    ->withBrowsershot(function (Browsershot $browsershot) {
+                        // Try to find installed browsers in the system
+                        $chromePaths = [
+                            config('app.chrome_path'), // First try the configured path
+                            '/usr/bin/chromium-browser',
+                            '/usr/bin/chromium',
+                            '/usr/bin/google-chrome',
+                            '/usr/bin/google-chrome-stable',
+                            '/snap/bin/chromium',
+                            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // macOS
+                        ];
+
+                        Log::info('Chapter PDF Generation: Chrome Path Detection', [
+                            'available_paths' => $chromePaths,
+                            'config_chrome_path' => config('app.chrome_path'),
+                        ]);
+
+                        $chromePath = null;
+                        foreach ($chromePaths as $path) {
+                            Log::debug("Chapter PDF Generation: Testing Chrome path: {$path}");
+                            if ($path && file_exists($path) && is_executable($path)) {
+                                $chromePath = $path;
+                                Log::info("Chapter PDF Generation: Chrome path found: {$chromePath}");
+                                break;
+                            }
+                        }
+
+                        if (! $chromePath) {
+                            Log::error('Chapter PDF Generation: No Chrome path found!', [
+                                'tested_paths' => $chromePaths,
+                            ]);
+                            throw new \Exception('Chrome/Chromium browser not found for PDF generation');
+                        }
+
+                        Log::info('Chapter PDF Generation: Configuring Browsershot', [
+                            'chrome_path' => $chromePath,
+                            'format' => 'A4',
+                            'margins' => '20x20x20x20',
+                            'timeout' => 120,
+                        ]);
+
+                        $browsershot->setChromePath($chromePath)
+                            ->format('A4')
+                            ->margins(20, 20, 20, 20) // Professional academic margins
+                            ->showBackground()
+                            ->waitUntilNetworkIdle() // Wait for all resources to load
+                            ->userAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+                            ->deviceScaleFactor(1.5) // Higher resolution for better quality
+                            ->timeout(120)
+                            ->showBrowserHeaderAndFooter()
+                            ->hideHeader()
+                            ->footerHtml('<div style="text-align: center; font-size: 10px; color: #6b7280; font-family: Times New Roman, serif; padding: 8px 0; width: 100%; display: block;">Generated by Finalyze AI Academic Assistant | '.now()->format('F j, Y \a\t g:i A').'</div>')
+                            ->noSandbox()
+                            ->setOption('disable-web-security', true)
+                            ->setOption('allow-running-insecure-content', true);
+                    });
+
+                Log::info('Chapter PDF Generation: Starting PDF creation', [
+                    'view' => 'pdf.chapter',
+                    'output_path' => $filePath,
+                    'chapter_data' => [
+                        'id' => $chapter->id,
+                        'number' => $chapter->chapter_number,
+                        'title' => $chapter->title,
+                        'has_content' => ! empty($chapterContent),
+                    ],
+                ]);
+
+                $pdf->save($filePath);
+
+                Log::info('Chapter PDF Generation: Save operation completed', [
+                    'file_path' => $filePath,
+                    'file_exists' => File::exists($filePath),
+                ]);
+
+                if (! File::exists($filePath)) {
+                    Log::error('Chapter PDF Generation: File was not created', [
+                        'expected_path' => $filePath,
+                        'directory_exists' => File::exists(dirname($filePath)),
+                        'directory_writable' => is_writable(dirname($filePath)),
+                    ]);
+                    throw new \Exception("PDF file was not created at: {$filePath}");
+                }
+
+                // Validate PDF file format
+                $fileSize = File::size($filePath);
+                $fileHeader = file_get_contents($filePath, false, null, 0, 4);
+
+                Log::info('Chapter PDF Generation: File validation', [
+                    'file_size' => $fileSize,
+                    'file_header' => bin2hex($fileHeader),
+                    'is_valid_pdf' => $fileHeader === '%PDF',
+                ]);
+
+                if ($fileHeader !== '%PDF') {
+                    Log::error('Chapter PDF Generation: Invalid PDF format detected', [
+                        'file_path' => $filePath,
+                        'file_size' => $fileSize,
+                        'header_hex' => bin2hex($fileHeader),
+                        'first_100_chars' => substr(file_get_contents($filePath), 0, 100),
+                    ]);
+                }
+
+                // Log successful PDF generation
+                $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+                Log::info('Chapter PDF Generated Successfully', [
+                    'file' => $filePath,
+                    'execution_time_ms' => $executionTime,
+                ]);
+
+                // Log download preparation
+                Log::info('Chapter PDF Export: Preparing download response', [
+                    'filename' => $fileName,
+                    'content_type' => 'application/pdf',
+                    'file_size' => File::size($filePath),
+                    'project_id' => $project->id,
+                    'chapter_number' => $chapterNumber,
+                    'user_id' => auth()->id(),
+                    'execution_time_ms' => $executionTime,
+                    'delete_after_send' => true,
+                ]);
+
+                // Return file download response
+                return response()->download($filePath, $fileName, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
+                ])->deleteFileAfterSend(true);
+
+            } catch (\Exception $e) {
+                Log::error('Chapter PDF Generation Error', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                    'file_path' => $filePath ?? 'not_set',
+                ]);
+
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Chapter PDF Export Failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'project_id' => $project->id ?? null,
+                'chapter_number' => $chapterNumber,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to generate PDF. Please try again.',
+                'message' => 'PDF generation encountered an error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Convert Tiptap JSON content to HTML
+     */
+    private function convertTiptapToHtml(string $content): string
+    {
+        // If content is already HTML, return it
+        if (str_starts_with(trim($content), '<')) {
+            return $content;
+        }
+
+        // Try to decode as JSON (Tiptap format)
+        $json = json_decode($content, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            // If not JSON, treat as plain text
+            return nl2br(e($content));
+        }
+
+        // Basic Tiptap to HTML conversion
+        return $this->tiptapNodeToHtml($json);
+    }
+
+    /**
+     * Recursively convert Tiptap nodes to HTML
+     */
+    private function tiptapNodeToHtml(array $node): string
+    {
+        $html = '';
+
+        if (! isset($node['type'])) {
+            return $html;
+        }
+
+        $type = $node['type'];
+        $content = $node['content'] ?? [];
+        $marks = $node['marks'] ?? [];
+        $attrs = $node['attrs'] ?? [];
+
+        // Handle text nodes
+        if ($type === 'text') {
+            $text = $node['text'] ?? '';
+
+            // Apply marks (bold, italic, etc.)
+            foreach ($marks as $mark) {
+                $markType = $mark['type'];
+                switch ($markType) {
+                    case 'bold':
+                        $text = "<strong>{$text}</strong>";
+                        break;
+                    case 'italic':
+                        $text = "<em>{$text}</em>";
+                        break;
+                    case 'underline':
+                        $text = "<u>{$text}</u>";
+                        break;
+                    case 'code':
+                        $text = "<code>{$text}</code>";
+                        break;
+                    case 'link':
+                        $href = $mark['attrs']['href'] ?? '#';
+                        $text = "<a href=\"{$href}\">{$text}</a>";
+                        break;
+                }
+            }
+
+            return $text;
+        }
+
+        // Handle block nodes
+        $childrenHtml = '';
+        foreach ($content as $child) {
+            $childrenHtml .= $this->tiptapNodeToHtml($child);
+        }
+
+        switch ($type) {
+            case 'doc':
+                return $childrenHtml;
+            case 'paragraph':
+                return "<p>{$childrenHtml}</p>";
+            case 'heading':
+                $level = $attrs['level'] ?? 1;
+
+                return "<h{$level}>{$childrenHtml}</h{$level}>";
+            case 'bulletList':
+                return "<ul>{$childrenHtml}</ul>";
+            case 'orderedList':
+                return "<ol>{$childrenHtml}</ol>";
+            case 'listItem':
+                return "<li>{$childrenHtml}</li>";
+            case 'blockquote':
+                return "<blockquote>{$childrenHtml}</blockquote>";
+            case 'codeBlock':
+                return "<pre><code>{$childrenHtml}</code></pre>";
+            case 'hardBreak':
+                return '<br>';
+            case 'horizontalRule':
+                return '<hr>';
+            default:
+                return $childrenHtml;
+        }
     }
 }

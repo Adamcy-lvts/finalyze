@@ -10,7 +10,7 @@ class OpenAlexAPI
 {
     private string $baseUrl = 'https://api.openalex.org';
 
-    private int $timeout = 10;
+    private int $timeout = 30;
 
     private array $headers;
 
