@@ -1,5 +1,5 @@
-# Use the official PHP image
-FROM php:8.2.0-fpm
+# Use the official PHP 8.3 image to support typed class constants in deps
+FROM php:8.3-fpm
 
 # Install dependencies for PHP and Node.js
 RUN apt-get update && apt-get install -y \
