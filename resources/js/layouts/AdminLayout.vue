@@ -1,31 +1,53 @@
 <template>
   <SidebarProvider>
-    <Sidebar collapsible="icon" variant="inset" class="bg-sidebar text-sidebar-foreground">
-      <SidebarHeader>
+    <Sidebar collapsible="icon" variant="inset" class="border-r border-border bg-sidebar">
+      <SidebarHeader class="h-16 flex items-center justify-center border-b border-border/50 px-4">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg">
-              <Link href="/admin" class="flex items-center gap-3">
-                <AppLogo />
-                <div class="flex flex-col items-start">
-                  <span class="text-sm font-semibold text-foreground">Admin</span>
-                  <span class="text-xs text-muted-foreground">Project Companion</span>
-                </div>
+            <SidebarMenuButton size="lg" class="hover:bg-transparent data-[state=open]:bg-transparent">
+              <Link href="/admin" class="flex items-center gap-3 w-full">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <LayoutDashboard class="h-5 w-5" />
+              </div>
+              <div class="flex flex-col gap-0.5 leading-none">
+                <span class="font-semibold text-foreground">Admin Panel</span>
+                <span class="text-xs text-muted-foreground">v1.0.0</span>
+              </div>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup class="px-2 py-0">
-          <SidebarGroupLabel>Admin</SidebarGroupLabel>
+      <SidebarContent class="py-4">
+        <SidebarGroup>
+          <SidebarGroupLabel class="px-4 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+            Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem v-for="item in navItems" :key="item.href">
-                <SidebarMenuButton as-child :is-active="isActive(item.href)" :tooltip="item.label">
-                  <Link :href="item.href">
-                    <component :is="item.icon" />
-                    <span class="truncate">{{ item.label }}</span>
+              <SidebarMenuItem v-for="item in platformNavItems" :key="item.href">
+                <SidebarMenuButton as-child :is-active="isActive(item.href, item.exact)" :tooltip="item.label"
+                  class="px-4 py-2 h-auto transition-colors hover:bg-muted/50 data-[active=true]:bg-primary/10 data-[active=true]:text-primary">
+                  <Link :href="item.href" class="flex items-center gap-3">
+                  <component :is="item.icon" class="h-4 w-4" />
+                  <span class="font-medium">{{ item.label }}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup class="mt-4">
+          <SidebarGroupLabel class="px-4 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+            System</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem v-for="item in systemNavItems" :key="item.href">
+                <SidebarMenuButton as-child :is-active="isActive(item.href)" :tooltip="item.label"
+                  class="px-4 py-2 h-auto transition-colors hover:bg-muted/50 data-[active=true]:bg-primary/10 data-[active=true]:text-primary">
+                  <Link :href="item.href" class="flex items-center gap-3">
+                  <component :is="item.icon" class="h-4 w-4" />
+                  <span class="font-medium">{{ item.label }}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -33,20 +55,17 @@
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter class="px-2 py-3 text-xs text-muted-foreground space-y-3">
-        <NavFooter :items="footerNavItems" />
+      <SidebarFooter class="border-t border-border/50 p-4">
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton size="lg" class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-                  <UserInfo v-if="user" :user="user" />
-                  <ChevronsUpDown class="ml-auto size-4" />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
+            <SidebarMenuButton size="lg"
+              class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground hover:bg-muted/50 transition-colors">
+              <UserInfo v-if="user" :user="user" />
+              <ChevronsUpDown class="ml-auto size-4 text-muted-foreground" />
+            </SidebarMenuButton>
           </DropdownMenuTrigger>
-          <DropdownMenuContent class="min-w-56 rounded-lg" side="top" align="start" :side-offset="8">
+          <DropdownMenuContent class="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg" side="top"
+            align="start" :side-offset="8">
             <DropdownMenuLabel class="p-0 font-normal">
               <div class="flex items-center gap-2 px-2 py-2 text-left text-sm">
                 <UserInfo v-if="user" :user="user" :show-email="true" />
@@ -54,16 +73,17 @@
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem :as-child="true">
-              <Link class="block w-full" :href="route('profile.edit')" prefetch as="button">
-                <Settings class="mr-2 h-4 w-4" />
-                Settings
+              <Link class="block w-full cursor-pointer" :href="route('profile.edit')" prefetch as="button">
+              <Settings class="mr-2 h-4 w-4" />
+              Settings
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem :as-child="true">
-              <Link class="block w-full" method="post" :href="route('logout')" as="button">
-                <LogOut class="mr-2 h-4 w-4" />
-                Log out
+              <Link class="block w-full cursor-pointer text-rose-500 focus:text-rose-500" method="post"
+                :href="route('logout')" as="button">
+              <LogOut class="mr-2 h-4 w-4" />
+              Log out
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -72,8 +92,9 @@
       <SidebarRail />
     </Sidebar>
     <SidebarInset class="bg-background text-foreground flex min-h-screen flex-col">
-      <header class="border-b border-border bg-background">
-        <div class="max-w-7xl mx-auto px-4 md:px-8 h-14 flex items-center justify-between">
+      <header
+        class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div class="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <SidebarTrigger />
             <slot name="title">
@@ -84,9 +105,12 @@
             </slot>
           </div>
           <div class="flex items-center gap-3 text-sm text-muted-foreground">
+            <Link href="/admin/notifications" class="relative hover:text-foreground transition-colors">
+              <Bell class="h-4 w-4" />
+            </Link>
             <span>{{ user?.name }}</span>
-            <span class="text-muted-foreground">•</span>
-            <a href="/dashboard" class="text-indigo-600 hover:text-indigo-700 text-xs">Back to app</a>
+            <span class="text-muted-foreground/50">•</span>
+            <a href="/dashboard" class="text-primary hover:text-primary/80 text-xs font-medium transition-colors">Back to app</a>
           </div>
         </div>
       </header>
@@ -120,7 +144,6 @@ import {
 } from '@/components/ui/sidebar'
 import {
   LayoutDashboard,
-  Home,
   Users,
   CreditCard,
   BarChart3,
@@ -130,13 +153,9 @@ import {
   Settings,
   List,
   Bell,
-  BookOpen,
-  Folder as FolderIcon,
   ChevronsUpDown,
   LogOut,
 } from 'lucide-vue-next'
-import NavFooter from '@/components/NavFooter.vue'
-import AppLogo from '@/components/AppLogo.vue'
 import UserInfo from '@/components/UserInfo.vue'
 import {
   DropdownMenu,
@@ -150,12 +169,15 @@ import {
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: Home },
+const platformNavItems = [
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/projects', label: 'Projects', icon: Folder },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+]
+
+const systemNavItems = [
   { href: '/admin/ai', label: 'AI Monitoring', icon: Cpu },
   { href: '/admin/system/features', label: 'Feature Flags', icon: ToggleLeft },
   { href: '/admin/system/settings', label: 'Settings', icon: Settings },
@@ -163,10 +185,10 @@ const navItems = [
   { href: '/admin/notifications', label: 'Notifications', icon: Bell },
 ]
 
-const footerNavItems = [
-  { title: 'Github Repo', href: 'https://github.com/Adamcy-lvts/finalyze', icon: FolderIcon },
-  { title: 'Documentation', href: '#', icon: BookOpen },
-]
-
-const isActive = (href: string) => page.url.startsWith(href)
+const isActive = (href: string, exact = false) => {
+  if (exact) {
+    return page.url === href
+  }
+  return page.url.startsWith(href)
+}
 </script>

@@ -10,16 +10,30 @@ class AdminNotificationController extends Controller
 {
     public function index()
     {
-        return Inertia::render('Admin/Notifications/Index');
+        $notifications = AdminNotification::latest()->take(50)->get();
+
+        return Inertia::render('Admin/Notifications/Index', [
+            'notifications' => $notifications,
+        ]);
     }
 
     public function markRead(AdminNotification $notification)
     {
-        return response()->json(['status' => 'ok']);
+        $notification->update([
+            'is_read' => true,
+            'read_at' => now(),
+        ]);
+
+        return back();
     }
 
     public function markAllRead()
     {
-        return response()->json(['status' => 'ok']);
+        AdminNotification::where('is_read', false)->update([
+            'is_read' => true,
+            'read_at' => now(),
+        ]);
+
+        return back();
     }
 }
