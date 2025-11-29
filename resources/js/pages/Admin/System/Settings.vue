@@ -1,14 +1,61 @@
 <template>
   <AdminLayout>
     <template #title>
-      <h2 class="text-lg font-semibold text-slate-900">System Settings</h2>
+      <h2 class="text-lg font-semibold text-foreground">System Settings</h2>
     </template>
-    <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
-      Settings management coming soon.
-    </div>
+    <Card class="border border-border bg-card shadow-sm">
+      <CardHeader>
+        <CardTitle class="text-base font-semibold text-foreground">Settings</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <div v-for="setting in editableSettings" :key="setting.key" class="space-y-1">
+          <div class="flex items-center justify-between text-xs text-muted-foreground">
+            <span class="font-semibold text-foreground">{{ setting.key }}</span>
+            <span class="text-muted-foreground">{{ setting.group }}</span>
+          </div>
+          <Input v-model="setting.value" />
+          <p class="text-xs text-muted-foreground">{{ setting.description || 'No description' }}</p>
+        </div>
+        <div class="flex justify-end gap-2">
+          <Button @click="save" :disabled="form.processing">Save</Button>
+        </div>
+      </CardContent>
+    </Card>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { useForm } from '@inertiajs/vue3'
+import { reactive } from 'vue'
+
+const props = defineProps<{
+  settings: {
+    key: string
+    value: any
+    type: string
+    group: string
+    description: string | null
+  }[]
+}>()
+
+const editableSettings = reactive(
+  props.settings.map((s) => ({
+    key: s.key,
+    value: typeof s.value === 'object' ? JSON.stringify(s.value) : s.value,
+    group: s.group,
+    description: s.description,
+  })),
+)
+
+const form = useForm({
+  settings: editableSettings,
+})
+
+const save = () => {
+  form.put(route('admin.system.update-settings'), { preserveScroll: true })
+}
 </script>
