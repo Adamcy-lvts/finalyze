@@ -22,21 +22,45 @@ class ChapterGuidanceService
      */
     public function getChapterGuidance(Project $project, int $chapterNumber, string $chapterTitle): array
     {
-        // Always generate fresh guidance with AI (cache disabled)
+        if ($existingProjectGuidance = ProjectChapterGuidance::getForProjectChapter($project->id, $chapterNumber)) {
+            Log::info('Returning cached project guidance', [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+            ]);
+
+            return $this->formatProjectGuidanceResponse($existingProjectGuidance);
+        }
+
+        $course = $project->course ?? '';
+        $faculty = $project->faculty ?? '';
+        $fieldOfStudy = $project->field_of_study ?? '';
+        $academicLevel = $project->type ?? '';
+
+        if ($cachedGuidance = ChapterGuidance::findForContext(
+            $course,
+            $faculty,
+            $fieldOfStudy,
+            $academicLevel,
+            $chapterNumber
+        )) {
+            Log::info('Linking existing cached chapter guidance to project', [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+                'cached_guidance_id' => $cachedGuidance->id,
+            ]);
+
+            $projectGuidance = $this->linkGuidanceToProject($project, $chapterNumber, $cachedGuidance);
+
+            return $this->formatProjectGuidanceResponse($projectGuidance);
+        }
+
         Log::info('Generating fresh chapter guidance with AI', [
             'project_id' => $project->id,
             'chapter_number' => $chapterNumber,
             'chapter_title' => $chapterTitle,
         ]);
 
-        // Delete existing project-specific guidance for this chapter to avoid duplicates
-        ProjectChapterGuidance::where('project_id', $project->id)
-            ->where('chapter_number', $chapterNumber)
-            ->delete();
-
         $guidance = $this->generateChapterGuidance($project, $chapterNumber, $chapterTitle);
-
-        // Cache and link the generated guidance
         $projectGuidance = $this->cacheAndLinkGuidance($project, $chapterNumber, $chapterTitle, $guidance);
 
         return $this->formatProjectGuidanceResponse($projectGuidance);
@@ -363,7 +387,6 @@ No additional text or formatting.';
      */
     private function cacheAndLinkGuidance(Project $project, int $chapterNumber, string $chapterTitle, array $guidance): ProjectChapterGuidance
     {
-        // First create the general guidance cache
         $cachedGuidance = ChapterGuidance::create([
             'course' => $project->course,
             'faculty' => $project->faculty,
@@ -383,14 +406,7 @@ No additional text or formatting.';
             'last_used_at' => now(),
         ]);
 
-        // Then link it to the project (use updateOrCreate to handle potential duplicates)
-        return ProjectChapterGuidance::updateOrCreate([
-            'project_id' => $project->id,
-            'chapter_number' => $chapterNumber,
-        ], [
-            'chapter_guidance_id' => $cachedGuidance->id,
-            'accessed_at' => now(),
-        ]);
+        return $this->linkGuidanceToProject($project, $chapterNumber, $cachedGuidance);
     }
 
     /**

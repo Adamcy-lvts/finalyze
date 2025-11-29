@@ -97,9 +97,10 @@ class ChapterAnalysisController extends Controller
 
             if (! $latestAnalysis) {
                 return response()->json([
-                    'success' => false,
+                    'success' => true,
+                    'analysis' => null,
                     'message' => 'No analysis found for this chapter. Run analysis first.',
-                ], 404);
+                ]);
             }
 
             return response()->json([
