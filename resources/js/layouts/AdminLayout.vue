@@ -1,6 +1,6 @@
 <template>
   <SidebarProvider>
-    <Sidebar variant="sidebar" collapsible="icon" class="border-r">
+    <Sidebar variant="inset" collapsible="icon" class="border-r bg-white">
       <SidebarHeader class="px-4 py-4">
         <div>
           <h1 class="text-sm font-semibold text-slate-900">Admin</h1>
@@ -12,9 +12,9 @@
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem v-for="item in navItems" :key="item.href">
-                <SidebarMenuButton :href="item.href" :data-active="isActive(item.href)">
-                  <span class="text-xs w-4 text-slate-500">{{ item.icon }}</span>
-                  <span>{{ item.label }}</span>
+                <SidebarMenuButton :href="item.href" :data-active="isActive(item.href)" class="text-sm">
+                  <component :is="item.icon" class="h-4 w-4 text-slate-500" />
+                  <span class="truncate">{{ item.label }}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -68,21 +68,33 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
+import {
+  Home,
+  Users,
+  CreditCard,
+  BarChart3,
+  Folder,
+  Cpu,
+  ToggleLeft,
+  Settings,
+  List,
+  Bell,
+} from 'lucide-vue-next'
 
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
 
 const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: 'home' },
-  { href: '/admin/users', label: 'Users', icon: 'users' },
-  { href: '/admin/payments', label: 'Payments', icon: 'credit-card' },
-  { href: '/admin/analytics', label: 'Analytics', icon: 'bar' },
-  { href: '/admin/projects', label: 'Projects', icon: 'folder' },
-  { href: '/admin/ai', label: 'AI Monitoring', icon: 'cpu' },
-  { href: '/admin/system/features', label: 'Feature Flags', icon: 'toggle' },
-  { href: '/admin/system/settings', label: 'Settings', icon: 'settings' },
-  { href: '/admin/audit', label: 'Audit Logs', icon: 'list' },
-  { href: '/admin/notifications', label: 'Notifications', icon: 'bell' },
+  { href: '/admin', label: 'Dashboard', icon: Home },
+  { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/admin/projects', label: 'Projects', icon: Folder },
+  { href: '/admin/ai', label: 'AI Monitoring', icon: Cpu },
+  { href: '/admin/system/features', label: 'Feature Flags', icon: ToggleLeft },
+  { href: '/admin/system/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/audit', label: 'Audit Logs', icon: List },
+  { href: '/admin/notifications', label: 'Notifications', icon: Bell },
 ]
 
 const isActive = (href: string) => page.url.startsWith(href)
