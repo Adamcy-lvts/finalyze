@@ -8,12 +8,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Lab404\Impersonate\Models\Impersonate;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, Impersonate;
 
     /**
      * The attributes that are mass assignable.
@@ -29,6 +32,11 @@ class User extends Authenticatable
         'total_words_used',
         'bonus_words_received',
         'received_signup_bonus',
+        'is_banned',
+        'banned_at',
+        'ban_reason',
+        'banned_by',
+        'last_active_at',
     ];
 
     /**
@@ -56,6 +64,9 @@ class User extends Authenticatable
             'total_words_used' => 'integer',
             'bonus_words_received' => 'integer',
             'received_signup_bonus' => 'boolean',
+            'is_banned' => 'boolean',
+            'banned_at' => 'datetime',
+            'last_active_at' => 'datetime',
         ];
     }
 

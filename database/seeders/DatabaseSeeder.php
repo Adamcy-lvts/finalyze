@@ -35,6 +35,9 @@ class DatabaseSeeder extends Seeder
             UniversitySeeder::class,
             FacultySeeder::class,
             DepartmentSeeder::class,
+            FeatureFlagSeeder::class,
+            SystemSettingSeeder::class,
+            AdminRoleSeeder::class,
         ]);
     }
 }
