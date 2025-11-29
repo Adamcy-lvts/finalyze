@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\WordTransaction;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,52 +12,152 @@ class AdminUserController extends Controller
 {
     public function index()
     {
-        return Inertia::render('Admin/Users/Index');
+        $users = User::query()
+            ->withCount(['projects', 'payments'])
+            ->orderByDesc('created_at')
+            ->paginate(20)
+            ->through(fn ($user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'is_banned' => $user->is_banned,
+                'last_active_at' => $user->last_active_at,
+                'created_at' => $user->created_at,
+                'projects_count' => $user->projects_count,
+                'payments_count' => $user->payments_count,
+                'roles' => $user->getRoleNames(),
+            ]);
+
+        return Inertia::render('Admin/Users/Index', [
+            'users' => $users,
+        ]);
     }
 
     public function show(User $user)
     {
-        return Inertia::render('Admin/Users/Show', ['userId' => $user->id]);
+        $user->loadCount(['projects', 'payments']);
+
+        $latestTransactions = WordTransaction::where('user_id', $user->id)
+            ->latest()
+            ->take(10)
+            ->get()
+            ->map(fn ($tx) => [
+                'id' => $tx->id,
+                'type' => $tx->type,
+                'words' => $tx->words,
+                'description' => $tx->description,
+                'created_at' => $tx->created_at,
+            ]);
+
+        return Inertia::render('Admin/Users/Show', [
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'is_banned' => $user->is_banned,
+                'word_balance' => $user->word_balance,
+                'projects_count' => $user->projects_count,
+                'payments_count' => $user->payments_count,
+                'last_active_at' => $user->last_active_at,
+                'created_at' => $user->created_at,
+                'roles' => $user->getRoleNames(),
+            ],
+            'transactions' => $latestTransactions,
+        ]);
     }
 
     public function update(Request $request, User $user)
     {
-        // Placeholder implementation
-        return response()->json(['status' => 'ok']);
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email',
+        ]);
+
+        $user->update($data);
+
+        return back()->with('success', 'User updated');
     }
 
     public function ban(Request $request, User $user)
     {
-        return response()->json(['status' => 'ok']);
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $user->update([
+            'is_banned' => true,
+            'banned_at' => now(),
+            'ban_reason' => $request->input('reason'),
+            'banned_by' => $request->user()->id,
+        ]);
+
+        return back()->with('success', 'User banned');
     }
 
     public function unban(Request $request, User $user)
     {
-        return response()->json(['status' => 'ok']);
+        $user->update([
+            'is_banned' => false,
+            'banned_at' => null,
+            'ban_reason' => null,
+            'banned_by' => null,
+        ]);
+
+        return back()->with('success', 'User unbanned');
     }
 
     public function adjustBalance(Request $request, User $user)
     {
-        return response()->json(['status' => 'ok']);
+        $data = $request->validate([
+            'words' => 'required|integer',
+            'reason' => 'required|string|max:255',
+        ]);
+
+        $delta = (int) $data['words'];
+
+        $user->word_balance = ($user->word_balance ?? 0) + $delta;
+        $user->save();
+
+        WordTransaction::create([
+            'user_id' => $user->id,
+            'type' => WordTransaction::TYPE_ADJUSTMENT,
+            'words' => $delta,
+            'balance_after' => $user->word_balance,
+            'description' => $data['reason'],
+            'reference_type' => WordTransaction::REF_ADMIN,
+            'reference_id' => $request->user()->id,
+        ]);
+
+        return back()->with('success', 'Balance adjusted');
     }
 
     public function destroy(User $user)
     {
-        return response()->json(['status' => 'ok']);
+        $user->delete();
+
+        return back()->with('success', 'User soft deleted');
     }
 
     public function forceDestroy(User $user)
     {
-        return response()->json(['status' => 'ok']);
+        $user->forceDelete();
+
+        return back()->with('success', 'User permanently deleted');
     }
 
     public function impersonate(User $user)
     {
-        return response()->json(['status' => 'ok']);
+        auth()->user()->impersonate($user);
+
+        return redirect('/dashboard');
     }
 
     public function stopImpersonation()
     {
-        return response()->json(['status' => 'ok']);
+        if (auth()->user()->isImpersonated()) {
+            auth()->user()->leaveImpersonation();
+        }
+
+        return redirect()->route('admin.users.index');
     }
 }

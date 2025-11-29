@@ -8,10 +8,10 @@
     </template>
 
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-      <StatsCard title="Users" value="—" sub="Total users" />
-      <StatsCard title="Revenue" value="—" sub="All-time (₦)" />
-      <StatsCard title="Projects" value="—" sub="Total projects" />
-      <StatsCard title="Words Generated" value="—" sub="All-time" />
+      <StatsCard title="Users" :value="formatNumber(stats.users.total)" :sub="`New today: ${formatNumber(stats.users.today)}`" />
+      <StatsCard title="Revenue" :value="`₦${formatNumber(stats.revenue.total)}`" :sub="`Today: ₦${formatNumber(stats.revenue.today)}`" />
+      <StatsCard title="Projects" :value="formatNumber(stats.projects.total)" :sub="`New today: ${formatNumber(stats.projects.today)}`" />
+      <StatsCard title="Words Generated" :value="formatNumber(stats.words.total)" :sub="`Today: ${formatNumber(stats.words.today)}`" />
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -38,7 +38,11 @@
           <span class="text-xs text-slate-500">Coming soon</span>
         </div>
         <ul class="space-y-2 text-sm text-slate-600">
-          <li class="text-slate-400">No data yet</li>
+          <li v-if="recentActivity.length === 0" class="text-slate-400">No data yet</li>
+          <li v-for="(item, idx) in recentActivity" :key="idx" class="flex items-center justify-between">
+            <span>{{ item.message }}</span>
+            <span class="text-xs text-slate-400">{{ item.time }}</span>
+          </li>
         </ul>
       </div>
       <div class="bg-white border border-slate-200 rounded-xl p-4">
@@ -66,4 +70,16 @@
 <script setup lang="ts">
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import StatsCard from '@/components/Admin/StatsCard.vue'
+
+const props = defineProps<{
+  stats: {
+    users: { total: number; today: number }
+    revenue: { total: number; today: number }
+    projects: { total: number; today: number }
+    words: { total: number; today: number }
+  }
+  recentActivity: { message: string; time: string }[]
+}>()
+
+const formatNumber = (val: number) => Number(val ?? 0).toLocaleString()
 </script>
