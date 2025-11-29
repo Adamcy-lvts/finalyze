@@ -3,6 +3,9 @@
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\TrackLastActive;
+use Spatie\Permission\Middlewares\PermissionMiddleware;
+use Spatie\Permission\Middlewares\RoleMiddleware;
+use Spatie\Permission\Middlewares\RoleOrPermissionMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -24,6 +27,12 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             TrackLastActive::class,
+        ]);
+
+        $middleware->alias([
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
 
         // Add session and Sanctum middleware to API routes for SPA compatibility
