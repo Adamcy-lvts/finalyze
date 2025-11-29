@@ -3,44 +3,49 @@
     <template #title>
       <h2 class="text-lg font-semibold text-slate-900">Users</h2>
     </template>
-    <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-700">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-left text-sm">
-          <thead>
-            <tr class="text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
-              <th class="py-2 pr-3">ID</th>
-              <th class="py-2 pr-3">Name</th>
-              <th class="py-2 pr-3">Email</th>
-              <th class="py-2 pr-3">Projects</th>
-              <th class="py-2 pr-3">Payments</th>
-              <th class="py-2 pr-3">Banned</th>
-              <th class="py-2 pr-3">Joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in users.data" :key="user.id" class="border-b border-slate-100">
-              <td class="py-2 pr-3 text-slate-500">{{ user.id }}</td>
-              <td class="py-2 pr-3">{{ user.name }}</td>
-              <td class="py-2 pr-3">{{ user.email }}</td>
-              <td class="py-2 pr-3">{{ user.projects_count }}</td>
-              <td class="py-2 pr-3">{{ user.payments_count }}</td>
-              <td class="py-2 pr-3">
+    <Card class="border bg-white">
+      <CardHeader class="flex flex-row items-center justify-between pb-3">
+        <CardTitle class="text-base font-semibold text-slate-900">All Users</CardTitle>
+        <span class="text-xs text-slate-500">Total: {{ users.data.length }}</span>
+      </CardHeader>
+      <CardContent class="px-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead class="w-12">ID</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Projects</TableHead>
+              <TableHead>Payments</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Joined</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="user in users.data" :key="user.id">
+              <TableCell class="text-slate-500">{{ user.id }}</TableCell>
+              <TableCell class="font-medium text-slate-900">{{ user.name }}</TableCell>
+              <TableCell class="text-slate-600">{{ user.email }}</TableCell>
+              <TableCell>{{ user.projects_count }}</TableCell>
+              <TableCell>{{ user.payments_count }}</TableCell>
+              <TableCell>
                 <span :class="user.is_banned ? 'text-red-600' : 'text-green-600'">
-                  {{ user.is_banned ? 'Yes' : 'No' }}
+                  {{ user.is_banned ? 'Banned' : 'Active' }}
                 </span>
-              </td>
-              <td class="py-2 pr-3 text-slate-500">{{ formatDate(user.created_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+              </TableCell>
+              <TableCell class="text-slate-500">{{ formatDate(user.created_at) }}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import type { PageProps } from '@inertiajs/core'
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type UserRow = {
   id: number

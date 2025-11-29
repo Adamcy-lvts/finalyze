@@ -3,39 +3,45 @@
     <template #title>
       <h2 class="text-lg font-semibold text-slate-900">Payments</h2>
     </template>
-    <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-700">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-left text-sm">
-          <thead>
-            <tr class="text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
-              <th class="py-2 pr-3">ID</th>
-              <th class="py-2 pr-3">User</th>
-              <th class="py-2 pr-3">Amount (₦)</th>
-              <th class="py-2 pr-3">Status</th>
-              <th class="py-2 pr-3">Channel</th>
-              <th class="py-2 pr-3">Paid At</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="p in payments.data" :key="p.id" class="border-b border-slate-100">
-              <td class="py-2 pr-3 text-slate-500">{{ p.id }}</td>
-              <td class="py-2 pr-3">{{ p.user?.email ?? '—' }}</td>
-              <td class="py-2 pr-3">{{ formatAmount(p.amount) }}</td>
-              <td class="py-2 pr-3">
+    <Card class="border bg-white">
+      <CardHeader class="flex flex-row items-center justify-between pb-3">
+        <CardTitle class="text-base font-semibold text-slate-900">All Payments</CardTitle>
+        <span class="text-xs text-slate-500">Total: {{ payments.data.length }}</span>
+      </CardHeader>
+      <CardContent class="px-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead class="w-14">ID</TableHead>
+              <TableHead>User</TableHead>
+              <TableHead>Amount (₦)</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Channel</TableHead>
+              <TableHead>Paid At</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="p in payments.data" :key="p.id">
+              <TableCell class="text-slate-500">{{ p.id }}</TableCell>
+              <TableCell class="text-slate-700">{{ p.user?.email ?? '—' }}</TableCell>
+              <TableCell class="font-medium text-slate-900">{{ formatAmount(p.amount) }}</TableCell>
+              <TableCell>
                 <span :class="statusColor(p.status)">{{ p.status }}</span>
-              </td>
-              <td class="py-2 pr-3 text-slate-500">{{ p.channel ?? '—' }}</td>
-              <td class="py-2 pr-3 text-slate-500">{{ formatDate(p.paid_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+              </TableCell>
+              <TableCell class="text-slate-600">{{ p.channel ?? '—' }}</TableCell>
+              <TableCell class="text-slate-500">{{ formatDate(p.paid_at) }}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type PaymentRow = {
   id: number

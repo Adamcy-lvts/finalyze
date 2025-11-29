@@ -118,10 +118,34 @@ import {
   SidebarTrigger,
   SidebarGroupLabel,
 } from '@/components/ui/sidebar'
-import { LayoutDashboard, Home, Users, CreditCard, BarChart3, Folder, Cpu, ToggleLeft, Settings, List, Bell } from 'lucide-vue-next'
+import {
+  LayoutDashboard,
+  Home,
+  Users,
+  CreditCard,
+  BarChart3,
+  Folder,
+  Cpu,
+  ToggleLeft,
+  Settings,
+  List,
+  Bell,
+  BookOpen,
+  Folder as FolderIcon,
+  ChevronsUpDown,
+  LogOut,
+} from 'lucide-vue-next'
 import NavFooter from '@/components/NavFooter.vue'
-import NavUser from '@/components/NavUser.vue'
 import AppLogo from '@/components/AppLogo.vue'
+import UserInfo from '@/components/UserInfo.vue'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
@@ -140,8 +164,8 @@ const navItems = [
 ]
 
 const footerNavItems = [
-  { title: 'Github Repo', href: 'https://github.com/Adamcy-lvts/finalyze', icon: LayoutDashboard },
-  { title: 'Documentation', href: '#', icon: LayoutDashboard },
+  { title: 'Github Repo', href: 'https://github.com/Adamcy-lvts/finalyze', icon: FolderIcon },
+  { title: 'Documentation', href: '#', icon: BookOpen },
 ]
 
 const isActive = (href: string) => page.url.startsWith(href)
