@@ -1,27 +1,36 @@
 <template>
   <SidebarProvider>
-    <Sidebar variant="inset" collapsible="icon" class="border-r bg-white text-slate-900">
-      <SidebarHeader class="px-4 py-4">
-        <div>
-          <h1 class="text-sm font-semibold text-slate-900">Admin</h1>
-          <p class="text-xs text-slate-500">Project Companion</p>
-        </div>
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg">
+              <div class="flex flex-col items-start">
+                <span class="text-sm font-semibold text-foreground">Admin</span>
+                <span class="text-xs text-muted-foreground">Project Companion</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
+        <SidebarGroup class="px-2 py-0">
+          <SidebarGroupLabel>Admin</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem v-for="item in navItems" :key="item.href">
-                <SidebarMenuButton :href="item.href" :data-active="isActive(item.href)" class="text-sm">
-                  <component :is="item.icon" class="h-4 w-4 text-slate-500" />
-                  <span class="truncate">{{ item.label }}</span>
+                <SidebarMenuButton as-child :is-active="isActive(item.href)" :tooltip="item.label">
+                  <Link :href="item.href">
+                    <component :is="item.icon" />
+                    <span class="truncate">{{ item.label }}</span>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter class="px-4 py-3 text-xs text-slate-500">
+      <SidebarFooter class="px-4 py-3 text-xs text-muted-foreground">
         <div class="flex items-center gap-2">
           <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
           <span>Online</span>
@@ -74,8 +83,10 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
+  SidebarGroupLabel,
 } from '@/components/ui/sidebar'
 import { LayoutDashboard, Home, Users, CreditCard, BarChart3, Folder, Cpu, ToggleLeft, Settings, List, Bell } from 'lucide-vue-next'
+import { Link, usePage } from '@inertiajs/vue3'
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
 
