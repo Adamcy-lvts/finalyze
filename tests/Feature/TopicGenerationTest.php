@@ -65,7 +65,7 @@ class TopicGenerationTest extends TestCase
         ]));
 
         $response->assertStatus(200);
-        $response->assertHeader('Content-Type', fn ($value) => str_starts_with($value, 'text/event-stream'));
+        $this->assertTrue(str_starts_with($response->headers->get('Content-Type', ''), 'text/event-stream'));
 
         // We expect the mocked AI response "Topic A" to be in the stream
         // because regenerate=true forces fresh generation

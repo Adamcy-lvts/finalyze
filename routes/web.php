@@ -49,7 +49,7 @@ require __DIR__.'/auth.php';
 require __DIR__.'/payment.php';
 
 // Bulk project deletion (placed outside to avoid conflicts with numeric bindings)
-Route::middleware(['auth', 'verified'])->delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])
+Route::middleware(['auth', 'verified'])->match(['delete', 'post'], '/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])
     ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class])
     ->name('projects.bulk-destroy');
 
