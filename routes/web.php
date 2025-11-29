@@ -5,6 +5,15 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\ManualEditorController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\Admin\AdminAIController;
+use App\Http\Controllers\Admin\AdminAnalyticsController;
+use App\Http\Controllers\Admin\AdminAuditController;
+use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminNotificationController;
+use App\Http\Controllers\Admin\AdminPaymentController;
+use App\Http\Controllers\Admin\AdminProjectController;
+use App\Http\Controllers\Admin\AdminSystemController;
+use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\ProjectGuidanceController;
 use App\Http\Controllers\TopicController;
 use App\Http\Middleware\ProjectStateMiddleware;
@@ -47,6 +56,83 @@ Route::get('/test-broadcast', function () {
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/payment.php';
+
+// Admin routes
+Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->group(function () {
+    // Dashboard
+    Route::get('/', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
+
+    // Users
+    Route::prefix('users')->group(function () {
+        Route::get('/', [AdminUserController::class, 'index'])->name('admin.users.index');
+        Route::get('/{user}', [AdminUserController::class, 'show'])->name('admin.users.show');
+        Route::put('/{user}', [AdminUserController::class, 'update'])->name('admin.users.update');
+        Route::post('/{user}/ban', [AdminUserController::class, 'ban'])->name('admin.users.ban');
+        Route::post('/{user}/unban', [AdminUserController::class, 'unban'])->name('admin.users.unban');
+        Route::post('/{user}/adjust-balance', [AdminUserController::class, 'adjustBalance'])->name('admin.users.adjust-balance');
+        Route::delete('/{user}', [AdminUserController::class, 'destroy'])->name('admin.users.destroy');
+        Route::delete('/{user}/force', [AdminUserController::class, 'forceDestroy'])->name('admin.users.force-destroy');
+        Route::post('/{user}/impersonate', [AdminUserController::class, 'impersonate'])->name('admin.users.impersonate');
+    });
+
+    // Impersonation stop
+    Route::post('/stop-impersonation', [AdminUserController::class, 'stopImpersonation'])->name('admin.stop-impersonation');
+
+    // Payments
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [AdminPaymentController::class, 'index'])->name('admin.payments.index');
+        Route::get('/revenue', [AdminPaymentController::class, 'revenue'])->name('admin.payments.revenue');
+        Route::get('/{payment}', [AdminPaymentController::class, 'show'])->name('admin.payments.show');
+        Route::post('/{payment}/verify', [AdminPaymentController::class, 'verify'])->name('admin.payments.verify');
+        Route::post('/{payment}/refund', [AdminPaymentController::class, 'refund'])->name('admin.payments.refund');
+        Route::post('/manual-credit', [AdminPaymentController::class, 'manualCredit'])->name('admin.payments.manual-credit');
+    });
+
+    // Analytics
+    Route::prefix('analytics')->group(function () {
+        Route::get('/', [AdminAnalyticsController::class, 'index'])->name('admin.analytics.index');
+        Route::get('/users', [AdminAnalyticsController::class, 'users'])->name('admin.analytics.users');
+        Route::get('/revenue', [AdminAnalyticsController::class, 'revenue'])->name('admin.analytics.revenue');
+        Route::get('/usage', [AdminAnalyticsController::class, 'usage'])->name('admin.analytics.usage');
+        Route::get('/export', [AdminAnalyticsController::class, 'export'])->name('admin.analytics.export');
+    });
+
+    // Projects
+    Route::prefix('projects')->group(function () {
+        Route::get('/', [AdminProjectController::class, 'index'])->name('admin.projects.index');
+        Route::get('/{project}', [AdminProjectController::class, 'show'])->name('admin.projects.show');
+        Route::delete('/{project}', [AdminProjectController::class, 'destroy'])->name('admin.projects.destroy');
+        Route::get('/{project}/export', [AdminProjectController::class, 'export'])->name('admin.projects.export');
+    });
+
+    // AI Monitoring
+    Route::prefix('ai')->group(function () {
+        Route::get('/', [AdminAIController::class, 'index'])->name('admin.ai.index');
+        Route::get('/queue', [AdminAIController::class, 'queue'])->name('admin.ai.queue');
+        Route::get('/failures', [AdminAIController::class, 'failures'])->name('admin.ai.failures');
+        Route::post('/retry/{generation}', [AdminAIController::class, 'retry'])->name('admin.ai.retry');
+        Route::post('/circuit/{service}/reset', [AdminAIController::class, 'resetCircuit'])->name('admin.ai.reset-circuit');
+    });
+
+    // System
+    Route::prefix('system')->group(function () {
+        Route::get('/features', [AdminSystemController::class, 'features'])->name('admin.system.features');
+        Route::put('/features/{flag}', [AdminSystemController::class, 'updateFeature'])->name('admin.system.update-feature');
+        Route::get('/settings', [AdminSystemController::class, 'settings'])->name('admin.system.settings');
+        Route::put('/settings', [AdminSystemController::class, 'updateSettings'])->name('admin.system.update-settings');
+        Route::post('/cache/clear', [AdminSystemController::class, 'clearCache'])->name('admin.system.clear-cache');
+    });
+
+    // Audit Logs
+    Route::get('/audit', [AdminAuditController::class, 'index'])->name('admin.audit.index');
+
+    // Notifications
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [AdminNotificationController::class, 'index'])->name('admin.notifications.index');
+        Route::post('/{notification}/read', [AdminNotificationController::class, 'markRead'])->name('admin.notifications.read');
+        Route::post('/read-all', [AdminNotificationController::class, 'markAllRead'])->name('admin.notifications.read-all');
+    });
+});
 
 // Bulk project deletion (placed outside to avoid conflicts with numeric bindings)
 Route::middleware(['auth', 'verified'])->match(['delete', 'post'], '/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])
