@@ -67,12 +67,12 @@ it('handles projects without chapters', function () {
     unlink($filename);
 });
 
-it('creates exports directory if it does not exist', function () {
-    // Remove the exports directory if it exists
-    $exportDir = storage_path('app/exports');
-    if (is_dir($exportDir)) {
-        rmdir($exportDir);
-    }
+    it('creates exports directory if it does not exist', function () {
+        // Remove the exports directory if it exists
+        $exportDir = storage_path('app/exports');
+        if (is_dir($exportDir)) {
+            \Illuminate\Support\Facades\File::deleteDirectory($exportDir);
+        }
 
     $user = User::factory()->create();
     $project = Project::factory()->create([

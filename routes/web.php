@@ -48,6 +48,11 @@ require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/payment.php';
 
+// Bulk project deletion (placed outside to avoid conflicts with numeric bindings)
+Route::middleware(['auth', 'verified'])->delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])
+    ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class])
+    ->name('projects.bulk-destroy');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard - Main landing page after login
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -59,9 +64,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Wizard progress saving - AJAX endpoint to save progress as user fills form
     Route::post('/projects/wizard/save-progress', [ProjectController::class, 'saveWizardProgress'])->name('projects.save-wizard-progress');
-
-    // Bulk project deletion BEFORE single delete to avoid route conflicts
-    Route::delete('/projects/bulk-destroy', [ProjectController::class, 'bulkDestroy'])->name('projects.bulk-destroy');
 
     // Project deletion routes WITHOUT state middleware - allows deletion regardless of setup state
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])

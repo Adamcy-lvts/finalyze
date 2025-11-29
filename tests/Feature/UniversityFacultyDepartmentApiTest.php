@@ -3,6 +3,17 @@
 use App\Models\Faculty;
 use App\Models\University;
 use App\Models\User;
+use Database\Seeders\DepartmentSeeder;
+use Database\Seeders\FacultySeeder;
+use Database\Seeders\UniversitySeeder;
+
+beforeEach(function () {
+    $this->seed([
+        UniversitySeeder::class,
+        FacultySeeder::class,
+        DepartmentSeeder::class,
+    ]);
+});
 
 it('can fetch all universities', function () {
     $user = User::factory()->create();
