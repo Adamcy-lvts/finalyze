@@ -49,6 +49,7 @@ class HandleInertiaRequests extends Middleware
                     'word_balance_data' => $request->user()->getWordBalanceData(),
                 ] : null,
             ],
+            'csrf_token' => csrf_token(),
             'ziggy' => [
                 ...(new Ziggy)->toArray(),
                 'location' => $request->url(),

@@ -10,6 +10,7 @@ import { initializeTheme } from './composables/useAppearance';
 import axios from 'axios';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+import { router } from '@inertiajs/vue3';
 
 declare global {
     interface Window {
@@ -42,11 +43,19 @@ window.Echo = new Echo({
 // Configure axios defaults
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 axios.defaults.headers.common['Accept'] = 'application/json';
+axios.defaults.withCredentials = true;
+axios.defaults.xsrfCookieName = 'XSRF-TOKEN';
+axios.defaults.xsrfHeaderName = 'X-XSRF-TOKEN';
 
-// Get CSRF token
-const token = document.head.querySelector('meta[name="csrf-token"]');
-if (token) {
-    axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
+function updateCsrfToken(token?: string) {
+    if (!token) return;
+
+    const meta = document.head.querySelector('meta[name="csrf-token"]');
+    if (meta) {
+        meta.setAttribute('content', token);
+    }
+
+    axios.defaults.headers.common['X-CSRF-TOKEN'] = token;
 }
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
@@ -55,6 +64,12 @@ createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
     resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>('./pages/**/*.vue')),
     setup({ el, App, props, plugin }) {
+        updateCsrfToken((props.initialPage.props as any)?.csrf_token);
+
+        router.on('navigate', (event) => {
+            updateCsrfToken((event.detail.page.props as any)?.csrf_token);
+        });
+
         createApp({ render: () => h(App, props) })
             .use(plugin)
             .use(ZiggyVue)

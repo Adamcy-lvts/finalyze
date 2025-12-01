@@ -53,9 +53,9 @@ class AdminRoleSeeder extends Seeder
             'analytics.view',
         ]);
 
-        $seedUser = User::where('email', 'test@example.com')->first();
-        if ($seedUser) {
-            $seedUser->assignRole('super_admin');
+        $adminUser = User::where('email', 'devcentric.studio@gmail.com')->first();
+        if ($adminUser) {
+            $adminUser->assignRole('super_admin');
         }
     }
 }
