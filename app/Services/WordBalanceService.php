@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\WordTransaction;
+use App\Notifications\LowBalanceWarning;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -79,6 +80,9 @@ class WordBalanceService
     /**
      * Deduct words for AI generation usage
      *
+     * Uses pessimistic locking to prevent race conditions when multiple
+     * concurrent requests attempt to deduct words simultaneously.
+     *
      * @throws \Exception If insufficient balance
      */
     public function deductForGeneration(
@@ -89,19 +93,32 @@ class WordBalanceService
         ?int $referenceId = null,
         ?array $metadata = null
     ): WordTransaction {
-        return DB::transaction(function () use ($user, $wordsUsed, $description, $referenceType, $referenceId, $metadata) {
-            // Check balance first
-            if (! $user->hasEnoughWords($wordsUsed)) {
-                throw new \Exception("Insufficient word balance. Required: {$wordsUsed}, Available: {$user->word_balance}");
+        $transaction = DB::transaction(function () use ($user, $wordsUsed, $description, $referenceType, $referenceId, $metadata) {
+            // Lock the user row for update to prevent race conditions
+            // This ensures that concurrent requests will be serialized
+            $lockedUser = User::where('id', $user->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedUser) {
+                throw new \Exception('User not found');
             }
 
-            // Deduct words
-            $user->deductWords($wordsUsed);
-            $user->refresh();
+            // Check balance on the locked user record
+            if ($lockedUser->word_balance < $wordsUsed) {
+                throw new \Exception("Insufficient word balance. Required: {$wordsUsed}, Available: {$lockedUser->word_balance}");
+            }
+
+            // Deduct words using atomic decrement
+            $lockedUser->decrement('word_balance', $wordsUsed);
+            $lockedUser->increment('total_words_used', $wordsUsed);
+
+            // Refresh to get updated balance
+            $lockedUser->refresh();
 
             // Record transaction
             $transaction = WordTransaction::recordUsage(
-                $user,
+                $lockedUser,
                 $wordsUsed,
                 $description,
                 $referenceType,
@@ -110,14 +127,23 @@ class WordBalanceService
             );
 
             Log::info('Words deducted for generation', [
-                'user_id' => $user->id,
+                'user_id' => $lockedUser->id,
                 'words' => $wordsUsed,
                 'reference' => "{$referenceType}:{$referenceId}",
-                'new_balance' => $user->word_balance,
+                'new_balance' => $lockedUser->word_balance,
             ]);
+
+            // Update the passed-in user object to reflect changes
+            $user->word_balance = $lockedUser->word_balance;
+            $user->total_words_used = $lockedUser->total_words_used;
 
             return $transaction;
         });
+
+        // Check for low balance after transaction completes
+        $this->checkAndNotifyLowBalance($user);
+
+        return $transaction;
     }
 
     /**
@@ -270,5 +296,37 @@ class WordBalanceService
 
             return $transaction;
         });
+    }
+
+    /**
+     * Check user's balance and send low balance warning if needed
+     */
+    private function checkAndNotifyLowBalance(User $user): void
+    {
+        $lowBalanceThreshold = config('pricing.low_balance_threshold', 1000);
+
+        // Only notify if balance is below threshold
+        if ($user->word_balance > $lowBalanceThreshold) {
+            return;
+        }
+
+        // Check if user was notified recently (within last 24 hours) to avoid spam
+        $recentNotification = $user->notifications()
+            ->where('type', LowBalanceWarning::class)
+            ->where('created_at', '>=', now()->subDay())
+            ->exists();
+
+        if ($recentNotification) {
+            return;
+        }
+
+        // Send low balance warning
+        $user->notify(new LowBalanceWarning($user->word_balance, $lowBalanceThreshold));
+
+        Log::info('Low balance warning sent', [
+            'user_id' => $user->id,
+            'balance' => $user->word_balance,
+            'threshold' => $lowBalanceThreshold,
+        ]);
     }
 }
