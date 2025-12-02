@@ -1,1 +1,0 @@
-import{b as t}from"./VisuallyHidden-WCocV3L8.js";import{E as r,g as a}from"./app-BI3B-WKV.js";function m(e,n=Number.NEGATIVE_INFINITY,o=Number.POSITIVE_INFINITY){return Math.min(o,Math.max(n,e))}function I(e){const n=t({nonce:r()});return a(()=>e?.value||n.nonce?.value)}export{m as c,I as u};
