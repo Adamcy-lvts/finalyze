@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminAnalyticsController;
 use App\Http\Controllers\Admin\AdminAuditController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminNotificationController;
+use App\Http\Controllers\Admin\AdminPackageController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminProjectController;
 use App\Http\Controllers\Admin\AdminSystemController;
@@ -86,6 +87,16 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::post('/{payment}/verify', [AdminPaymentController::class, 'verify'])->name('admin.payments.verify');
         Route::post('/{payment}/refund', [AdminPaymentController::class, 'refund'])->name('admin.payments.refund');
         Route::post('/manual-credit', [AdminPaymentController::class, 'manualCredit'])->name('admin.payments.manual-credit');
+    });
+
+    // Packages / Pricing
+    Route::prefix('packages')->group(function () {
+        Route::get('/', [AdminPackageController::class, 'index'])->name('admin.packages.index');
+        Route::post('/', [AdminPackageController::class, 'store'])->name('admin.packages.store');
+        Route::put('/{package}', [AdminPackageController::class, 'update'])->name('admin.packages.update');
+        Route::delete('/{package}', [AdminPackageController::class, 'destroy'])->name('admin.packages.destroy');
+        Route::put('/{package}/active', [AdminPackageController::class, 'toggleActive'])->name('admin.packages.toggle-active');
+        Route::put('/{package}/popular', [AdminPackageController::class, 'togglePopular'])->name('admin.packages.toggle-popular');
     });
 
     // Analytics

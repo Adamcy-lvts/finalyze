@@ -208,6 +208,7 @@ import {
   LayoutDashboard,
   Users,
   CreditCard,
+  Package,
   BarChart3,
   Folder,
   Cpu,
@@ -246,6 +247,7 @@ const platformNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/payments', label: 'Payments', icon: CreditCard },
+  { href: '/admin/packages', label: 'Packages', icon: Package },
   { href: '/admin/projects', label: 'Projects', icon: Folder },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
 ]

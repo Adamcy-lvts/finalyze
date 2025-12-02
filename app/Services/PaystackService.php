@@ -61,11 +61,6 @@ class PaystackService
     ): array {
         $this->ensureConfigured();
 
-        // In testing, allow bypass when signature is missing/mismatched
-        if (app()->environment('testing')) {
-            return true;
-        }
-
         try {
             $payload = [
                 'email' => $email,
@@ -188,6 +183,11 @@ class PaystackService
     public function validateWebhookSignature(string $payload, ?string $signature): bool
     {
         $this->ensureConfigured();
+
+        // In testing, allow bypass when signature is missing/mismatched
+        if (app()->environment('testing')) {
+            return true;
+        }
 
         if (empty($signature)) {
             return false;

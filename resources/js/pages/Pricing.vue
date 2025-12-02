@@ -54,6 +54,7 @@ const page = usePage()
 // State
 const processingPackage = ref<number | null>(null)
 const showTopups = ref(false)
+const currentPackage = ref<Package | null>(null)
 
 // Flash messages
 const flash = computed(() => page.props.flash as { success?: string; error?: string })
@@ -76,6 +77,7 @@ const initializePayment = async (pkg: Package) => {
     }
 
     processingPackage.value = pkg.id
+    currentPackage.value = pkg
 
     try {
         const response = await fetch(route('payments.initialize'), {
@@ -91,7 +93,7 @@ const initializePayment = async (pkg: Package) => {
 
         if (data.success) {
             // Open Paystack popup
-            openPaystackPopup(data.data)
+            openPaystackPopup(data.data, pkg)
         } else {
             toast.error(data.message || 'Failed to initialize payment')
         }
@@ -104,13 +106,13 @@ const initializePayment = async (pkg: Package) => {
 }
 
 // Open Paystack inline popup
-const openPaystackPopup = (data: { authorization_url: string; access_code: string; reference: string }) => {
+const openPaystackPopup = (data: { authorization_url: string; access_code: string; reference: string }, pkg: Package) => {
     // Using Paystack inline - requires Paystack script loaded
     // @ts-ignore - PaystackPop is loaded via script
     const handler = PaystackPop.setup({
         key: props.paystackPublicKey,
         email: (page.props.auth?.user as any)?.email,
-        amount: 0, // Amount already set during initialization
+        amount: pkg.price, // Amount in kobo
         ref: data.reference,
         access_code: data.access_code,
         onClose: () => {
