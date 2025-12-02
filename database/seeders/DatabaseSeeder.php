@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             ProjectCategorySeeder::class,
             FacultyStructureSeeder::class,
             FacultyChapterSeeder::class,
+            WordPackageSeeder::class,
         ]);
 
         // Seed universities, faculties, and departments
