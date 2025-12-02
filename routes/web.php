@@ -1,10 +1,5 @@
 <?php
 
-use App\Http\Controllers\ChapterController;
-use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ExportController;
-use App\Http\Controllers\ManualEditorController;
-use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\Admin\AdminAIController;
 use App\Http\Controllers\Admin\AdminAnalyticsController;
 use App\Http\Controllers\Admin\AdminAuditController;
@@ -14,6 +9,11 @@ use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminProjectController;
 use App\Http\Controllers\Admin\AdminSystemController;
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\ChapterController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExportController;
+use App\Http\Controllers\ManualEditorController;
+use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
 use App\Http\Controllers\TopicController;
 use App\Http\Middleware\ProjectStateMiddleware;
@@ -110,6 +110,8 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::get('/', [AdminAIController::class, 'index'])->name('admin.ai.index');
         Route::get('/queue', [AdminAIController::class, 'queue'])->name('admin.ai.queue');
         Route::get('/failures', [AdminAIController::class, 'failures'])->name('admin.ai.failures');
+        Route::get('/metrics', [AdminAIController::class, 'metrics'])->name('admin.ai.metrics');
+        Route::post('/refresh', [AdminAIController::class, 'refresh'])->name('admin.ai.refresh');
         Route::post('/retry/{generation}', [AdminAIController::class, 'retry'])->name('admin.ai.retry');
         Route::post('/circuit/{service}/reset', [AdminAIController::class, 'resetCircuit'])->name('admin.ai.reset-circuit');
     });
@@ -223,12 +225,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/projects/{project}/bulk-generate', [ProjectController::class, 'bulkGenerate'])->name('projects.bulk-generate');
         Route::get('/projects/{project}/chapters/{chapter}/write', [ChapterController::class, 'write'])->name('chapters.write');
         Route::get('/projects/{project}/chapters/{chapter}/edit', [ChapterController::class, 'edit'])->name('chapters.edit');
-        Route::post('/projects/{project}/chapters/generate', [ChapterController::class, 'generate'])->name('chapters.generate');
-        Route::get('/projects/{project}/chapters/{chapter}/stream', [ChapterController::class, 'stream'])->name('chapters.stream');
+        Route::post('/projects/{project}/chapters/generate', [ChapterController::class, 'generate'])
+            ->middleware(['prevent.duplicate:30', 'check.words'])
+            ->name('chapters.generate');
+        Route::get('/projects/{project}/chapters/{chapter}/stream', [ChapterController::class, 'stream'])
+            ->middleware(['prevent.duplicate:30', 'check.words'])
+            ->name('chapters.stream');
         Route::post('/projects/{project}/chapters/save', [ChapterController::class, 'save'])->name('chapters.save');
-        Route::post('/projects/{project}/chapters/{chapter}/chat', [ChapterController::class, 'chat'])->name('chapters.chat');
+        Route::post('/projects/{project}/chapters/{chapter}/chat', [ChapterController::class, 'chat'])
+            ->middleware(['prevent.duplicate:10', 'check.words'])
+            ->name('chapters.chat');
         Route::get('/projects/{project}/chapters/{chapter}/chat/history', [ChapterController::class, 'getChatHistory'])->name('chapters.chat-history');
-        Route::post('/projects/{project}/chapters/{chapter}/chat/stream', [ChapterController::class, 'streamChat'])->name('chapters.chat-stream');
+        Route::post('/projects/{project}/chapters/{chapter}/chat/stream', [ChapterController::class, 'streamChat'])
+            ->middleware(['prevent.duplicate:10', 'check.words'])
+            ->name('chapters.chat-stream');
 
         // Chat file upload routes
         Route::post('/projects/{project}/chapters/{chapter}/chat/upload', [ChapterController::class, 'uploadChatFile'])->name('chapters.chat-upload');
@@ -249,17 +259,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/{chapter}', [ManualEditorController::class, 'show'])->name('show');
             Route::post('/{chapter}/save', [ManualEditorController::class, 'save'])->name('save');
             Route::post('/{chapter}/mark-complete', [ManualEditorController::class, 'markComplete'])->name('mark-complete');
-            Route::post('/{chapter}/analyze', [ManualEditorController::class, 'analyzeAndSuggest'])->name('analyze');
-            Route::post('/{chapter}/progressive-guidance', [ManualEditorController::class, 'progressiveGuidance'])->name('progressive-guidance');
-            Route::post('/{chapter}/suggestions/{suggestion}/save', [ManualEditorController::class, 'saveSuggestion'])->name('suggestion.save');
-            Route::post('/{chapter}/suggestions/{suggestion}/clear', [ManualEditorController::class, 'clearSuggestion'])->name('suggestion.clear');
-            Route::post('/{chapter}/suggestions/{suggestion}/apply', [ManualEditorController::class, 'applySuggestion'])->name('suggestion.apply');
-            Route::post('/{chapter}/chat', [ManualEditorController::class, 'chat'])->name('chat');
+            Route::post('/{chapter}/analyze', [ManualEditorController::class, 'analyzeAndSuggest'])->middleware(['prevent.duplicate:15', 'check.words'])->name('analyze');
+            Route::post('/{chapter}/progressive-guidance', [ManualEditorController::class, 'progressiveGuidance'])->middleware(['prevent.duplicate:15', 'check.words'])->name('progressive-guidance');
+            Route::post('/{chapter}/suggestions/{suggestion}/save', [ManualEditorController::class, 'saveSuggestion'])->middleware(['prevent.duplicate:10', 'check.words'])->name('suggestion.save');
+            Route::post('/{chapter}/suggestions/{suggestion}/clear', [ManualEditorController::class, 'clearSuggestion'])->middleware(['prevent.duplicate:5', 'check.words'])->name('suggestion.clear');
+            Route::post('/{chapter}/suggestions/{suggestion}/apply', [ManualEditorController::class, 'applySuggestion'])->middleware(['prevent.duplicate:10', 'check.words'])->name('suggestion.apply');
+            Route::post('/{chapter}/chat', [ManualEditorController::class, 'chat'])->middleware(['prevent.duplicate:10', 'check.words'])->name('chat');
             // Quick Actions
-            Route::post('/{chapter}/improve-text', [ManualEditorController::class, 'improveText'])->name('improve-text');
-            Route::post('/{chapter}/expand-text', [ManualEditorController::class, 'expandText'])->name('expand-text');
-            Route::post('/{chapter}/suggest-citations', [ManualEditorController::class, 'suggestCitations'])->name('suggest-citations');
-            Route::post('/{chapter}/rephrase-text', [ManualEditorController::class, 'rephraseText'])->name('rephrase-text');
+            Route::post('/{chapter}/improve-text', [ManualEditorController::class, 'improveText'])->middleware(['prevent.duplicate:10', 'check.words'])->name('improve-text');
+            Route::post('/{chapter}/expand-text', [ManualEditorController::class, 'expandText'])->middleware(['prevent.duplicate:10', 'check.words'])->name('expand-text');
+            Route::post('/{chapter}/suggest-citations', [ManualEditorController::class, 'suggestCitations'])->middleware(['prevent.duplicate:10', 'check.words'])->name('suggest-citations');
+            Route::post('/{chapter}/rephrase-text', [ManualEditorController::class, 'rephraseText'])->middleware(['prevent.duplicate:10', 'check.words'])->name('rephrase-text');
         });
 
         // Project Guidance routes
