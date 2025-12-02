@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\WordUsageController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -41,4 +42,16 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/api/transactions', [PaymentController::class, 'transactions'])
         ->name('api.transactions');
+
+    // Word usage + balance operations
+    Route::prefix('/api/words')->name('api.words.')->group(function () {
+        Route::post('/record-usage', [WordUsageController::class, 'recordUsage'])
+            ->name('record-usage');
+        Route::post('/pre-authorize', [WordUsageController::class, 'preAuthorize'])
+            ->name('pre-authorize');
+        Route::post('/refund', [WordUsageController::class, 'refund'])
+            ->name('refund');
+        Route::get('/estimates', [WordUsageController::class, 'estimates'])
+            ->name('estimates');
+    });
 });

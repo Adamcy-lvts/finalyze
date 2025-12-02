@@ -39,3 +39,11 @@ Broadcast::channel('project.{projectId}.generation', function ($user, $projectId
 Broadcast::channel('user.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+/**
+ * Admin AI channel
+ * Only admins/support can listen for provisioning updates.
+ */
+Broadcast::channel('admin.ai', function ($user) {
+    return $user && $user->hasAnyRole(['super_admin', 'admin', 'support']);
+});

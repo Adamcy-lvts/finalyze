@@ -2,6 +2,7 @@
 
 namespace App\Services\AI\Providers;
 
+use App\Services\AIUsageLogger;
 use Generator;
 use Illuminate\Support\Facades\Log;
 use OpenAI\Laravel\Facades\OpenAI;
@@ -19,6 +20,8 @@ class OpenAIProvider implements AIProviderInterface
         $model = $options['model'] ?? $this->model;
         $temperature = $options['temperature'] ?? $this->temperature;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
+        $feature = $options['feature'] ?? null;
+        $userId = $options['user_id'] ?? null;
 
         Log::info('OpenAI Provider - Starting generation', [
             'model' => $model,
@@ -52,6 +55,19 @@ class OpenAIProvider implements AIProviderInterface
                 'tokens_used' => $response->usage->totalTokens ?? 0,
             ]);
 
+            // Log usage if token counts are available
+            if (isset($response->usage)) {
+                app(AIUsageLogger::class)->log(
+                    $userId,
+                    $feature,
+                    $model,
+                    $response->usage->promptTokens ?? 0,
+                    $response->usage->completionTokens ?? 0,
+                    $response->id ?? null,
+                    []
+                );
+            }
+
             return $content;
 
         } catch (\Exception $e) {
@@ -68,6 +84,8 @@ class OpenAIProvider implements AIProviderInterface
         $model = $options['model'] ?? $this->model;
         $temperature = $options['temperature'] ?? $this->temperature;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
+        $feature = $options['feature'] ?? null;
+        $userId = $options['user_id'] ?? null;
 
         Log::info('OpenAI Provider - Starting stream generation', [
             'model' => $model,
@@ -96,6 +114,8 @@ class OpenAIProvider implements AIProviderInterface
 
             $totalChunks = 0;
             $totalContent = '';
+            $promptTokens = 0;
+            $completionTokens = 0;
 
             foreach ($stream as $response) {
                 $content = $response->choices[0]->delta->content ?? '';
@@ -138,6 +158,19 @@ class OpenAIProvider implements AIProviderInterface
                 'final_content_length' => strlen($totalContent),
                 'final_word_count' => str_word_count($totalContent),
             ]);
+
+            // Streaming responses from OpenAI do not include token usage;
+            // approximate using word count so we at least track something.
+            $approxTokens = (int) round(str_word_count($totalContent) * 1.3);
+            app(AIUsageLogger::class)->log(
+                $userId,
+                $feature,
+                $model,
+                $promptTokens,
+                $approxTokens,
+                null,
+                ['approx_stream_tokens' => true]
+            );
 
         } catch (\OpenAI\Exceptions\RateLimitException $e) {
             Log::warning('OpenAI Provider - Rate limit exceeded during streaming', [
