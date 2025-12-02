@@ -16,6 +16,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 import axios from 'axios';
+import PurchaseModal from '@/components/PurchaseModal.vue';
+import { useWordBalance, recordWordUsage } from '@/composables/useWordBalance';
 
 // Import extracted components with lazy loading for performance
 import WritingStatistics from '@/components/chapter-editor/WritingStatistics.vue';
@@ -190,6 +192,21 @@ const originalContentForAppend = ref('');
 const aiSuggestions = ref<string[]>([]);
 const isLoadingSuggestions = ref(false);
 const showCitationHelper = ref(false);
+
+// Word balance guard
+const {
+    balance,
+    showPurchaseModal,
+    requiredWordsForModal,
+    actionDescriptionForModal,
+    checkAndPrompt,
+    closePurchaseModal,
+    estimates,
+} = useWordBalance();
+
+const ensureBalance = (requiredWords: number, action: string): boolean => {
+    return checkAndPrompt(Math.max(1, Math.round(requiredWords)), action);
+};
 
 // Paper Collection states with enhanced source tracking
 const isCollectingPapers = ref(false);
@@ -411,6 +428,11 @@ const goToChapter = (chapterNumber: number) => {
 };
 
 const generateNextChapter = async () => {
+    const requiredWords = estimates.chapter(targetWordCount.value || 0);
+    if (!ensureBalance(requiredWords, 'generate the next chapter with AI')) {
+        return;
+    }
+
     await save();
 
     // Find the actual next chapter number by looking at existing chapters
@@ -609,6 +631,12 @@ const startSectionGeneration = async (sectionType: string) => {
 
 // Rephrase Generation Function
 const startRephraseGeneration = async (selectedText: string, style: string) => {
+    const selectedWordCount = selectedText.split(/\s+/).length;
+    const requiredWords = Math.max(selectedWordCount, estimates.rephrase());
+    if (!ensureBalance(requiredWords, `rephrase about ${selectedWordCount} words`)) {
+        return;
+    }
+
     console.log('🚀 ChapterEditor - Starting rephrase generation:', {
         selectedTextLength: selectedText.length,
         selectedTextPreview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
@@ -624,7 +652,6 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
     generationProgress.value = 'Preparing to rephrase selected text...';
 
     // Set estimated word count based on selected text length
-    const selectedWordCount = selectedText.split(/\s+/).length;
     estimatedTotalWords.value = Math.max(selectedWordCount, 50);
 
     // Get the active editor and store the current selection range
@@ -756,17 +783,24 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
                         });
                     }
 
-                    // Auto-save
-                    save(true);
+                // Auto-save
+                save(true);
 
-                    toast.success('✅ Text Rephrased Successfully', {
-                        description: `Rephrased ${selectedWordCount} words in ${style} style.`,
-                        duration: 5000,
-                    });
+                toast.success('✅ Text Rephrased Successfully', {
+                    description: `Rephrased ${selectedWordCount} words in ${style} style.`,
+                    duration: 5000,
+                });
 
-                    isGenerating.value = false;
-                    eventSource.value?.close();
-                    break;
+                recordWordUsage(
+                    streamWordCount.value || selectedWordCount,
+                    `Rephrase (${style})`,
+                    'chapter',
+                    props.chapter.id
+                ).catch((err) => console.error('Failed to record word usage (rephrase):', err));
+
+                isGenerating.value = false;
+                eventSource.value?.close();
+                break;
 
                 case 'error':
                     throw new Error(data.message || 'Text rephrasing failed');
@@ -801,6 +835,12 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
 };
 
 const startExpandGeneration = async (selectedText: string) => {
+    const selectedWordCount = selectedText.split(/\s+/).length;
+    const requiredWords = Math.max(selectedWordCount * 2, estimates.expand());
+    if (!ensureBalance(requiredWords, `expand about ${selectedWordCount} words`)) {
+        return;
+    }
+
     console.log('📈 ChapterEditor - Starting expand generation:', {
         selectedTextLength: selectedText.length,
         selectedTextPreview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
@@ -815,7 +855,6 @@ const startExpandGeneration = async (selectedText: string) => {
     generationProgress.value = 'Preparing to expand selected text...';
 
     // Set estimated word count based on selected text length (2x expansion)
-    const selectedWordCount = selectedText.split(/\s+/).length;
     estimatedTotalWords.value = Math.max(selectedWordCount * 2, 100);
 
     // Get the active editor and store the current selection range
@@ -935,6 +974,13 @@ const startExpandGeneration = async (selectedText: string) => {
                     toast.success('✅ Text Expanded Successfully', {
                         description: `Expanded ${expandContext.wordCount} words into ${streamWordCount.value} words`,
                     });
+
+                    recordWordUsage(
+                        streamWordCount.value || expandContext.wordCount * 2,
+                        'Expand text',
+                        'chapter',
+                        props.chapter.id
+                    ).catch((err) => console.error('Failed to record word usage (expand):', err));
 
                     isGenerating.value = false;
                     eventSource.value?.close();
@@ -1124,6 +1170,11 @@ const monitorPaperCollection = async (): Promise<boolean> => {
 
 // AI Functions
 const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'improve') => {
+    const requiredWords = estimates.chapter(targetWordCount.value || 0);
+    if (!ensureBalance(requiredWords, 'generate this chapter with AI')) {
+        return;
+    }
+
     isGenerating.value = true;
     streamBuffer.value = '';
     streamWordCount.value = 0;
@@ -1218,7 +1269,16 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
                 // Ensure final content is updated
                 chapterContent.value = streamBuffer.value;
 
-                generationProgress.value = `✓ Generated ${data.final_word_count || streamWordCount.value} words successfully`;
+                const finalWords = data.final_word_count || streamWordCount.value;
+                generationProgress.value = `✓ Generated ${finalWords} words successfully`;
+
+                // Record actual usage
+                recordWordUsage(
+                    finalWords,
+                    `Chapter generation (${props.chapter.chapter_number})`,
+                    'chapter',
+                    props.chapter.id,
+                ).catch((err) => console.error('Failed to record word usage (chapter generation):', err));
 
                 // Wait for RichTextEditor to process the markdown conversion before auto-saving
                 setTimeout(() => {
@@ -1271,6 +1331,11 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
 const getAISuggestions = async () => {
     if (!selectedText.value) return;
 
+    const requiredWords = estimates.suggestion();
+    if (!ensureBalance(requiredWords, 'get AI suggestions')) {
+        return;
+    }
+
     isLoadingSuggestions.value = true;
     try {
         const response = await fetch(
@@ -1293,6 +1358,15 @@ const getAISuggestions = async () => {
 
         const data = await response.json();
         aiSuggestions.value = data.suggestions || [];
+
+        if (aiSuggestions.value.length) {
+            recordWordUsage(
+                estimates.suggestion(),
+                'AI suggestions',
+                'chapter',
+                props.chapter.id
+            ).catch((err) => console.error('Failed to record word usage (suggestions):', err));
+        }
     } catch (error) {
         toast.error('Error getting suggestions', { description: 'Please try again.' });
     } finally {
@@ -1883,6 +1957,11 @@ const loadDefenseQuestions = async (forceRefresh = false) => {
 const generateNewDefenseQuestions = async () => {
     if (isGeneratingDefenseQuestions.value) return;
 
+    const requiredWords = estimates.defense();
+    if (!ensureBalance(requiredWords, 'generate defense questions')) {
+        return;
+    }
+
     isGeneratingDefenseQuestions.value = true;
 
     try {
@@ -1911,6 +1990,13 @@ const generateNewDefenseQuestions = async () => {
             }));
 
             toast.success(`Generated ${response.data.questions.length} new questions`);
+
+            recordWordUsage(
+                estimates.defense(),
+                'Defense questions',
+                'chapter',
+                props.chapter.id
+            ).catch((err) => console.error('Failed to record word usage (defense):', err));
         }
     } catch (error) {
         console.error('Failed to generate defense questions:', error);
@@ -2973,6 +3059,16 @@ watch(currentWordCount, (newCount, oldCount) => {
                         @generate-next-chapter="generateNextChapter" @start-streaming-generation="handleAIGeneration"
                         @get-ai-suggestions="getAISuggestions"
                         @update:show-citation-helper="showCitationHelper = $event" @check-citations="checkCitations" />
+
+                    <!-- Credit balance modal -->
+                    <PurchaseModal
+                        :open="showPurchaseModal"
+                        :current-balance="balance"
+                        :required-words="requiredWordsForModal"
+                        :action="actionDescriptionForModal"
+                        @update:open="(v) => showPurchaseModal = v"
+                        @close="closePurchaseModal"
+                    />
                 </div>
             </div>
         </AppLayout>

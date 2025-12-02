@@ -186,7 +186,7 @@
 
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3'
 import {
   Sidebar,
@@ -317,4 +317,21 @@ const formatTimestamp = (value?: string) => {
   const date = new Date(value)
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
+
+let adminChannel: any = null
+
+onMounted(() => {
+  // Preload notifications to show badge
+  loadNotifications()
+
+  // Subscribe to admin AI channel for realtime provisioning alerts (reuses existing channel)
+  adminChannel = (window as any).Echo?.private('admin.ai')
+  adminChannel?.listen('.ai.provisioning.updated', () => {
+    loadNotifications()
+  })
+})
+
+onBeforeUnmount(() => {
+  adminChannel?.stopListening('.ai.provisioning.updated')
+})
 </script>

@@ -12,6 +12,8 @@ import { Activity, ArrowLeft, ArrowRight, BookOpen, Brain, Clock, Edit, FileText
 import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
+import PurchaseModal from '@/components/PurchaseModal.vue';
+import { useWordBalance } from '@/composables/useWordBalance';
 
 interface Chapter {
     id: number;
@@ -75,6 +77,27 @@ const pendingNewMode = ref<'auto' | 'manual'>('auto');
 // Dialog state for bulk generation confirmation
 const showBulkGenerationDialog = ref(false);
 const showTopicApprovalDialog = ref(false);
+
+// Word balance guard for AI actions
+const {
+    wordBalance,
+    balance,
+    showPurchaseModal,
+    requiredWordsForModal,
+    actionDescriptionForModal,
+    checkAndPrompt,
+    closePurchaseModal,
+    estimates,
+} = useWordBalance();
+
+const estimateGenerationCost = (type: 'single' | 'progressive' | 'bulk'): number => {
+    const base = estimates.chapter(props.targetWordCount || 0);
+    if (type === 'bulk') {
+        const chaptersRemaining = Math.max(1, (props.estimatedChapters || 1) - props.project.chapters.length + 1);
+        return base * chaptersRemaining;
+    }
+    return base;
+};
 
 // Debug project mode on load
 
@@ -199,6 +222,17 @@ onMounted(() => {
  * Opens the editor with streaming AI generation
  */
 const generateChapter = (type: 'single' | 'progressive' | 'bulk', specificChapter?: number) => {
+    const estimatedWords = estimateGenerationCost(type);
+    const actionLabel = type === 'bulk'
+        ? 'bulk-generate chapters'
+        : type === 'progressive'
+            ? 'stream the chapter with AI'
+            : 'generate the chapter with AI';
+
+    if (!checkAndPrompt(estimatedWords, actionLabel)) {
+        return;
+    }
+
     if (type === 'bulk') {
         // Show bulk generation confirmation dialog
         showBulkGenerationDialog.value = true;
@@ -1149,6 +1183,16 @@ const toggleWritingMode = async () => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <!-- Credit balance modal -->
+            <PurchaseModal
+                :open="showPurchaseModal"
+                :current-balance="balance"
+                :required-words="requiredWordsForModal"
+                :action="actionDescriptionForModal"
+                @update:open="(v) => showPurchaseModal = v"
+                @close="closePurchaseModal"
+            />
         </div>
     </AppLayout>
 </template>
