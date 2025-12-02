@@ -13,6 +13,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Low Balance Warning Threshold
+    |--------------------------------------------------------------------------
+    |
+    | Word balance threshold below which users receive a low balance warning.
+    |
+    */
+    'low_balance_threshold' => env('LOW_BALANCE_THRESHOLD', 1000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Word Estimation Multipliers
     |--------------------------------------------------------------------------
     |

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Payment;
 use App\Models\WordPackage;
+use App\Notifications\PaymentFailed;
+use App\Notifications\PaymentSuccessful;
 use App\Services\PaystackService;
 use App\Services\WordBalanceService;
 use Illuminate\Http\JsonResponse;
@@ -129,10 +131,16 @@ class PaymentController extends Controller
 
         if ($result['status'] && $result['is_successful']) {
             // Payment successful - credit words
-            $this->processSuccessfulPayment($payment, $result['data']);
+            $processed = $this->processSuccessfulPayment($payment, $result['data']);
 
-            return redirect()->route('pricing')->with('success',
-                "Payment successful! {$payment->words_purchased} words have been added to your balance."
+            if ($processed) {
+                return redirect()->route('pricing')->with('success',
+                    "Payment successful! {$payment->words_purchased} words have been added to your balance."
+                );
+            }
+
+            return redirect()->route('pricing')->with('error',
+                'Payment validation failed. Please contact support with your reference.'
             );
         }
 
@@ -189,7 +197,15 @@ class PaymentController extends Controller
 
         if ($result['is_successful']) {
             // Process successful payment
-            $this->processSuccessfulPayment($payment, $result['data']);
+            $processed = $this->processSuccessfulPayment($payment, $result['data']);
+
+            if (! $processed) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment validation failed. Please contact support.',
+                ], 400);
+            }
+
             $user = $payment->user->fresh();
 
             return response()->json([
@@ -319,11 +335,25 @@ class PaymentController extends Controller
     /**
      * Process a successful payment
      */
-    private function processSuccessfulPayment(Payment $payment, array $paystackData): void
+    private function processSuccessfulPayment(Payment $payment, array $paystackData): bool
     {
         // Prevent double processing
         if ($payment->is_successful) {
-            return;
+            return true;
+        }
+
+        $validation = $this->validatePaystackResponse($payment, $paystackData);
+
+        if (! $validation['valid']) {
+            $payment->markAsFailed($paystackData);
+
+            Log::warning('Payment validation failed before crediting', [
+                'payment_id' => $payment->id,
+                'reference' => $payment->paystack_reference,
+                'reason' => $validation['reason'],
+            ]);
+
+            return false;
         }
 
         // Update payment status
@@ -332,11 +362,16 @@ class PaymentController extends Controller
         // Credit words to user
         $this->wordBalanceService->creditFromPayment($payment->user, $payment);
 
+        // Send success notification
+        $payment->user->notify(new PaymentSuccessful($payment));
+
         Log::info('Payment processed successfully', [
             'payment_id' => $payment->id,
             'user_id' => $payment->user_id,
             'words' => $payment->words_purchased,
         ]);
+
+        return true;
     }
 
     /**
@@ -366,7 +401,14 @@ class PaymentController extends Controller
             return;
         }
 
-        $this->processSuccessfulPayment($payment, $data);
+        $processed = $this->processSuccessfulPayment($payment, $data);
+
+        if (! $processed) {
+            Log::warning('Paystack webhook validation failed', [
+                'reference' => $reference,
+                'payment_id' => $payment->id,
+            ]);
+        }
     }
 
     /**
@@ -384,6 +426,38 @@ class PaymentController extends Controller
 
         if ($payment && $payment->is_pending) {
             $payment->markAsFailed($data);
+
+            // Send failure notification
+            $reason = $data['gateway_response'] ?? 'Payment could not be processed';
+            $payment->user->notify(new PaymentFailed($payment, $reason));
         }
+    }
+
+    /**
+     * Validate Paystack response details against stored payment
+     */
+    private function validatePaystackResponse(Payment $payment, array $paystackData): array
+    {
+        $actualAmount = isset($paystackData['amount']) ? (int) $paystackData['amount'] : null;
+        $actualCurrency = strtoupper($paystackData['currency'] ?? 'NGN');
+        $metadata = $paystackData['metadata'] ?? [];
+
+        if ($actualAmount !== $payment->amount) {
+            return ['valid' => false, 'reason' => 'amount_mismatch'];
+        }
+
+        if ($actualCurrency !== strtoupper($payment->currency ?? 'NGN')) {
+            return ['valid' => false, 'reason' => 'currency_mismatch'];
+        }
+
+        if (isset($metadata['user_id']) && (int) $metadata['user_id'] !== (int) $payment->user_id) {
+            return ['valid' => false, 'reason' => 'user_mismatch'];
+        }
+
+        if (isset($metadata['package_id']) && (int) $metadata['package_id'] !== (int) $payment->word_package_id) {
+            return ['valid' => false, 'reason' => 'package_mismatch'];
+        }
+
+        return ['valid' => true, 'reason' => null];
     }
 }
