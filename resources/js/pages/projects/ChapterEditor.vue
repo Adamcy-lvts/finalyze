@@ -50,7 +50,9 @@ interface Chapter {
     title: string;
     content: string | null;
     word_count: number;
+    target_word_count?: number | null;
     status: 'not_started' | 'draft' | 'in_review' | 'approved';
+    slug?: string;
 }
 
 interface ProjectCategory {
@@ -278,6 +280,17 @@ const {
 
 // Target word count computed property (defined before useChapterWordCount)
 const targetWordCount = computed(() => {
+    // 1) Faculty structure target (most authoritative)
+    if (props.facultyChapters && props.facultyChapters.length > 0) {
+        const facultyChapter = props.facultyChapters.find(ch =>
+            ch.number === props.chapter.chapter_number
+        );
+        if (facultyChapter?.word_count) {
+            return facultyChapter.word_count;
+        }
+    }
+
+    // 2) Project outline target
     // Try to get target from structured outline first
     if (props.project?.outlines && props.project.outlines.length > 0) {
         const chapterOutline = props.project.outlines.find(outline =>
@@ -288,7 +301,7 @@ const targetWordCount = computed(() => {
         }
     }
 
-    // Fallback to old calculation if outline not available
+    // 3) Conservative fallback when no structured targets exist
     const baseCount = props.project.type === 'undergraduate' ? 2500 : 3500;
     return props.chapter.chapter_number === 1 || props.chapter.chapter_number === 5 ? Math.round(baseCount * 0.8) : baseCount;
 });

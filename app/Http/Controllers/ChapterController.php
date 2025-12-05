@@ -512,6 +512,30 @@ class ChapterController extends Controller
 
         Log::info('📄 WRITE METHOD - Rendering ChapterEditor for auto mode');
 
+        $allChapters = $project->chapters()->orderBy('chapter_number')->get();
+        $outlines = $project->load(['outlines.sections'])->outlines->map(function ($outline) {
+            return [
+                'id' => $outline->id,
+                'chapter_number' => $outline->chapter_number,
+                'chapter_title' => $outline->chapter_title,
+                'target_word_count' => $outline->target_word_count,
+                'completion_threshold' => $outline->completion_threshold,
+                'description' => $outline->description,
+                'sections' => $outline->sections->map(function ($section) {
+                    return [
+                        'id' => $section->id,
+                        'section_number' => $section->section_number,
+                        'section_title' => $section->section_title,
+                        'section_description' => $section->section_description,
+                        'target_word_count' => $section->target_word_count,
+                        'current_word_count' => $section->current_word_count,
+                        'is_completed' => $section->is_completed,
+                        'is_required' => $section->is_required,
+                    ];
+                }),
+            ];
+        });
+
         return Inertia::render('projects/ChapterEditor', [
             'project' => [
                 'id' => $project->id,
@@ -524,32 +548,11 @@ class ChapterController extends Controller
                 'field_of_study' => $project->field_of_study,
                 'university' => $project->universityRelation?->name,
                 'course' => $project->course,
-                'outlines' => Inertia::lazy(fn () => $project->load(['outlines.sections'])->outlines->map(function ($outline) {
-                    return [
-                        'id' => $outline->id,
-                        'chapter_number' => $outline->chapter_number,
-                        'chapter_title' => $outline->chapter_title,
-                        'target_word_count' => $outline->target_word_count,
-                        'completion_threshold' => $outline->completion_threshold,
-                        'description' => $outline->description,
-                        'sections' => $outline->sections->map(function ($section) {
-                            return [
-                                'id' => $section->id,
-                                'section_number' => $section->section_number,
-                                'section_title' => $section->section_title,
-                                'section_description' => $section->section_description,
-                                'target_word_count' => $section->target_word_count,
-                                'current_word_count' => $section->current_word_count,
-                                'is_completed' => $section->is_completed,
-                                'is_required' => $section->is_required,
-                            ];
-                        }),
-                    ];
-                })),
+                'outlines' => $outlines,
             ],
             'chapter' => $chapterModel,
-            'allChapters' => Inertia::lazy(fn () => $project->chapters()->orderBy('chapter_number')->get()),
-            'facultyChapters' => Inertia::lazy(fn () => $this->facultyStructureService->getChapterStructure($project)),
+            'allChapters' => $allChapters,
+            'facultyChapters' => $this->facultyStructureService->getChapterStructure($project),
             'mode' => 'write', // Indicate this is writing mode
         ]);
     }
@@ -583,6 +586,30 @@ class ChapterController extends Controller
             ]);
         }
 
+        $allChapters = $project->chapters()->orderBy('chapter_number')->get();
+        $outlines = $project->load(['outlines.sections'])->outlines->map(function ($outline) {
+            return [
+                'id' => $outline->id,
+                'chapter_number' => $outline->chapter_number,
+                'chapter_title' => $outline->chapter_title,
+                'target_word_count' => $outline->target_word_count,
+                'completion_threshold' => $outline->completion_threshold,
+                'description' => $outline->description,
+                'sections' => $outline->sections->map(function ($section) {
+                    return [
+                        'id' => $section->id,
+                        'section_number' => $section->section_number,
+                        'section_title' => $section->section_title,
+                        'section_description' => $section->section_description,
+                        'target_word_count' => $section->target_word_count,
+                        'current_word_count' => $section->current_word_count,
+                        'is_completed' => $section->is_completed,
+                        'is_required' => $section->is_required,
+                    ];
+                }),
+            ];
+        });
+
         return Inertia::render('projects/ChapterEditor', [
             'project' => [
                 'id' => $project->id,
@@ -595,32 +622,11 @@ class ChapterController extends Controller
                 'field_of_study' => $project->field_of_study,
                 'university' => $project->universityRelation?->name,
                 'course' => $project->course,
-                'outlines' => Inertia::lazy(fn () => $project->load(['outlines.sections'])->outlines->map(function ($outline) {
-                    return [
-                        'id' => $outline->id,
-                        'chapter_number' => $outline->chapter_number,
-                        'chapter_title' => $outline->chapter_title,
-                        'target_word_count' => $outline->target_word_count,
-                        'completion_threshold' => $outline->completion_threshold,
-                        'description' => $outline->description,
-                        'sections' => $outline->sections->map(function ($section) {
-                            return [
-                                'id' => $section->id,
-                                'section_number' => $section->section_number,
-                                'section_title' => $section->section_title,
-                                'section_description' => $section->section_description,
-                                'target_word_count' => $section->target_word_count,
-                                'current_word_count' => $section->current_word_count,
-                                'is_completed' => $section->is_completed,
-                                'is_required' => $section->is_required,
-                            ];
-                        }),
-                    ];
-                })),
+                'outlines' => $outlines,
             ],
             'chapter' => $chapter,
-            'allChapters' => Inertia::lazy(fn () => $project->chapters()->orderBy('chapter_number')->get()),
-            'facultyChapters' => Inertia::lazy(fn () => $this->facultyStructureService->getChapterStructure($project)),
+            'allChapters' => $allChapters,
+            'facultyChapters' => $this->facultyStructureService->getChapterStructure($project),
             'mode' => 'edit', // Indicate this is edit mode
         ]);
     }

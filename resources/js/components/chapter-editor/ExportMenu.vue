@@ -472,16 +472,6 @@ const exportCurrentChapterPdf = async () => {
                 <!-- Current Chapter Export Options -->
                 <DropdownMenuLabel>Current Chapter</DropdownMenuLabel>
 
-                <DropdownMenuItem @click="exportCurrentChapter" class="gap-2">
-                    <FileText class="h-4 w-4" />
-                    <div class="flex flex-col">
-                        <span class="font-medium">Export as Word</span>
-                        <span class="text-xs text-muted-foreground">
-                            Chapter {{ currentChapter.chapter_number }}: {{ currentChapter.title }}
-                        </span>
-                    </div>
-                </DropdownMenuItem>
-
                 <DropdownMenuItem @click="exportCurrentChapterPdf" class="gap-2">
                     <FileText class="h-4 w-4" />
                     <div class="flex flex-col">
@@ -494,31 +484,8 @@ const exportCurrentChapterPdf = async () => {
 
                 <DropdownMenuSeparator />
                 
-                <!-- Selected Chapters Export -->
-                <DropdownMenuItem @click="openMultiChapterDialog" class="gap-2">
-                    <FileDown class="h-4 w-4" />
-                    <div class="flex flex-col">
-                        <span class="font-medium">Selected Chapters</span>
-                        <span class="text-xs text-muted-foreground">
-                            Choose specific chapters to export
-                        </span>
-                    </div>
-                </DropdownMenuItem>
-                
-                <DropdownMenuSeparator />
-                
                 <!-- Full Project Export -->
                 <DropdownMenuLabel>Full Project</DropdownMenuLabel>
-
-                <DropdownMenuItem @click="exportFullProject" class="gap-2">
-                    <FileText class="h-4 w-4" />
-                    <div class="flex flex-col">
-                        <span class="font-medium">Export as Word</span>
-                        <span class="text-xs text-muted-foreground">
-                            Entire project with all chapters
-                        </span>
-                    </div>
-                </DropdownMenuItem>
 
                 <DropdownMenuItem @click="exportFullProjectPdf" class="gap-2">
                     <FileText class="h-4 w-4" />

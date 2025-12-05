@@ -67,8 +67,8 @@ class PreventDuplicateRequests
         $routeParams = [];
         if ($request->route()) {
             $routeParams = [
-                'project' => $request->route('project')?->id,
-                'chapter' => $request->route('chapter')?->id,
+                'project' => $this->getRouteIdentifier($request->route('project')),
+                'chapter' => $this->getRouteIdentifier($request->route('chapter')),
             ];
         }
 
@@ -87,5 +87,21 @@ class PreventDuplicateRequests
         ];
 
         return 'request_lock:'.md5(json_encode($fingerprintData));
+    }
+
+    /**
+     * Safely extract an identifier from a route parameter that could be a model, array, or scalar.
+     */
+    protected function getRouteIdentifier($param): mixed
+    {
+        if (is_object($param) && method_exists($param, 'getAttribute')) {
+            return $param->getAttribute('id');
+        }
+
+        if (is_array($param) && isset($param['id'])) {
+            return $param['id'];
+        }
+
+        return $param;
     }
 }

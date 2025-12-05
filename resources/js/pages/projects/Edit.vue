@@ -56,9 +56,23 @@ interface Project {
 
 interface Props {
     project: Project;
+    preliminary_templates: Record<string, string>;
 }
 
 const props = defineProps<Props>();
+
+// Helpers to map existing string labels to option values
+const resolveSelectValue = (
+    options: Array<{ value: string; label: string }>,
+    incoming?: string | null
+): string => {
+    if (!incoming) return '';
+    const byValue = options.find((o) => o.value === incoming);
+    if (byValue) return incoming;
+    const lowerIncoming = incoming.toLowerCase();
+    const byLabel = options.find((o) => o.label.toLowerCase() === lowerIncoming);
+    return byLabel?.value ?? incoming;
+};
 
 // Form state
 const params = useUrlSearchParams('history');
@@ -72,112 +86,12 @@ watch(activeTab, (newVal) => {
 const processing = ref(false);
 const isDirty = ref(false);
 
-// Reactive form values that persist across tab switches
-const formValues = ref({
-    description: props.project.description || '',
-    field_of_study: props.project.field_of_study || '',
-    mode: props.project.mode || 'auto',
-    university: props.project.university || '',
-    faculty: props.project.faculty || '',
-    course: props.project.course || '',
-    supervisor_name: props.project.supervisor_name || '',
-    department: props.project.settings?.department || '',
-    matric_number: props.project.settings?.matric_number || '',
-    academic_session: props.project.settings?.academic_session || '',
-    dedication: props.project.dedication || '',
-    acknowledgements: props.project.acknowledgements || '',
-    abstract: props.project.abstract || '',
-    declaration: props.project.declaration || '',
-    certification: props.project.certification || '',
-});
-
-// Refs for RichTextEditor instances
-const dedicationEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
-const acknowledgementsEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
-const abstractEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
-const declarationEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
-const certificationEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
-
-// Default templates
-const defaultTemplates = {
-    dedication: `<p>I dedicate this research work firstly to God Almighty for His guidance, protection, and blessings throughout this academic journey.</p>
-
-<p>To my beloved parents, <strong>[Parent Names]</strong>, whose unwavering support, sacrifices, and encouragement have been the foundation of my success.</p>
-
-<p>To my family and friends, <strong>[Names]</strong>, for their constant love and motivation.</p>
-
-<p>This work is dedicated to all those who believed in me and supported me throughout this journey.</p>`,
-    acknowledgements: `<p>First and foremost, I am thankful to God Almighty for His infinite mercy, guidance, and strength throughout the course of this research.</p>
-
-<p>I wish to express my profound gratitude to my supervisor, <strong>{{supervisor_name}}</strong>, for his/her invaluable guidance, constructive criticism, and unwavering support throughout this research work. Your mentorship has been instrumental in shaping this project.</p>
-
-<p>I am deeply grateful to the faculty and staff of <strong>{{faculty}}</strong>, <strong>{{full_university_name}}</strong>, for providing an enabling academic environment and the resources necessary for this research.</p>
-
-<p>My sincere appreciation goes to all the lecturers in the <strong>{{department}}</strong> for their dedication to academic excellence and for imparting the knowledge that formed the foundation of this work.</p>
-
-<p>I profoundly thank <strong>[Names of people to acknowledge]</strong> for their support, encouragement, and contributions to this research.</p>
-
-<p>Special thanks to my colleagues and friends, <strong>[Names]</strong>, for their collaborative spirit, intellectual discussions, and moral support throughout this academic journey.</p>
-
-<p>Finally, I am forever indebted to my family for their unconditional love, patience, and sacrifices. Your support has been my source of strength.</p>
-
-<p>Thank you all.</p>`,
-    abstract: `<p>This {{project_type}} investigated <strong>[research topic/problem]</strong> in the context of <strong>{{field_of_study}}</strong>. The study was motivated by <strong>[research gap or problem statement]</strong>.</p>
-
-<p>The research aimed to <strong>[primary objectives]</strong>. The methodology employed included <strong>[research methods, data collection techniques, and analysis approaches]</strong>.</p>
-
-<p>The findings revealed that <strong>[key findings and results]</strong>. The study also identified <strong>[significant patterns, relationships, or insights]</strong>.</p>
-
-<p>Based on these findings, the research concludes that <strong>[main conclusions]</strong>. It is recommended that <strong>[key recommendations for practice, policy, or further research]</strong>.</p>
-
-<p>This study contributes to the field of {{field_of_study}} by <strong>[theoretical or practical contributions]</strong> and provides a foundation for future research in this area.</p>
-
-<p><em>Keywords: [keyword 1], [keyword 2], [keyword 3], [keyword 4], [keyword 5]</em></p>`,
-    declaration: `<p>I, <strong>{{student_name}}</strong>, with Student Registration Number <strong>{{student_id}}</strong>, declare that this {{project_type}} titled <strong>"{{project_title}}"</strong> is my original work and has not been submitted for the award of any degree or diploma in this or any other university.</p>
-
-<p>All sources of information have been duly acknowledged through proper citations and references.</p>
-
-<div class="signature-section">
-    <p><strong>Student's Signature:</strong> _____________________</p>
-    <p><strong>Date:</strong> _____________________</p>
-</div>`,
-    certification: `<p>This is to certify that this {{project_type}} entitled <strong>"{{project_title}}"</strong> has been duly carried out and presented by <strong>{{student_name}}</strong> ({{student_id}}) in the Department of {{course}}, Faculty of {{faculty}}, {{full_university_name}}, under my supervision.</p>
-
-<p>The work is original and has met the required standards for academic research at this institution.</p>
-
-<div class="certification-signatures">
-    <div class="signature-block">
-        <p><strong>{{supervisor_name}}</strong></p>
-        <p>Supervisor</p>
-        <p>Signature: _____________________ Date: _____________________</p>
-    </div>
-</div>`,
-};
-
-// Template variable insertion
-const insertVariable = (editorRef: any, variableName: string) => {
-    if (editorRef.value) {
-        const formattedVariable = `{{${variableName}}}`;
-        editorRef.value.replaceSelection(formattedVariable);
-        editorRef.value.focus();
-    }
-};
-
-// Load default template
-const loadDefaultTemplate = (field: 'dedication' | 'acknowledgements' | 'abstract' | 'declaration' | 'certification') => {
-    formValues.value[field] = defaultTemplates[field];
-    isDirty.value = true;
-    toast('Template Loaded', {
-        description: `Default ${field} template has been loaded. You can now customize it.`,
-    });
-};
-
 // Form schema with validation
 const formSchema = toTypedSchema(
     z.object({
         // Basic Info
         description: z.string().max(1000).nullable(),
-        field_of_study: z.string().min(1, 'Field of study is required'),
+        field_of_study: z.string().nullable(),
         mode: z.enum(['auto', 'manual'], {
             required_error: 'Please select a working mode',
         }),
@@ -366,6 +280,57 @@ const faculties = [
     { value: 'veterinary_medicine', label: 'Faculty of Veterinary Medicine' },
 ] as const;
 
+// Reactive form values that persist across tab switches
+const formValues = ref({
+    description: props.project.description || '',
+    field_of_study: props.project.field_of_study || '',
+    mode: props.project.mode || 'auto',
+    university: resolveSelectValue(universities as any, props.project.university),
+    faculty: resolveSelectValue(faculties as any, props.project.faculty),
+    course: props.project.course || '',
+    supervisor_name: props.project.supervisor_name || '',
+    department: props.project.settings?.department || '',
+    matric_number: props.project.settings?.matric_number || '',
+    academic_session: props.project.settings?.academic_session || '',
+    dedication: props.project.dedication || '',
+    acknowledgements: props.project.acknowledgements || '',
+    abstract: props.project.abstract || '',
+    declaration: props.project.declaration || '',
+    certification: props.project.certification || '',
+});
+
+// Refs for RichTextEditor instances
+const dedicationEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
+const acknowledgementsEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
+const abstractEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
+const declarationEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
+const certificationEditor = ref<InstanceType<typeof RichTextEditor> | null>(null);
+
+// Popover state for selects
+const universityPopoverOpen = ref(false);
+const facultyPopoverOpen = ref(false);
+
+// Default templates (from backend)
+const defaultTemplates = computed<Record<string, string>>(() => props.preliminary_templates || {});
+
+// Template variable insertion
+const insertVariable = (editorRef: any, variableName: string) => {
+    if (editorRef.value) {
+        const formattedVariable = `{{${variableName}}}`;
+        editorRef.value.replaceSelection(formattedVariable);
+        editorRef.value.focus();
+    }
+};
+
+// Load default template
+const loadDefaultTemplate = (field: 'dedication' | 'acknowledgements' | 'abstract' | 'declaration' | 'certification') => {
+    formValues.value[field] = defaultTemplates.value[field] || '';
+    isDirty.value = true;
+    toast('Template Loaded', {
+        description: `Default ${field} template has been loaded. You can now customize it.`,
+    });
+};
+
 // Type badge variant helper
 const getTypeBadgeVariant = computed(() => {
     const type = props.project.type;
@@ -381,15 +346,19 @@ const getStatusBadgeVariant = computed(() => {
 });
 
 // Form submission handler
-const onSubmit = () => {
+const onSubmit = (values: Record<string, any>) => {
     processing.value = true;
 
-    // Destructure to separate top-level fields from settings fields
-    const { department, matric_number, academic_session, ...restFormValues } = formValues.value;
+    const { department, matric_number, academic_session, ...rest } = values;
 
-    // Prepare data for submission
     const data = {
-        ...restFormValues,
+        ...rest,
+        // Include preliminary pages from formValues since RichTextEditor binds directly to it
+        dedication: formValues.value.dedication,
+        acknowledgements: formValues.value.acknowledgements,
+        abstract: formValues.value.abstract,
+        declaration: formValues.value.declaration,
+        certification: formValues.value.certification,
         settings: {
             department,
             matric_number,
@@ -477,8 +446,8 @@ onBeforeUnmount(() => {
 
 <template>
     <AppLayout title="Edit Project">
-        <Form v-slot="{ meta }" :validation-schema="formSchema" :initial-values="formValues" @submit="onSubmit"
-            keep-values>
+        <Form v-slot="{ meta }" :validation-schema="formSchema" :initial-values="formValues"
+            @submit="onSubmit" @invalid-submit="onSubmit" keep-values>
             <div class="min-h-screen bg-muted/10 pb-20">
                 <div class="mx-auto max-w-5xl space-y-6 p-4 md:space-y-8 md:p-6 lg:p-10">
                     <!-- Header Section -->
@@ -507,7 +476,7 @@ onBeforeUnmount(() => {
                                 :disabled="processing" class="bg-background">
                                 Cancel
                             </Button>
-                            <Button type="submit" :disabled="!meta.valid || processing" class="min-w-[140px]">
+                            <Button type="submit" :disabled="processing" class="min-w-[140px]">
                                 <Loader2 v-if="processing" class="mr-2 h-4 w-4 animate-spin" />
                                 <Save v-else class="mr-2 h-4 w-4" />
                                 Save Changes
@@ -591,13 +560,21 @@ onBeforeUnmount(() => {
 
                                         <!-- Editable Fields -->
                                         <div class="grid gap-6">
-                                            <FormField name="description">
+                                            <FormField v-slot="{ componentField }" name="description">
                                                 <FormItem>
                                                     <FormLabel>Description</FormLabel>
                                                     <FormControl>
-                                                        <Textarea v-model="formValues.description"
+                                                        <Textarea
+                                                            :value="componentField.modelValue ?? ''"
                                                             placeholder="Brief description of your project..." rows="4"
-                                                            class="resize-none" @input="isDirty = true" />
+                                                            class="resize-none" @input="
+                                                                (e: any) => {
+                                                                    const val = e?.target?.value ?? '';
+                                                                    componentField['onUpdate:modelValue']?.(val);
+                                                                    formValues.description = val;
+                                                                    isDirty = true;
+                                                                }
+                                                            " />
                                                     </FormControl>
                                                     <FormDescription>
                                                         A brief overview of your project (optional, max 1000 characters)
@@ -607,23 +584,29 @@ onBeforeUnmount(() => {
                                             </FormField>
 
                                             <div class="grid gap-6 md:grid-cols-2">
-                                                <FormField name="field_of_study">
+                                                <FormField v-slot="{ componentField }" name="field_of_study">
                                                     <FormItem>
                                                         <FormLabel>Field of Study *</FormLabel>
                                                         <FormControl>
-                                                            <Input v-model="formValues.field_of_study"
-                                                                placeholder="e.g., Computer Science"
-                                                                @input="isDirty = true" />
+                                                            <Input :value="componentField.modelValue"
+                                                                placeholder="e.g., Computer Science" @input="
+                                                                    (e: any) => {
+                                                                        const val = e?.target?.value || '';
+                                                                        componentField['onUpdate:modelValue']?.(val);
+                                                                        formValues.field_of_study = val;
+                                                                        isDirty = true;
+                                                                    }
+                                                                " />
                                                         </FormControl>
                                                         <FormMessage />
                                                     </FormItem>
                                                 </FormField>
 
-                                                <FormField name="mode">
+                                                <FormField v-slot="{ componentField }" name="mode">
                                                     <FormItem>
                                                         <FormLabel>Working Mode *</FormLabel>
-                                                        <Select v-model="formValues.mode"
-                                                            @update:model-value="isDirty = true">
+                                                        <Select :model-value="componentField.modelValue"
+                                                            @update:model-value="(val) => { componentField['onUpdate:modelValue']?.(val); formValues.mode = val; isDirty = true; }">
                                                             <FormControl>
                                                                 <SelectTrigger>
                                                                     <SelectValue placeholder="Select writing mode" />
@@ -669,22 +652,23 @@ onBeforeUnmount(() => {
                                             </div>
 
                                             <div class="grid gap-6 md:grid-cols-2">
-                                                <FormField name="university" class="md:col-span-2">
+                                                <FormField v-slot="{ componentField }" name="university"
+                                                    class="md:col-span-2">
                                                     <FormItem class="flex flex-col">
                                                         <FormLabel>University *</FormLabel>
-                                                        <Popover>
+                                                        <Popover v-model:open="universityPopoverOpen">
                                                             <PopoverTrigger as-child>
                                                                 <FormControl>
                                                                     <Button variant="outline" role="combobox" :class="cn(
                                                                         'w-full justify-between',
-                                                                        !formValues.university && 'text-muted-foreground',
+                                                                        !componentField.modelValue && 'text-muted-foreground',
                                                                     )
                                                                         ">
                                                                         {{
-                                                                            formValues.university
+                                                                            componentField.modelValue
                                                                                 ? universities.find(
                                                                                     (university) => university.value ===
-                                                                                        formValues.university,
+                                                                                        componentField.modelValue,
                                                                                 )?.label
                                                                                 : 'Select your university...'
                                                                         }}
@@ -704,14 +688,16 @@ onBeforeUnmount(() => {
                                                                                 :key="university.value"
                                                                                 :value="university.label" @select="
                                                                                     () => {
+                                                                                        componentField['onUpdate:modelValue']?.(university.value);
                                                                                         formValues.university = university.value;
                                                                                         isDirty = true;
+                                                                                        universityPopoverOpen = false;
                                                                                     }
                                                                                 ">
                                                                                 {{ university.label }}
                                                                                 <Check :class="cn(
                                                                                     'ml-auto h-4 w-4',
-                                                                                    university.value === formValues.university
+                                                                                    university.value === componentField.modelValue
                                                                                         ? 'opacity-100'
                                                                                         : 'opacity-0',
                                                                                 )
@@ -726,21 +712,21 @@ onBeforeUnmount(() => {
                                                     </FormItem>
                                                 </FormField>
 
-                                                <FormField name="faculty">
+                                                <FormField v-slot="{ componentField }" name="faculty">
                                                     <FormItem class="flex flex-col">
                                                         <FormLabel>Faculty *</FormLabel>
-                                                        <Popover>
+                                                        <Popover v-model:open="facultyPopoverOpen">
                                                             <PopoverTrigger as-child>
                                                                 <FormControl>
                                                                     <Button variant="outline" role="combobox" :class="cn(
                                                                         'w-full justify-between',
-                                                                        !formValues.faculty && 'text-muted-foreground',
+                                                                        !componentField.modelValue && 'text-muted-foreground',
                                                                     )
                                                                         ">
                                                                         {{
-                                                                            formValues.faculty
+                                                                            componentField.modelValue
                                                                                 ? faculties.find((faculty) => faculty.value ===
-                                                                                    formValues.faculty)
+                                                                                    componentField.modelValue)
                                                                                     ?.label
                                                                                 : 'Select faculty...'
                                                                         }}
@@ -759,13 +745,15 @@ onBeforeUnmount(() => {
                                                                                 :key="faculty.value"
                                                                                 :value="faculty.value" @select="
                                                                                     () => {
+                                                                                        componentField['onUpdate:modelValue']?.(faculty.value);
                                                                                         formValues.faculty = faculty.value;
                                                                                         isDirty = true;
+                                                                                        facultyPopoverOpen = false;
                                                                                     }
                                                                                 ">
                                                                                 <Check :class="cn(
                                                                                     'mr-2 h-4 w-4',
-                                                                                    formValues.faculty === faculty.value
+                                                                                    componentField.modelValue === faculty.value
                                                                                         ? 'opacity-100'
                                                                                         : 'opacity-0',
                                                                                 )
@@ -781,13 +769,19 @@ onBeforeUnmount(() => {
                                                     </FormItem>
                                                 </FormField>
 
-                                                <FormField name="course">
+                                                <FormField v-slot="{ componentField }" name="course">
                                                     <FormItem>
                                                         <FormLabel>Course *</FormLabel>
                                                         <FormControl>
-                                                            <Input v-model="formValues.course"
-                                                                placeholder="e.g., Computer Science"
-                                                                @input="isDirty = true" />
+                                                            <Input :value="componentField.modelValue"
+                                                                placeholder="e.g., Computer Science" @input="
+                                                                    (e: any) => {
+                                                                        const val = e?.target?.value || '';
+                                                                        componentField['onUpdate:modelValue']?.(val);
+                                                                        formValues.course = val;
+                                                                        isDirty = true;
+                                                                    }
+                                                                " />
                                                         </FormControl>
                                                         <FormMessage />
                                                     </FormItem>
@@ -797,46 +791,81 @@ onBeforeUnmount(() => {
 
                                         <!-- Student & Supervisor Information -->
                                         <div class="grid gap-6 md:grid-cols-2">
-                                            <FormField name="supervisor_name">
+                                            <FormField v-slot="{ componentField }" name="supervisor_name">
                                                 <FormItem>
                                                     <FormLabel>Supervisor Name</FormLabel>
                                                     <FormControl>
-                                                        <Input v-model="formValues.supervisor_name"
+                                                        <Input
+                                                            :value="componentField.modelValue ?? ''"
                                                             placeholder="e.g., Dr. Jane Smith"
-                                                            @input="isDirty = true" />
+                                                            @input="
+                                                                (e: any) => {
+                                                                    const val = e?.target?.value ?? '';
+                                                                    componentField['onUpdate:modelValue']?.(val);
+                                                                    formValues.supervisor_name = val;
+                                                                    isDirty = true;
+                                                                }
+                                                            " />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
 
-                                            <FormField name="department">
+                                            <FormField v-slot="{ componentField }" name="department">
                                                 <FormItem>
                                                     <FormLabel>Department</FormLabel>
                                                     <FormControl>
-                                                        <Input v-model="formValues.department"
-                                                            placeholder="Department name" @input="isDirty = true" />
+                                                        <Input
+                                                            :value="componentField.modelValue ?? ''"
+                                                            placeholder="Department name"
+                                                            @input="
+                                                                (e: any) => {
+                                                                    const val = e?.target?.value ?? '';
+                                                                    componentField['onUpdate:modelValue']?.(val);
+                                                                    formValues.department = val;
+                                                                    isDirty = true;
+                                                                }
+                                                            " />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
 
-                                            <FormField name="matric_number">
+                                            <FormField v-slot="{ componentField }" name="matric_number">
                                                 <FormItem>
                                                     <FormLabel>Student ID / Matric Number</FormLabel>
                                                     <FormControl>
-                                                        <Input v-model="formValues.matric_number"
-                                                            placeholder="e.g., 2019/123456" @input="isDirty = true" />
+                                                        <Input
+                                                            :value="componentField.modelValue ?? ''"
+                                                            placeholder="e.g., 2019/123456"
+                                                            @input="
+                                                                (e: any) => {
+                                                                    const val = e?.target?.value ?? '';
+                                                                    componentField['onUpdate:modelValue']?.(val);
+                                                                    formValues.matric_number = val;
+                                                                    isDirty = true;
+                                                                }
+                                                            " />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
 
-                                            <FormField name="academic_session">
+                                            <FormField v-slot="{ componentField }" name="academic_session">
                                                 <FormItem>
                                                     <FormLabel>Academic Session</FormLabel>
                                                     <FormControl>
-                                                        <Input v-model="formValues.academic_session"
-                                                            placeholder="e.g., 2023/2024" @input="isDirty = true" />
+                                                        <Input
+                                                            :value="componentField.modelValue ?? ''"
+                                                            placeholder="e.g., 2023/2024"
+                                                            @input="
+                                                                (e: any) => {
+                                                                    const val = e?.target?.value ?? '';
+                                                                    componentField['onUpdate:modelValue']?.(val);
+                                                                    formValues.academic_session = val;
+                                                                    isDirty = true;
+                                                                }
+                                                            " />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
@@ -877,7 +906,7 @@ onBeforeUnmount(() => {
                                                             :min-height="'200px'"
                                                             @update:model-value="isDirty = true" />
                                                     </FormControl>
-                                                    <FormDescription>Use template variables like {{supervisor_name}} for dynamic content</FormDescription>
+                                                    <FormDescription>Use template variables like &#123;&#123;supervisor_name&#125;&#125; for dynamic content</FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>

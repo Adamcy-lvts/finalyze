@@ -46,6 +46,24 @@ class TopicController extends Controller
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
 
+        // Short-circuit when AI is offline to avoid futile generation attempts
+        if (! $this->aiGenerator->isAvailable()) {
+            $savedTopics = $this->getProjectGeneratedTopics($project);
+
+            if (count($savedTopics) > 0) {
+                return response()->json([
+                    'topics' => $savedTopics,
+                    'from_cache' => true,
+                    'message' => 'AI services are currently unavailable. Showing your saved topics instead.',
+                ]);
+            }
+
+            return response()->json([
+                'error' => 'AI services are currently unavailable.',
+                'message' => 'Please check your connection and try again. We could not generate new topics while offline.',
+            ], 503);
+        }
+
         // Set a longer execution time limit for topic generation
         set_time_limit(300); // 5 minutes
 
@@ -75,35 +93,16 @@ class TopicController extends Controller
 
     public function stream(Request $request, Project $project)
     {
-        Log::info('🎯 TOPIC STREAM - Method reached', [
-            'project_id' => $project->id,
-            'project_slug' => $project->slug,
-            'user_id' => auth()->id(),
-            'request_params' => $request->all(),
-        ]);
-
         try {
-            Log::info('✅ TOPIC STREAM - Starting validation');
             $validated = $request->validate([
                 'regenerate' => 'nullable|in:true,false,1,0',
             ]);
-            Log::info('✅ TOPIC STREAM - Validation passed', $validated);
 
             // Load the category relationship
-            Log::info('📚 TOPIC STREAM - Loading project category');
             $project->load('category');
-            Log::info('📚 TOPIC STREAM - Category loaded', [
-                'has_category' => $project->category !== null,
-            ]);
 
             // Ensure user owns the project
-            Log::info('🔐 TOPIC STREAM - Checking project ownership', [
-                'project_user_id' => $project->user_id,
-                'auth_user_id' => auth()->id(),
-                'owns_project' => $project->user_id === auth()->id(),
-            ]);
             abort_if($project->user_id !== auth()->id(), 403);
-            Log::info('✅ TOPIC STREAM - Ownership verified');
 
         } catch (\Exception $e) {
             Log::error('💥 TOPIC STREAM - Early validation failed', [
@@ -122,28 +121,15 @@ class TopicController extends Controller
             'X-Accel-Buffering' => 'no', // Disable nginx buffering
         ];
 
-        Log::info('🚀 TOPIC STREAM - Starting streaming response', [
-            'project_id' => $project->id,
-            'headers' => $headers,
-        ]);
-
         try {
             // Increase execution time limit for AI generation
             set_time_limit(300); // 5 minutes
             ini_set('max_execution_time', 300);
 
-            Log::info('🔄 TOPIC STREAM - About to create streaming response');
-
             $streamingResponse = response()->stream(function () use ($project, $request) {
-                Log::info('🚀 TOPIC STREAM - Inside stream function', [
-                    'project_id' => $project->id,
-                    'ob_level' => ob_get_level(),
-                ]);
-
                 // Disable output buffering
                 if (ob_get_level() > 0) {
                     ob_end_clean();
-                    Log::info('🧹 TOPIC STREAM - Output buffering cleared');
                 }
 
                 // Set proper headers for SSE in the stream
@@ -152,7 +138,6 @@ class TopicController extends Controller
                 header('Connection: keep-alive');
                 header('X-Accel-Buffering: no');
 
-                Log::info('📤 TOPIC STREAM - Sending start message');
                 // Send connection established event
                 $this->sendSSEMessage('start', [
                     'message' => 'Connected to AI service - preparing topic generation...',
@@ -164,31 +149,20 @@ class TopicController extends Controller
                 ]);
 
                 try {
-                    Log::info('🔍 TOPIC STREAM - Checking for cached topics');
                     // Check for cached topics first
                     $cachedTopics = $this->getCachedTopicsForAcademicContext($project);
-                    Log::info('📦 TOPIC STREAM - Cached topics found', [
-                        'count' => count($cachedTopics),
-                    ]);
-
-                    Log::info('⏰ TOPIC STREAM - Checking for recent requests');
                     $recentTopicRequest = $this->hasRecentTopicRequest($project);
-                    Log::info('⏰ TOPIC STREAM - Recent request check result', [
-                        'has_recent' => $recentTopicRequest,
-                    ]);
 
                     if (! $recentTopicRequest && count($cachedTopics) >= 8 && ! $request->boolean('regenerate')) {
-                        Log::info('📦 TOPIC STREAM - Using cached topics', [
-                            'count' => count($cachedTopics),
-                        ]);
-
                         // Convert cached topics to enriched format
                         $enrichedCachedTopics = collect($cachedTopics)
                             ->map(function ($topic, $index) {
                                 return [
                                     'id' => $index + 1,
                                     'title' => $topic['topic'] ?? $topic['title'] ?? $topic,
-                                    'description' => $topic['description'] ?? 'Research topic in your field of study',
+                                    'description' => $this->convertMarkdownToHtml(
+                                        $topic['description'] ?? 'Research topic in your field of study'
+                                    ),
                                     'difficulty' => 'Intermediate',
                                     'timeline' => '6-9 months',
                                     'resource_level' => 'Medium',
@@ -212,50 +186,82 @@ class TopicController extends Controller
                         ]);
 
                         $this->trackTopicRequest($project);
-                        Log::info('✅ TOPIC STREAM - Cached flow completed');
 
                         // Send end event before returning
                         $this->sendSSEMessage('end', []);
-                        Log::info('✅ TOPIC STREAM - Stream completed');
+
+                        return;
+                    }
+
+                    // Abort early if AI is offline; fall back to cached topics when possible
+                    if (! $this->aiGenerator->isAvailable()) {
+                        $offlineMessage = 'AI services are currently unavailable. Please check your connection and try again.';
+
+                        if (count($cachedTopics) > 0) {
+                            $enrichedCachedTopics = collect($cachedTopics)
+                                ->map(function ($topic, $index) {
+                                    return [
+                                        'id' => $index + 1,
+                                        'title' => $topic['topic'] ?? $topic['title'] ?? $topic,
+                                        'description' => $this->convertMarkdownToHtml(
+                                            $topic['description'] ?? 'Research topic in your field of study'
+                                        ),
+                                        'difficulty' => 'Intermediate',
+                                        'timeline' => '6-9 months',
+                                        'resource_level' => 'Medium',
+                                        'feasibility_score' => 75,
+                                        'keywords' => [],
+                                        'research_type' => 'Applied Research',
+                                    ];
+                                })
+                                ->toArray();
+
+                            $this->sendSSEMessage('content', [
+                                'message' => 'AI is offline. Showing your saved topics instead.',
+                                'topics' => $enrichedCachedTopics,
+                                'from_cache' => true,
+                            ]);
+
+                            $this->sendSSEMessage('complete', [
+                                'message' => 'Topics loaded from cache while AI is offline.',
+                                'topics' => $enrichedCachedTopics,
+                                'total_topics' => count($enrichedCachedTopics),
+                            ]);
+
+                            $this->trackTopicRequest($project);
+                        } else {
+                            $this->sendSSEMessage('error', [
+                                'message' => $offlineMessage,
+                            ]);
+                        }
+
+                        $this->sendSSEMessage('end', []);
+                        Log::warning('🤖 TOPIC STREAM - AI unavailable, skipping generation', [
+                            'project_id' => $project->id,
+                            'cached_topics' => count($cachedTopics),
+                        ]);
 
                         return;
                     }
 
                     // Generate fresh topics with streaming
-                    Log::info('🤖 TOPIC STREAM - Starting AI generation');
                     $this->sendSSEMessage('progress', [
                         'message' => 'Generating fresh topics with AI...',
                     ]);
 
                     // Build academic context for intelligent model selection
-                    Log::info('🎓 TOPIC STREAM - Building academic context');
-                    $academicContext = [
-                        'field_of_study' => $project->field_of_study,
-                        'academic_level' => $project->type,
-                        'faculty' => $project->facultyRelation?->name ?? '',
-                        'university' => $project->universityRelation?->name,
-                    ];
-
-                    Log::info('🎓 TOPIC STREAM - Academic context built', $academicContext);
+                    $academicContext = $this->getProjectAcademicContext($project);
 
                     $this->sendSSEMessage('progress', [
                         'message' => 'Using intelligent model selection based on your academic context...',
                         'context' => $academicContext,
                     ]);
 
-                    Log::info('📝 TOPIC STREAM - Building prompts');
                     $systemPrompt = $this->buildSystemPrompt($project);
                     $userPrompt = $this->buildContextualPrompt($project);
                     $fullPrompt = $systemPrompt."\n\n".$userPrompt;
 
-                    Log::info('📝 TOPIC STREAM - Prompts built', [
-                        'system_prompt_length' => strlen($systemPrompt),
-                        'user_prompt_length' => strlen($userPrompt),
-                        'full_prompt_length' => strlen($fullPrompt),
-                    ]);
-
                     // Stream the AI generation
-                    Log::info('🔄 TOPIC STREAM - Starting AI streaming generation');
                     $generatedContent = '';
                     $wordCount = 0;
                     $chunkCount = 0;
@@ -265,14 +271,6 @@ class TopicController extends Controller
                         $generatedContent .= $chunk;
                         $wordCount = str_word_count($generatedContent);
 
-                        if ($chunkCount % 10 == 0) { // Log every 10 chunks to avoid spam
-                            Log::info('📝 TOPIC STREAM - AI generation progress', [
-                                'chunks_received' => $chunkCount,
-                                'word_count' => $wordCount,
-                                'content_length' => strlen($generatedContent),
-                            ]);
-                        }
-
                         // Send content chunks to client
                         $this->sendSSEMessage('content', [
                             'chunk' => $chunk,
@@ -281,46 +279,28 @@ class TopicController extends Controller
                         ]);
 
                         // Small delay to ensure smooth streaming
-                        usleep(10000); // 10ms delay
+                            usleep(10000); // 10ms delay
                     }
 
-                    Log::info('✅ TOPIC STREAM - AI generation completed', [
-                        'total_chunks' => $chunkCount,
-                        'final_word_count' => $wordCount,
-                        'final_content_length' => strlen($generatedContent),
-                    ]);
-
                     // Parse and process the generated topics
-                    Log::info('⚙️ TOPIC STREAM - Processing generated topics');
                     $this->sendSSEMessage('progress', [
                         'message' => 'Processing and enriching generated topics...',
                     ]);
 
                     $topics = $this->parseAndValidateTopics($generatedContent, $project);
-                    Log::info('📋 TOPIC STREAM - Topics parsed', [
-                        'count' => count($topics),
-                    ]);
-
                     $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
-                    Log::info('✨ TOPIC STREAM - Topics enriched', [
-                        'count' => count($enrichedTopics),
-                    ]);
 
                     // Cache the generated topics
-                    Log::info('💾 TOPIC STREAM - Caching topics');
                     $this->storeTopicsInDatabase($topics, $project);
                     $this->trackTopicRequest($project);
 
                     // Send final result
-                    Log::info('🎉 TOPIC STREAM - Sending final result');
                     $this->sendSSEMessage('complete', [
                         'message' => 'Topics generated successfully!',
                         'topics' => $enrichedTopics,
                         'total_topics' => count($enrichedTopics),
                         'word_count' => $wordCount,
                     ]);
-
-                    Log::info('✅ TOPIC STREAM - Generation flow completed successfully');
 
                 } catch (\Exception $e) {
                     Log::error('💥 TOPIC STREAM - Exception in generation', [
@@ -337,13 +317,9 @@ class TopicController extends Controller
                 }
 
                 // Send end event
-                Log::info('🏁 TOPIC STREAM - Sending end event');
                 $this->sendSSEMessage('end', []);
-                Log::info('✅ TOPIC STREAM - Stream completed');
 
             }, 200, $headers);
-
-            Log::info('🎉 TOPIC STREAM - Streaming response created, returning');
 
             return $streamingResponse;
 
@@ -385,12 +361,6 @@ class TopicController extends Controller
         $jsonMessage = json_encode($message);
         $sseData = 'data: '.$jsonMessage."\n\n";
 
-        Log::debug('📤 SSE MESSAGE', [
-            'type' => $type,
-            'message_size' => strlen($jsonMessage),
-            'ob_level' => ob_get_level(),
-        ]);
-
         echo $sseData;
 
         // Ensure data is sent immediately
@@ -398,11 +368,6 @@ class TopicController extends Controller
             ob_flush();
         }
         flush();
-
-        Log::debug('📤 SSE MESSAGE SENT', [
-            'type' => $type,
-            'flushed' => true,
-        ]);
     }
 
     public function select(Request $request, Project $project)
@@ -1026,6 +991,26 @@ class TopicController extends Controller
             return collect($cachedTopics)->pluck('topic')->toArray();
         }
 
+        $academicContext = $this->getProjectAcademicContext($project);
+
+        if (! $this->aiGenerator->isAvailable()) {
+            Log::warning('AI unavailable - skipping new topic generation', [
+                'project_id' => $project->id,
+                'cached_count' => count($cachedTopics),
+                'academic_context' => $academicContext,
+            ]);
+
+            if (count($cachedTopics) > 0) {
+                return collect($cachedTopics)
+                    ->map(fn ($topic) => $topic['topic'] ?? $topic['title'] ?? $topic)
+                    ->filter()
+                    ->values()
+                    ->toArray();
+            }
+
+            throw new \Exception('AI services are currently unavailable. Please try again when back online.');
+        }
+
         // User wants fresh topics - either no cache or recent request detected
         Log::info('Generating fresh topics', [
             'project_id' => $project->id,
@@ -1041,12 +1026,7 @@ class TopicController extends Controller
             $startTime = microtime(true);
 
             // Build academic context for intelligent model selection
-            $academicContext = [
-                'field_of_study' => $project->field_of_study,
-                'academic_level' => $project->type,
-                'faculty' => $project->facultyRelation?->name ?? '',
-                'university' => $project->universityRelation?->name,
-            ];
+            // (Already built above, reuse)
 
             Log::info('AI Topic Generation - Starting with intelligent selection', [
                 'project_id' => $project->id,
@@ -1146,20 +1126,18 @@ CONTEXT:
 - Geographic Focus: Nigeria/West Africa
 
 REQUIREMENTS:
-1. Generate EXACTLY 8-10 unique, high-quality research topics
-2. Topics must be academically rigorous yet feasible for the academic level
-3. Consider local Nigerian context and emerging global trends
-4. Ensure topics are specific enough to be manageable but broad enough to be significant
-5. Include mix of theoretical, practical, and applied research approaches
-6. Consider available resources in Nigerian academic institutions
+1. Generate EXACTLY 10 unique, high-quality research topics (no duplicates or near-duplicates)
+2. Each topic must include a clear problem, application/domain, and context (avoid vague statements)
+3. Align rigor/scope to the academic level and project type; ensure feasibility with typical university resources
+4. At least half the topics should embed a Nigerian/West African angle (data, policy, infrastructure, constraints)
+5. Keep language concise and avoid buzzwords or vendor/product names unless essential
 
 FORMAT:
-Return ONLY a numbered list of topics, one per line:
+Return ONLY a numbered list of 10 topics, one per line:
 1. [Topic title]
 2. [Topic title]
 ...
-
-No additional text, explanations, or formatting.";
+10. [Topic title]";
     }
 
     private function buildContextualPrompt(Project $project): string
@@ -1167,17 +1145,24 @@ No additional text, explanations, or formatting.";
         $requirements = $this->getProjectRequirements($project);
 
         $categoryName = $project->category->name ?? 'Final Year Project';
+        $department = $project->departmentRelation?->name ?? $project->settings['department'] ?? ($project->facultyRelation?->name ?? $project->faculty ?? 'Department');
+        $university = $project->universityRelation?->name ?? $project->university;
+        $academicLevel = $this->getAcademicLevelDescription($project->type);
+        $fieldOfStudy = $project->field_of_study ?: 'Field of study not specified';
+        $course = $project->course ?: 'Course not specified';
 
         return "Generate research topics for:
 
-FIELD OF STUDY: {$project->field_of_study}
-COURSE: {$project->course}  
-UNIVERSITY: {$project->universityRelation?->name}
+FIELD OF STUDY: {$fieldOfStudy}
+COURSE: {$course}
+DEPARTMENT: {$department}
+UNIVERSITY: {$university}
+ACADEMIC LEVEL: {$academicLevel}
 PROJECT TYPE: {$categoryName}
 
 FOCUS AREAS:
-- Current industry trends and challenges in {$project->field_of_study}
-- Emerging technologies applicable to {$project->field_of_study}
+- Current industry trends and challenges in {$fieldOfStudy}
+- Emerging technologies applicable to {$fieldOfStudy}
 - Nigerian/African context and local problems to solve
 - Practical applications and real-world impact
 - Interdisciplinary approaches where relevant
@@ -1190,7 +1175,8 @@ Generate topics that are:
 ✓ Feasible with standard university resources
 ✓ Relevant to current industry needs
 ✓ Appropriate for the academic level
-✓ Aligned with Nigerian educational and economic priorities";
+✓ Aligned with Nigerian educational and economic priorities
+✓ Free from repetitive angles or duplicate approaches";
     }
 
     private function getProjectRequirements(Project $project): string
@@ -1302,7 +1288,7 @@ Generate topics that are:
             $enrichedTopics[] = [
                 'id' => $index + 1,
                 'title' => $topic,
-                'description' => $description,
+                'description' => $this->convertMarkdownToHtml($description),
                 'difficulty' => $metadata['difficulty'],
                 'timeline' => $metadata['timeline'],
                 'resource_level' => $metadata['resource_level'],
@@ -1649,6 +1635,7 @@ The description should help a student understand what this topic involves and wh
             $aiDuration = ($aiEndTime - $aiStartTime) * 1000; // Convert to milliseconds
 
             $description = $this->enforceThirdPersonPerspective(trim($description));
+            $description = $this->convertMarkdownToHtml($description);
             $totalDuration = (microtime(true) - $startTime) * 1000;
 
             Log::info('AI Topic Description Generation - Success', [
@@ -1681,7 +1668,7 @@ The description should help a student understand what this topic involves and wh
             // Fallback to a generic description
             $fallback = "This research topic focuses on {$project->field_of_study} and involves investigating current trends, methodologies, and practical applications in the field. The study provides valuable insights and contributes to academic knowledge while helping the student strengthen research and analytical skills.";
 
-            return $this->enforceThirdPersonPerspective($fallback);
+            return $this->convertMarkdownToHtml($this->enforceThirdPersonPerspective($fallback));
         }
     }
 
@@ -1728,17 +1715,17 @@ The description should help a student understand what this topic involves and wh
      */
     private function getProjectGeneratedTopics(Project $project): array
     {
-        // Get faculty and department from project
-        $faculty = $project->facultyRelation?->name ?? null;
-        $department = $project->settings['department'] ?? null;
+        $context = $this->getProjectAcademicContext($project);
+        $faculty = $context['faculty'];
+        $department = $context['department'];
 
         // Look for topics with exact academic context match
-        $savedTopics = ProjectTopic::where('course', $project->course)
-            ->where('academic_level', $project->type)
-            ->where('university', $project->universityRelation?->name)
+        $savedTopics = ProjectTopic::where('course', $context['course'])
+            ->where('academic_level', $context['academic_level'])
+            ->where('university', $context['university'])
             ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
             ->when($department, fn ($q) => $q->where('department', $department))
-            ->when($project->field_of_study, fn ($q) => $q->where('field_of_study', $project->field_of_study))
+            ->when($context['field_of_study'], fn ($q) => $q->where('field_of_study', $context['field_of_study']))
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get()
@@ -1746,7 +1733,9 @@ The description should help a student understand what this topic involves and wh
                 return [
                     'id' => $index + 1,
                     'title' => $topic->title,
-                    'description' => $topic->description ?? 'Research topic in '.$topic->field_of_study,
+                    'description' => $this->convertMarkdownToHtml(
+                        $topic->description ?? 'Research topic in '.$topic->field_of_study
+                    ),
                     'difficulty' => $topic->difficulty ?? 'Intermediate',
                     'timeline' => $topic->timeline ?? '6-9 months',
                     'resource_level' => $topic->resource_level ?? 'Medium',
@@ -1759,8 +1748,8 @@ The description should help a student understand what this topic involves and wh
 
         Log::info('Retrieved saved project topics', [
             'project_id' => $project->id,
-            'course' => $project->course,
-            'university' => $project->universityRelation?->name,
+            'course' => $context['course'],
+            'university' => $context['university'],
             'faculty' => $faculty,
             'department' => $department,
             'saved_topics_count' => count($savedTopics),
@@ -1775,17 +1764,17 @@ The description should help a student understand what this topic involves and wh
      */
     private function getCachedTopicsForAcademicContext(Project $project): array
     {
-        // Get faculty and department from project
-        $faculty = $project->facultyRelation?->name ?? null;
-        $department = $project->settings['department'] ?? null;
+        $context = $this->getProjectAcademicContext($project);
+        $faculty = $context['faculty'];
+        $department = $context['department'];
 
         // Look for topics with similar academic context stored directly in ProjectTopic
-        $cachedTopics = ProjectTopic::where('course', $project->course)
-            ->where('academic_level', $project->type)
-            ->where('university', $project->universityRelation?->name)
+        $cachedTopics = ProjectTopic::where('course', $context['course'])
+            ->where('academic_level', $context['academic_level'])
+            ->where('university', $context['university'])
             ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
             ->when($department, fn ($q) => $q->where('department', $department))
-            ->when($project->field_of_study, fn ($q) => $q->where('field_of_study', $project->field_of_study))
+            ->when($context['field_of_study'], fn ($q) => $q->where('field_of_study', $context['field_of_study']))
             ->limit(10)
             ->get()
             ->map(function ($topic) {
@@ -1799,8 +1788,8 @@ The description should help a student understand what this topic involves and wh
 
         Log::info('Retrieved cached topics for academic context', [
             'project_id' => $project->id,
-            'course' => $project->course,
-            'university' => $project->universityRelation?->name,
+            'course' => $context['course'],
+            'university' => $context['university'],
             'faculty' => $faculty,
             'department' => $department,
             'cached_topics_count' => count($cachedTopics),
@@ -1815,9 +1804,19 @@ The description should help a student understand what this topic involves and wh
     private function storeTopicsInDatabase(array $topics, Project $project): void
     {
         try {
-            // Get faculty and department from project
-            $faculty = $project->facultyRelation?->name ?? null;
-            $department = $project->settings['department'] ?? null;
+            $context = $this->getProjectAcademicContext($project);
+            $requiredContextFields = ['faculty', 'department', 'course', 'university', 'academic_level'];
+            $missingFields = array_filter($requiredContextFields, fn ($field) => empty($context[$field]));
+
+            if (! empty($missingFields)) {
+                Log::warning('Skipping topic storage due to missing academic context', [
+                    'project_id' => $project->id,
+                    'missing_fields' => array_values($missingFields),
+                    'context' => $context,
+                ]);
+
+                return;
+            }
 
             foreach ($topics as $topic) {
                 // Handle both string and array topic formats
@@ -1841,20 +1840,23 @@ The description should help a student understand what this topic involves and wh
 
                 // Check if topic already exists to avoid duplicates
                 $existingTopic = ProjectTopic::where('title', $topicData['title'])
-                    ->where('course', $project->course)
-                    ->where('academic_level', $project->type)
+                    ->where('course', $context['course'])
+                    ->where('academic_level', $context['academic_level'])
                     ->first();
 
                 if (! $existingTopic) {
+                    $description = $topicData['description'] ?? 'Research topic in '.($project->field_of_study ?? $project->course);
+                    $descriptionHtml = $this->convertMarkdownToHtml($description);
+
                     ProjectTopic::create([
-                        'field_of_study' => $project->field_of_study,
-                        'faculty' => $faculty,
-                        'department' => $department,
-                        'course' => $project->course,
-                        'university' => $project->universityRelation?->name,
-                        'academic_level' => $project->type,
+                        'field_of_study' => $context['field_of_study'],
+                        'faculty' => $context['faculty'],
+                        'department' => $context['department'],
+                        'course' => $context['course'],
+                        'university' => $context['university'],
+                        'academic_level' => $context['academic_level'],
                         'title' => $topicData['title'],
-                        'description' => $topicData['description'] ?? 'Research topic in '.($project->field_of_study ?? $project->course),
+                        'description' => $descriptionHtml,
                         'difficulty' => $topicData['difficulty'] ?? 'moderate',
                         'timeline' => $topicData['timeline'] ?? '6 months',
                         'resource_level' => $topicData['resourceLevel'] ?? 'moderate',
@@ -1870,8 +1872,8 @@ The description should help a student understand what this topic involves and wh
             Log::info('Topics stored in database', [
                 'project_id' => $project->id,
                 'topics_count' => count($topics),
-                'course' => $project->course,
-                'university' => $project->universityRelation?->name,
+                'course' => $context['course'],
+                'university' => $context['university'],
             ]);
 
         } catch (\Exception $e) {
@@ -1881,6 +1883,36 @@ The description should help a student understand what this topic involves and wh
                 'trace' => $e->getTraceAsString(),
             ]);
             // Don't throw the exception as this is not critical for the main flow
+        }
+    }
+
+    /**
+     * Convert markdown/plaintext descriptions to safe HTML for storage/display.
+     */
+    private function convertMarkdownToHtml(?string $text): string
+    {
+        $content = trim($text ?? '');
+
+        if ($content === '') {
+            return '';
+        }
+
+        // If HTML tags are already present, assume it has been converted.
+        if ($content !== strip_tags($content)) {
+            return $content;
+        }
+
+        try {
+            return Str::markdown($content, [
+                'html_input' => 'strip',
+                'allow_unsafe_links' => false,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Description markdown conversion failed, using escaped text', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return nl2br(e($content));
         }
     }
 
@@ -1978,14 +2010,25 @@ The description should help a student understand what this topic involves and wh
     /**
      * Generate a consistent hash for academic context to enable intelligent caching
      */
+    private function getProjectAcademicContext(Project $project): array
+    {
+        $university = $project->universityRelation?->name ?? $project->university;
+        $faculty = $project->facultyRelation?->name ?? $project->faculty;
+        $department = $project->departmentRelation?->name ?? $project->settings['department'] ?? null;
+
+        return [
+            'field_of_study' => $project->field_of_study,
+            'course' => $project->course,
+            'academic_level' => $project->type,
+            'university' => $university,
+            'faculty' => $faculty,
+            'department' => $department,
+        ];
+    }
+
     private function generateAcademicContextHash(Project $project): string
     {
-        $contextData = [
-            'course' => $project->course,
-            'university' => $project->universityRelation?->name,
-            'academic_level' => $project->type,
-            'field_of_study' => $project->field_of_study,
-        ];
+        $contextData = $this->getProjectAcademicContext($project);
 
         return hash('sha256', json_encode($contextData));
     }

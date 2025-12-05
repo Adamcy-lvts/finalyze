@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Chapter;
 use App\Models\Project;
 use App\Services\ExportService;
-use App\Services\TemplateVariableService;
+use App\Services\ProjectPrelimService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -21,7 +21,7 @@ class ExportController extends Controller
 {
     public function __construct(
         protected ExportService $exportService,
-        protected TemplateVariableService $templateVariableService
+        protected ProjectPrelimService $projectPrelimService
     ) {}
 
     /**
@@ -425,42 +425,11 @@ class ExportController extends Controller
                 'chapters_converted' => count($chapterContents),
             ]);
 
-            // Substitute template variables in preliminary pages
-            Log::info('Project PDF Export: Starting template variable substitution');
-
-            $processedProject = clone $project;
-            if ($project->dedication) {
-                $processedProject->dedication = $this->templateVariableService->substituteVariables(
-                    $project->dedication,
-                    $project
-                );
-            }
-            if ($project->acknowledgements) {
-                $processedProject->acknowledgements = $this->templateVariableService->substituteVariables(
-                    $project->acknowledgements,
-                    $project
-                );
-            }
-            if ($project->abstract) {
-                $processedProject->abstract = $this->templateVariableService->substituteVariables(
-                    $project->abstract,
-                    $project
-                );
-            }
-            if ($project->declaration) {
-                $processedProject->declaration = $this->templateVariableService->substituteVariables(
-                    $project->declaration,
-                    $project
-                );
-            }
-            if ($project->certification) {
-                $processedProject->certification = $this->templateVariableService->substituteVariables(
-                    $project->certification,
-                    $project
-                );
-            }
-
-            Log::info('Project PDF Export: Template variable substitution complete');
+            $preliminaryPages = $this->projectPrelimService->resolve($project);
+            Log::info('Project PDF Export: Preliminary pages resolved', [
+                'count' => count($preliminaryPages),
+                'slugs' => array_column($preliminaryPages, 'slug'),
+            ]);
 
             // Create a unique filename
             $fileName = sprintf(
@@ -480,7 +449,8 @@ class ExportController extends Controller
             try {
                 // Generate PDF using Spatie PDF with Browsershot for reliability
                 $pdf = Pdf::view('pdf.project', [
-                    'project' => $processedProject,
+                    'project' => $project,
+                    'preliminaryPages' => $preliminaryPages,
                     'chapters' => $chapters,
                     'chapterContents' => $chapterContents,
                     'totalWords' => $totalWords,

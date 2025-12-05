@@ -3,12 +3,13 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Events\WordBalanceUpdated;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Lab404\Impersonate\Models\Impersonate;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
@@ -16,7 +17,7 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, Impersonate;
+    use HasApiTokens, HasFactory, HasRoles, Impersonate, Notifiable, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -130,6 +131,10 @@ class User extends Authenticatable
                 $this->increment('bonus_words_received', $words);
             }
         });
+
+        // Refresh to get updated values and broadcast
+        $this->refresh();
+        WordBalanceUpdated::dispatch($this, $isPurchase ? 'purchase' : 'bonus');
     }
 
     /**
@@ -147,6 +152,10 @@ class User extends Authenticatable
             $this->decrement('word_balance', $words);
             $this->increment('total_words_used', $words);
         });
+
+        // Refresh to get updated values and broadcast
+        $this->refresh();
+        WordBalanceUpdated::dispatch($this, 'usage');
     }
 
     /**
@@ -158,6 +167,10 @@ class User extends Authenticatable
             $this->increment('word_balance', $words);
             $this->decrement('total_words_used', $words);
         });
+
+        // Refresh to get updated values and broadcast
+        $this->refresh();
+        WordBalanceUpdated::dispatch($this, 'refund');
     }
 
     /**

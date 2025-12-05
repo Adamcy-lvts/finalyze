@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Chapter;
 use App\Models\Project;
+use App\Services\ProjectPrelimService;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\IOFactory;
@@ -12,6 +13,10 @@ use PhpOffice\PhpWord\Shared\Html;
 
 class ExportService
 {
+    public function __construct(
+        protected ProjectPrelimService $projectPrelimService
+    ) {}
+
     /**
      * Check if Pandoc is available on the system
      */
@@ -269,6 +274,8 @@ HTML;
     public function exportToWord(Project $project): string
     {
         try {
+            $preliminaryPages = $this->projectPrelimService->resolve($project);
+
             // Ensure exports directory exists
             $exportDir = storage_path('app/exports');
             if (! is_dir($exportDir)) {
@@ -281,7 +288,7 @@ HTML;
             if ($this->isPandocAvailable()) {
                 Log::info('Using Pandoc for full project export', ['project_id' => $project->id]);
 
-                $fullHtml = $this->buildFullProjectHtml($project);
+                $fullHtml = $this->buildFullProjectHtml($project, $preliminaryPages);
 
                 $metadata = [
                     'title' => $project->title,
@@ -304,6 +311,11 @@ HTML;
 
             // Add title page
             $this->addTitlePage($phpWord, $project);
+
+            // Add preliminary pages
+            if (! empty($preliminaryPages)) {
+                $this->addPreliminaryPages($phpWord, $preliminaryPages);
+            }
 
             // Add table of contents (simplified approach without TOC field to avoid corruption)
             $this->addTableOfContents($phpWord, $project);
@@ -341,7 +353,7 @@ HTML;
     /**
      * Build complete HTML for full project export (Pandoc)
      */
-    private function buildFullProjectHtml(Project $project): string
+    private function buildFullProjectHtml(Project $project, array $preliminaryPages = []): string
     {
         $html = '';
 
@@ -369,6 +381,16 @@ HTML;
         $html .= '<p>'.$project->created_at->format('F Y').'</p>';
         $html .= '</div>';
         $html .= '<div style="page-break-after: always;"></div>';
+
+        // Preliminary pages
+        foreach ($preliminaryPages as $page) {
+            $title = strtoupper($page['title'] ?? '');
+            $content = $page['html'] ?? '';
+
+            $html .= '<h1 style="text-align: center;">'.$title.'</h1>';
+            $html .= $content;
+            $html .= '<div style="page-break-after: always;"></div>';
+        }
 
         // Table of contents
         $html .= '<h1 style="text-align: center;">TABLE OF CONTENTS</h1>';
@@ -717,21 +739,6 @@ HTML;
             ['alignment' => 'center', 'spaceAfter' => 400]
         );
 
-        // Abstract
-        if ($project->abstract) {
-            $section->addText(
-                'ABSTRACT',
-                ['size' => 14, 'bold' => true],
-                ['alignment' => 'center', 'spaceAfter' => 200]
-            );
-
-            $section->addText(
-                $project->abstract,
-                ['size' => 12],
-                ['alignment' => 'both', 'lineHeight' => 1.5, 'spaceAfter' => 300]
-            );
-        }
-
         // University and Department
         if ($project->university) {
             $section->addText(
@@ -757,6 +764,28 @@ HTML;
         );
 
         $section->addPageBreak();
+    }
+
+    /**
+     * Add preliminary pages as simple sections before TOC
+     *
+     * @param array<int, array{slug:string,title:string,html:string}> $preliminaryPages
+     */
+    private function addPreliminaryPages(PhpWord $phpWord, array $preliminaryPages): void
+    {
+        foreach ($preliminaryPages as $page) {
+            $section = $phpWord->addSection();
+
+            $section->addText(
+                strtoupper($page['title']),
+                ['size' => 14, 'bold' => true],
+                ['alignment' => 'center', 'spaceAfter' => 200]
+            );
+
+            $this->addHtmlContent($section, $page['html'] ?? '');
+
+            $section->addPageBreak();
+        }
     }
 
     /**

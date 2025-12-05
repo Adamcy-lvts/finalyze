@@ -89,7 +89,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: finalyze_reverb
-    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080 --debug
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      REDIS_HOST: redis
     volumes:
       - .:/var/www/html
     ports:

@@ -6,6 +6,7 @@ use App\Models\Chapter;
 use App\Models\Project;
 use App\Models\ProjectCategory;
 use App\Models\ProjectTopic;
+use App\Services\PreliminaryPageTemplateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -521,7 +522,14 @@ class ProjectController extends Controller
         abort_if($project->user_id !== auth()->id(), 403);
 
         // Load project with chapters, category, and outlines for word count calculations
-        $project->load(['chapters', 'category', 'outlines.sections', 'universityRelation', 'facultyRelation', 'departmentRelation']);
+        $project->load([
+            'chapters',
+            'category',
+            'outlines.sections',
+            'universityRelation',
+            'facultyRelation.structure.chapters',
+            'departmentRelation',
+        ]);
 
         return Inertia::render('projects/Writing', [
             'project' => [
@@ -535,6 +543,15 @@ class ProjectController extends Controller
                 'field_of_study' => $project->field_of_study,
                 'university' => $project->universityRelation?->name,
                 'faculty' => $project->faculty_name,
+                'facultyStructureChapters' => $project->facultyRelation?->structure?->chapters?->map(function ($chapter) {
+                    return [
+                        'chapter_number' => $chapter->chapter_number,
+                        'chapter_title' => $chapter->chapter_title,
+                        'target_word_count' => $chapter->target_word_count,
+                        'completion_threshold' => $chapter->completion_threshold,
+                        'is_required' => $chapter->is_required,
+                    ];
+                })->values(),
                 'department' => $project->department_name,
                 'course' => $project->course,
                 'progress' => $project->getProgressPercentage(),
@@ -544,6 +561,7 @@ class ProjectController extends Controller
                         'chapter_number' => $chapter->chapter_number,
                         'title' => $chapter->title,
                         'content' => $chapter->content,
+                        'target_word_count' => $chapter->target_word_count,
                         'word_count' => $chapter->word_count,
                         'status' => $chapter->status,
                         'updated_at' => $chapter->updated_at->toISOString(),
@@ -629,9 +647,9 @@ class ProjectController extends Controller
                 'status' => $project->status,
                 'field_of_study' => $project->field_of_study,
                 'mode' => $project->mode,
-                'university' => $project->universityRelation?->name,
+                'university' => $project->universityRelation?->slug ?? $project->university,
                 'full_university_name' => $project->full_university_name,
-                'faculty' => $project->faculty_name,
+                'faculty' => $project->facultyRelation?->slug ?? $project->faculty,
                 'department' => $project->department_name,
                 'course' => $project->course,
                 'supervisor_name' => $project->supervisor_name,
@@ -639,11 +657,14 @@ class ProjectController extends Controller
                 'dedication' => $project->dedication,
                 'acknowledgements' => $project->acknowledgements,
                 'abstract' => $project->abstract,
+                'declaration' => $project->declaration,
+                'certification' => $project->certification,
                 'certification_signatories' => $project->certification_signatories ?? [],
                 'tables' => $project->tables ?? [],
                 'abbreviations' => $project->abbreviations ?? [],
                 'created_at' => $project->created_at->toISOString(),
             ],
+            'preliminary_templates' => app(PreliminaryPageTemplateService::class)->getAllTemplates(),
         ]);
     }
 

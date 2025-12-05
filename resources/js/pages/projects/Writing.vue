@@ -21,8 +21,25 @@ interface Chapter {
     title: string;
     content: string | null;
     word_count: number;
+    target_word_count: number | null;
     status: 'not_started' | 'draft' | 'in_review' | 'approved';
     updated_at: string;
+}
+
+interface Outline {
+    id: number;
+    chapter_number: number;
+    chapter_title: string;
+    target_word_count: number | null;
+    completion_threshold: number | null;
+}
+
+interface FacultyStructureChapter {
+    chapter_number: number;
+    chapter_title: string;
+    target_word_count: number | null;
+    completion_threshold: number | null;
+    is_required: boolean;
 }
 
 interface ProjectCategory {
@@ -46,6 +63,8 @@ interface Project {
     university: string;
     course: string;
     chapters: Chapter[];
+    outlines?: Outline[];
+    facultyStructureChapters?: FacultyStructureChapter[];
     progress?: number;
     project_category_id?: number;
     category?: ProjectCategory;
@@ -90,14 +109,32 @@ const {
     estimates,
 } = useWordBalance();
 
-const estimateGenerationCost = (type: 'single' | 'progressive' | 'bulk'): number => {
-    const base = estimates.chapter(props.targetWordCount || 0);
-    if (type === 'bulk') {
-        const chaptersRemaining = Math.max(1, (props.estimatedChapters || 1) - props.project.chapters.length + 1);
-        return base * chaptersRemaining;
+const maxAllowedChapters = computed(() => {
+    const structureChapterCount = props.project.facultyStructureChapters?.length || 0;
+
+    return structureChapterCount
+        || props.project.category?.default_chapter_count
+        || props.estimatedChapters
+        || props.project.chapters.length
+        || 1;
+});
+
+const averageChapterTarget = computed(() => {
+    const chapterCount = maxAllowedChapters.value || 1;
+    const totalTarget = props.targetWordCount || 0;
+
+    // If we don't have a project-level target, fall back to faculty structure average
+    const structureTargets = (props.project.facultyStructureChapters || []).map((c) => c.target_word_count || 0);
+    const structureAverage = structureTargets.length > 0
+        ? Math.ceil(structureTargets.reduce((sum, val) => sum + val, 0) / structureTargets.length)
+        : 0;
+
+    if (!totalTarget) {
+        return structureAverage || 2000; // Conservative default when we cannot infer a target
     }
-    return base;
-};
+
+    return Math.ceil(totalTarget / chapterCount);
+});
 
 // Debug project mode on load
 
@@ -149,7 +186,7 @@ const completedChapters = computed(() => {
 });
 
 const nextChapterNumber = computed(() => {
-    const maxAllowedChapters = props.project.category?.default_chapter_count || props.estimatedChapters;
+    const limit = maxAllowedChapters.value;
 
     // Find the first chapter that is not started or has no content
     const firstUnstartedChapter = props.project.chapters.find(
@@ -158,7 +195,7 @@ const nextChapterNumber = computed(() => {
 
     if (firstUnstartedChapter) {
         // Only return it if it doesn't exceed the category limit
-        return firstUnstartedChapter.chapter_number <= maxAllowedChapters ? firstUnstartedChapter.chapter_number : null;
+        return firstUnstartedChapter.chapter_number <= limit ? firstUnstartedChapter.chapter_number : null;
     }
 
     // If all existing chapters are started, return next number only if within limits
@@ -166,24 +203,48 @@ const nextChapterNumber = computed(() => {
     const nextNumber = maxChapterNumber + 1;
 
     console.log('nextChapterNumber debug (Writing page):', {
-        maxAllowedChapters,
+        maxAllowedChapters: limit,
         categoryName: props.project.category?.name,
         maxChapterNumber,
         nextNumber,
-        withinLimits: nextNumber <= maxAllowedChapters,
+        withinLimits: nextNumber <= limit,
     });
 
-    return nextNumber <= maxAllowedChapters ? nextNumber : null;
+    return nextNumber <= limit ? nextNumber : null;
 });
+
+const getTargetWordsForChapter = (chapterNumber?: number): number => {
+    const targetChapterNumber = chapterNumber ?? nextChapterNumber.value;
+    const matchingChapter = targetChapterNumber
+        ? props.project.chapters.find((c) => c.chapter_number === targetChapterNumber)
+        : null;
+
+    if (matchingChapter?.target_word_count) {
+        return matchingChapter.target_word_count;
+    }
+
+    const matchingOutline = targetChapterNumber
+        ? (props.project.outlines || []).find((outline) => outline.chapter_number === targetChapterNumber)
+        : null;
+
+    if (matchingOutline?.target_word_count) {
+        return matchingOutline.target_word_count;
+    }
+
+    const facultyTemplate = targetChapterNumber
+        ? (props.project.facultyStructureChapters || []).find((template) => template.chapter_number === targetChapterNumber)
+        : null;
+
+    if (facultyTemplate?.target_word_count) {
+        return facultyTemplate.target_word_count;
+    }
+
+    return averageChapterTarget.value;
+};
 
 const canGenerateMoreChapters = computed(() => {
-    const maxAllowedChapters = props.project.category?.default_chapter_count || props.estimatedChapters;
     const currentMaxChapter = Math.max(...props.project.chapters.map((c) => c.chapter_number), 0);
-    return currentMaxChapter < maxAllowedChapters && nextChapterNumber.value !== null;
-});
-
-const maxAllowedChapters = computed(() => {
-    return props.project.category?.default_chapter_count || props.estimatedChapters;
+    return currentMaxChapter < maxAllowedChapters.value && nextChapterNumber.value !== null;
 });
 
 /**
@@ -217,12 +278,24 @@ onMounted(() => {
     activeTab.value = currentMode.value === 'auto' ? 'ai-generation' : 'manual-writing';
 });
 
+const estimateGenerationCost = (type: 'single' | 'progressive' | 'bulk', chapterNumber?: number): number => {
+    const targetWords = getTargetWordsForChapter(chapterNumber);
+    const base = estimates.chapter(targetWords);
+
+    if (type === 'bulk') {
+        const remainingChapters = Math.max(1, maxAllowedChapters.value - completedChapters.value);
+        return base * remainingChapters;
+    }
+
+    return base;
+};
+
 /**
  * AI CHAPTER GENERATION - AUTO MODE
  * Opens the editor with streaming AI generation
  */
 const generateChapter = (type: 'single' | 'progressive' | 'bulk', specificChapter?: number) => {
-    const estimatedWords = estimateGenerationCost(type);
+    const estimatedWords = estimateGenerationCost(type, specificChapter);
     const actionLabel = type === 'bulk'
         ? 'bulk-generate chapters'
         : type === 'progressive'

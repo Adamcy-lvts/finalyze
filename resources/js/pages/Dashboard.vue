@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { router, usePage } from '@inertiajs/vue3';
-import { BookOpen, Clock, FileText, PenTool, Plus, TrendingUp, Calendar, Target, Users, Award, Zap, BarChart3, Sparkles, Info } from 'lucide-vue-next';
+import { router } from '@inertiajs/vue3';
+import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info } from 'lucide-vue-next';
 import { computed } from 'vue';
 
 interface Props {
@@ -50,10 +50,12 @@ interface Props {
 }
 
 import CreditBalanceCard from '@/components/CreditBalanceCard.vue';
+import { useWordBalance } from '@/composables/useWordBalance';
 
-const props = defineProps<Props>();
-const page = usePage();
-const wordBalance = computed(() => (page.props.auth as any)?.user?.word_balance_data);
+defineProps<Props>();
+
+// Use composable for real-time balance updates
+const { wordBalance } = useWordBalance();
 
 const greeting = computed(() => {
     const hour = new Date().getHours();

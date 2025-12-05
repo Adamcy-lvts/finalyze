@@ -28,7 +28,7 @@ class UpdateProjectRequest extends FormRequest
             // Basic Information
             // Note: title and topic are readonly and not included
             'description' => 'nullable|string|max:1000',
-            'field_of_study' => 'required|string|max:255',
+            'field_of_study' => 'nullable|string|max:255',
             'mode' => 'required|in:auto,manual',
 
             // Academic Details - Institutional Fields
@@ -113,7 +113,6 @@ class UpdateProjectRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'field_of_study.required' => 'Field of study is required.',
             'mode.required' => 'Please select a working mode.',
             'mode.in' => 'Working mode must be either auto or manual.',
             'university.required' => 'University is required.',

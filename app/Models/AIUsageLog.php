@@ -6,6 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class AIUsageLog extends Model
 {
+    /**
+     * Explicitly set the table name because Laravel would otherwise
+     * inflect this class to `a_i_usage_logs`.
+     */
+    protected $table = 'ai_usage_logs';
+
     protected $fillable = [
         'user_id',
         'feature',

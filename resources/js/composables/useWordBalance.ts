@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePage } from '@inertiajs/vue3'
 import { route } from 'ziggy-js'
 
@@ -20,20 +20,103 @@ export interface BalanceCheckResult {
     shortage: number
 }
 
+// Shared reactive balance state for real-time updates
+const sharedBalanceOverride = ref<WordBalance | null>(null)
+let balanceChannelSubscribed = false
+let subscriberCount = 0
+let subscribedUserId: number | null = null
+
+/**
+ * Initialize the balance WebSocket listener
+ * Uses the global window.Echo instance
+ */
+function initBalanceListener(userId: number): void {
+    subscriberCount++
+    console.log(`[WordBalance] Init listener called, subscriber count: ${subscriberCount}, already subscribed: ${balanceChannelSubscribed}`)
+
+    if (balanceChannelSubscribed) {
+        console.log('[WordBalance] Already subscribed, skipping')
+        return
+    }
+
+    if (!window.Echo) {
+        console.warn('[WordBalance] window.Echo not available')
+        return
+    }
+
+    try {
+        console.log(`[WordBalance] Subscribing to private channel: user.${userId}`)
+        const channel = window.Echo.private(`user.${userId}`)
+
+        channel.listen('.balance.updated', (event: { balance: WordBalance; reason: string; timestamp: string }) => {
+            console.log('💰 [WordBalance] Event received:', event)
+            console.log(`💰 [WordBalance] New balance: ${event.balance.formatted_balance} (reason: ${event.reason})`)
+            sharedBalanceOverride.value = event.balance
+        })
+
+        // Log subscription events
+        channel.subscribed(() => {
+            console.log(`✅ [WordBalance] Successfully subscribed to user.${userId} channel`)
+        })
+
+        channel.error((error: any) => {
+            console.error('[WordBalance] Channel error:', error)
+        })
+
+        balanceChannelSubscribed = true
+        subscribedUserId = userId
+        console.log(`✅ [WordBalance] Listener registered for user.${userId}`)
+    } catch (error) {
+        console.error('[WordBalance] Failed to subscribe to balance channel:', error)
+    }
+}
+
+/**
+ * Clean up the balance WebSocket listener
+ * Only actually unsubscribes when the last subscriber unmounts
+ */
+function cleanupBalanceListener(): void {
+    subscriberCount--
+
+    // Only unsubscribe when no more subscribers
+    if (subscriberCount > 0 || !balanceChannelSubscribed || !window.Echo || !subscribedUserId) return
+
+    try {
+        window.Echo.leave(`user.${subscribedUserId}`)
+        balanceChannelSubscribed = false
+        subscribedUserId = null
+        // Don't clear the override - it will be refreshed on next mount
+        console.log('🔌 Unsubscribed from balance updates channel')
+    } catch (error) {
+        console.error('Failed to unsubscribe from balance channel:', error)
+    }
+}
+
 /**
  * Composable for managing word balance state and checks
  */
 export function useWordBalance() {
     const page = usePage()
-    
+
     // Reactive state
     const isLoading = ref(false)
     const showPurchaseModal = ref(false)
     const requiredWordsForModal = ref(0)
     const actionDescriptionForModal = ref('')
 
-    // Get current balance from page props or fetch
+    // Get user ID for WebSocket subscription
+    const userId = computed(() => {
+        const auth = page.props.auth as any
+        return auth?.user?.id ?? null
+    })
+
+    // Get current balance - prefer WebSocket override, fallback to page props
     const wordBalance = computed<WordBalance | null>(() => {
+        // Use WebSocket-updated balance if available
+        if (sharedBalanceOverride.value) {
+            return sharedBalanceOverride.value
+        }
+        // Fallback to page props
         const auth = page.props.auth as any
         return auth?.user?.word_balance_data ?? null
     })
@@ -127,6 +210,18 @@ export function useWordBalance() {
         requiredWordsForModal.value = 0
         actionDescriptionForModal.value = ''
     }
+
+    // Initialize WebSocket listener on mount
+    onMounted(() => {
+        if (userId.value) {
+            initBalanceListener(userId.value)
+        }
+    })
+
+    // Cleanup WebSocket listener on unmount
+    onUnmounted(() => {
+        cleanupBalanceListener()
+    })
 
     return {
         // State

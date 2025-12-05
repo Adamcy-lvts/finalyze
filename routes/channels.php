@@ -34,10 +34,19 @@ Broadcast::channel('project.{projectId}.generation', function ($user, $projectId
 /**
  * User Notifications Channel
  *
- * For general user notifications (optional - for future use)
+ * For general user notifications and real-time balance updates
  */
 Broadcast::channel('user.{id}', function ($user, $id) {
-    return (int) $user->id === (int) $id;
+    $authorized = (int) $user->id === (int) $id;
+
+    \Illuminate\Support\Facades\Log::info('Channel authorization attempt', [
+        'channel' => "user.{$id}",
+        'user_id' => $user->id,
+        'requested_id' => $id,
+        'authorized' => $authorized,
+    ]);
+
+    return $authorized;
 });
 
 /**

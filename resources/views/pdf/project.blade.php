@@ -60,14 +60,14 @@
             }
         }
 
-        /* Frontmatter: Roman Numerals (i, ii, iii...) - continues from title page */
+        /* Frontmatter: Roman Numerals (i, ii, iii...) */
         @page frontmatter {
             @bottom-center {
                 content: counter(page, lower-roman);
             }
         }
 
-        /* Main Content: Arabic Numerals (1, 2, 3...) - uses same counter but displays in arabic */
+        /* Main Content: Arabic Numerals (1, 2, 3...) */
         @page main {
             @bottom-center {
                 content: counter(page);
@@ -92,7 +92,6 @@
             width: 100%;
             text-align: center;
             line-height: 1.5;
-            counter-reset: page 1;
         }
 
         section.frontmatter-section {
@@ -109,9 +108,9 @@
             width: 100%;
         }
 
-        /* Reset page counter to 1 for first chapter - CRITICAL FIX */
+        /* Reset page counter on first chapter */
         section.first-chapter {
-            counter-reset: page 1 !important;
+            counter-reset: page 0;
         }
 
         /* Minimal chapter content styling - let content render as stored */
@@ -217,6 +216,13 @@
             auto: true,
             before: () => {
                 console.log('✓ Paged.js: Starting pagination...');
+
+                // Find first chapter and add inline style to reset page counter
+                const firstChapter = document.querySelector('.first-chapter');
+                if (firstChapter) {
+                    console.log('✓ Found first chapter, applying counter reset');
+                    firstChapter.style.counterReset = 'page 0';
+                }
             },
             after: (flow) => {
                 console.log('✓ Paged.js: Pagination complete', {
@@ -277,150 +283,21 @@
     <!-- Each include must NOT have a wrapper div in the included file -->
     <script>
         console.log('Starting preliminary pages rendering...', {
-            hasDedication: {{ $project->dedication ? 'true' : 'false' }},
-            hasAcknowledgements: {{ $project->acknowledgements ? 'true' : 'false' }},
-            hasAbstract: {{ $project->abstract ? 'true' : 'false' }},
+            pages: {!! json_encode(array_column($preliminaryPages ?? [], 'slug') ?? []) !!},
             hasTableOfContents: {{ $chapters->count() > 0 ? 'true' : 'false' }},
             hasTables: {{ (isset($project->tables) && count($project->tables) > 0) ? 'true' : 'false' }},
             hasAbbreviations: {{ (isset($project->abbreviations) && count($project->abbreviations) > 0) ? 'true' : 'false' }}
         });
     </script>
 
-    <section class="frontmatter-section">
-        <div class="section-content">
-            <h2>DECLARATION</h2>
-
-            @if($project->declaration)
-                <div class="preliminary-content">{!! $project->declaration !!}</div>
-            @else
-                <p>
-                    I, <strong>{{ $project->user->name }}</strong>, with Student Registration Number <strong>{{ $project->student_id ?? '....................' }}</strong>,
-                    declare that this {{ $project->type }} titled <strong>"{{ $project->title }}"</strong> is my original work and has not been
-                    submitted for the award of any degree or diploma in this or any other university.
-                </p>
-
-                <div class="signature-line">
-                    Student's Signature & Date
-                </div>
-            @endif
-        </div>
-    </section>
-
-    <section class="frontmatter-section">
-        <div class="section-content">
-            <h2>CERTIFICATION</h2>
-
-            @if($project->certification)
-                <div class="preliminary-content">{!! $project->certification !!}</div>
-            @else
-                <p>
-                    This is to certify that this {{ ucfirst($project->type) }} entitled "{{ $project->title }}"
-                    has been duly carried out and presented by {{ $project->user->name }} ({{ $project->student_id ?? 'Student ID' }})
-                    in the Department of {{ $project->course ?? 'Computer Science' }}, Faculty of {{ ucwords($project->faculty ?? 'Science') }},
-                    {{ $project->full_university_name }}, under my supervision.
-                </p>
-
-                @if($project->certification_signatories && count($project->certification_signatories) > 0)
-                    @foreach($project->certification_signatories as $signatory)
-                        <div class="certification-entry">
-                            @if(isset($signatory['name']) && $signatory['name'])
-                                <div class="role">{{ $signatory['name'] }}</div>
-                            @endif
-                            <div class="signature-line">
-                                {{ $signatory['title'] ?? 'Signatory' }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Signature & Date
-                            </div>
-                        </div>
-                    @endforeach
-                @else
-                    <div class="certification-entry">
-                        <div class="role">{{ $project->supervisor_name ?? 'Dr. [Supervisor Name]' }}</div>
-                        <div class="signature-line">
-                            Supervisor &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Signature & Date
-                        </div>
-                    </div>
-
-                    <div class="certification-entry">
-                        <div class="signature-line">
-                            Center Director &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Signature & Date
-                        </div>
-                    </div>
-
-                    <div class="certification-entry">
-                        <div class="signature-line">
-                            Head of Department &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Signature & Date
-                        </div>
-                    </div>
-
-                    <div class="certification-entry">
-                        <div class="signature-line">
-                            Dean Faculty of {{ ucwords($project->faculty ?? 'Science') }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Signature & Date
-                        </div>
-                    </div>
-
-                    <div class="certification-entry">
-                        <div class="signature-line">
-                            Dean School of Postgraduate Studies &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Signature & Date
-                        </div>
-                    </div>
-                @endif
-            @endif
-        </div>
-    </section>
-
-    <section class="frontmatter-section">
-        <div class="section-content">
-            <h2>DEDICATION</h2>
-
-            @if($project->dedication)
-                <div class="preliminary-content">{!! $project->dedication !!}</div>
-            @else
-                <p>
-                    I dedicate this research work firstly to God almighty the maker of heaven and the earth and also to my
-                    family members for their unwavering support throughout this journey.
-                </p>
-            @endif
-        </div>
-    </section>
-
-    <section class="frontmatter-section">
-        <div class="section-content">
-            <h2>ACKNOWLEDGEMENTS</h2>
-
-            @if($project->acknowledgements)
-                <div class="preliminary-content">{!! $project->acknowledgements !!}</div>
-            @else
-                <p>
-                    First and foremost, I am thankful to God Almighty for enabling me achieve this dream.
-                    This work has been a journey enriched by the presence of many people.
-                </p>
-                <p>
-                    I am grateful to my supervisor {{ $project->supervisor_name ?? 'Dr. [Supervisor Name]' }} for the
-                    invaluable scholarly advice and timeless effort despite a tight schedule. The contribution made it
-                    possible for the smooth completion of my research.
-                </p>
-                <p>
-                    I profoundly thank and appreciate the enormous support of {{ $project->full_university_name }}
-                    management for their timeless effort and guidance.
-                </p>
-            @endif
-        </div>
-    </section>
-
-    <section class="frontmatter-section">
-        <div class="section-content">
-            <h2>ABSTRACT</h2>
-
-            @if($project->abstract)
-                <div class="preliminary-content">{!! $project->abstract !!}</div>
-            @else
-                <p>
-                    This {{ $project->type }} investigated {{ strtolower($project->title) }}.
-                    The research was conducted at {{ $project->full_university_name }} in the
-                    Department of {{ $project->course }}.
-                </p>
-            @endif
-        </div>
-    </section>
+    @foreach($preliminaryPages as $page)
+        <section class="frontmatter-section">
+            <div class="section-content">
+                <h2>{{ strtoupper($page['title']) }}</h2>
+                <div class="preliminary-content">{!! $page['html'] !!}</div>
+            </div>
+        </section>
+    @endforeach
 
     <section class="frontmatter-section">
         <div class="section-content">

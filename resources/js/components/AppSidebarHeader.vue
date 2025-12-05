@@ -3,8 +3,7 @@ import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import WordBalanceDisplay from '@/components/WordBalanceDisplay.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItemType } from '@/types';
-import { usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { useWordBalance } from '@/composables/useWordBalance';
 
 withDefaults(
     defineProps<{
@@ -15,9 +14,8 @@ withDefaults(
     },
 );
 
-const page = usePage();
-const auth = computed(() => page.props.auth as any);
-const wordBalance = computed(() => auth.value?.user?.word_balance_data);
+// Use composable for real-time balance updates
+const { wordBalance } = useWordBalance();
 </script>
 
 <template>
