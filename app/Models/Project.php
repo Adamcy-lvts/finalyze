@@ -244,6 +244,24 @@ class Project extends Model
     }
 
     /**
+     * Get count of required faculty structure chapters (if any).
+     */
+    public function getRequiredChapterCount(): int
+    {
+        $structure = $this->facultyRelation?->structure;
+
+        if (! $structure) {
+            return 0;
+        }
+
+        $chapters = $structure->relationLoaded('chapters')
+            ? $structure->chapters
+            : $structure->chapters()->select('id', 'is_required')->get();
+
+        return $chapters->where('is_required', true)->count();
+    }
+
+    /**
      * Automatically mark the project as completed when all chapters are done.
      * Skips if already completed/archived/on hold.
      */
@@ -258,6 +276,13 @@ class Project extends Model
         }
 
         if (! $this->chaptersAreComplete()) {
+            return;
+        }
+
+        $requiredChapters = $this->getRequiredChapterCount();
+        $completedChapters = $this->chapters()->count();
+
+        if ($requiredChapters > 0 && $completedChapters < $requiredChapters) {
             return;
         }
 

@@ -613,6 +613,26 @@ class ProjectController extends Controller
     {
         abort_if($project->user_id !== auth()->id(), 403);
 
+        $project->loadMissing('chapters', 'facultyRelation.structure.chapters');
+
+        $allChaptersComplete = $project->chaptersAreComplete();
+        $requiredChapterCount = $project->getRequiredChapterCount();
+        $completedChapterCount = $project->chapters->count();
+
+        if (! $allChaptersComplete || ($requiredChapterCount > 0 && $completedChapterCount < $requiredChapterCount)) {
+            $message = 'Cannot mark as completed. ';
+
+            if (! $allChaptersComplete) {
+                $message .= 'All chapters must be completed/approved. ';
+            }
+
+            if ($requiredChapterCount > 0 && $completedChapterCount < $requiredChapterCount) {
+                $message .= "Required chapters: {$completedChapterCount} / {$requiredChapterCount}.";
+            }
+
+            return back()->with('message', $message);
+        }
+
         $project->markAsCompleted();
 
         return back()->with('message', 'Project marked as completed.');
