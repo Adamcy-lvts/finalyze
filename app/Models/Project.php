@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Enums\ChapterStatus;
 
 class Project extends Model
 {
@@ -154,7 +155,15 @@ class Project extends Model
 
         // 1. Check if all chapters are marked as completed/approved
         $totalChapters = $chapters->count();
-        $completedChapters = $chapters->whereIn('status', ['completed', 'approved'])->count();
+        $isChapterComplete = function ($chapter): bool {
+            if ($chapter->status instanceof ChapterStatus) {
+                return in_array($chapter->status, [ChapterStatus::Completed, ChapterStatus::Approved], true);
+            }
+
+            return in_array($chapter->status, ['completed', 'approved'], true);
+        };
+
+        $completedChapters = $chapters->filter($isChapterComplete)->count();
 
         if ($completedChapters === $totalChapters) {
             return 100.0;
@@ -194,7 +203,7 @@ class Project extends Model
         $avgTargetPerChapter = $targetWordCount / max($totalChapters, 1);
 
         foreach ($chapters as $chapter) {
-            if (in_array($chapter->status, ['completed', 'approved'])) {
+            if ($isChapterComplete($chapter)) {
                 // If chapter has a specific target, use it.
                 // If not, use the average share of the TOTAL target.
                 $contribution = $chapter->target_word_count > 0

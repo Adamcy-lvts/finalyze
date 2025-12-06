@@ -52,6 +52,8 @@ interface Project {
     created_at: string;
     is_active: boolean;
     current_chapter: number;
+    total_chapters: number;
+    completed_chapters: number;
     university: string;
     full_university_name: string;
 }
@@ -552,7 +554,10 @@ const bulkDeleteProjects = async () => {
                                     class="mt-4 pt-4 border-t flex items-center justify-between text-xs text-muted-foreground">
                                     <div class="flex items-center gap-1">
                                         <BookOpen class="h-3 w-3" />
-                                        <span>{{ project.current_chapter }}/5 Chapters</span>
+                                        <span v-if="project.total_chapters > 0">
+                                            {{ project.completed_chapters }} / {{ project.total_chapters }} Chapters
+                                        </span>
+                                        <span v-else>No chapters yet</span>
                                     </div>
                                     <span>{{ formatDate(project.created_at) }}</span>
                                 </div>

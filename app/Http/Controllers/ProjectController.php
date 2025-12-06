@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Models\ProjectCategory;
 use App\Models\ProjectTopic;
 use App\Services\PreliminaryPageTemplateService;
+use App\Enums\ChapterStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -22,6 +23,11 @@ class ProjectController extends Controller
 
         return Inertia::render('projects/Index', [
             'projects' => $projects->map(function ($project) {
+                $totalChapters = $project->chapters->count();
+                $completedChapters = $project->chapters->filter(function ($chapter) {
+                    return in_array($chapter->status, [ChapterStatus::Completed, ChapterStatus::Approved], true);
+                })->count();
+
                 return [
                     'id' => $project->id,
                     'slug' => $project->slug,
@@ -33,6 +39,8 @@ class ProjectController extends Controller
                     'created_at' => $project->created_at->toISOString(),
                     'is_active' => $project->is_active,
                     'current_chapter' => $project->current_chapter,
+                    'total_chapters' => $totalChapters,
+                    'completed_chapters' => $completedChapters,
                     'university' => $project->universityRelation?->name,
                     'full_university_name' => $project->full_university_name,
                     'faculty' => $project->faculty_name,
