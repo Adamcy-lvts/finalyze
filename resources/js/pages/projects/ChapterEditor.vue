@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
 import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, Moon, PenTool, Save, Sun, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -2213,8 +2214,11 @@ watch(currentWordCount, (newCount, oldCount) => {
                     </Tooltip>
 
                     <div class="flex flex-col">
-                        <h1 class="text-lg font-bold tracking-tight text-foreground/90 font-display">{{
-                            props.project.title }}</h1>
+                        <SafeHtmlText
+                            as="h1"
+                            class="text-lg font-bold tracking-tight text-foreground/90 font-display"
+                            :content="props.project.title"
+                        />
                         <div class="flex items-center gap-3 text-xs text-muted-foreground">
                             <Badge variant="outline"
                                 class="h-5 px-2 rounded-full border-primary/20 bg-primary/5 text-primary font-medium">
@@ -2627,7 +2631,11 @@ watch(currentWordCount, (newCount, oldCount) => {
                             </Tooltip>
 
                             <div>
-                                <h1 class="text-xl font-bold sm:text-2xl">{{ props.project.title }}</h1>
+                                <SafeHtmlText
+                                    as="h1"
+                                    class="text-xl font-bold sm:text-2xl"
+                                    :content="props.project.title"
+                                />
                                 <p class="text-sm text-muted-foreground">
                                     Chapter {{ props.chapter.chapter_number }} • {{ currentWordCount }} / {{
                                         targetWordCount }}

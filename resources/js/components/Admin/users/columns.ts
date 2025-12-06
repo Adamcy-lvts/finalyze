@@ -3,11 +3,15 @@ import { ArrowUpDown } from 'lucide-vue-next'
 import { h } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import UserActions from './UserActions.vue'
 
 export type UserRow = {
   id: number
   name: string
   email: string
+  word_balance: number
+  total_words_purchased: number
+  package: string
   projects_count: number
   payments_count: number
   is_banned: boolean
@@ -40,6 +44,21 @@ export const userColumns: ColumnDef<UserRow>[] = [
     cell: ({ row }) => h('div', { class: 'text-muted-foreground' }, row.getValue('email')),
   },
   {
+    accessorKey: 'package',
+    header: 'Package',
+    cell: ({ row }) => h(Badge, { variant: 'outline', class: 'font-normal' }, () => row.getValue('package')),
+  },
+  {
+    accessorKey: 'word_balance',
+    header: 'Balance',
+    cell: ({ row }) => h('div', { class: 'font-mono text-xs' }, (row.getValue('word_balance') as number).toLocaleString()),
+  },
+  {
+    accessorKey: 'total_words_purchased',
+    header: 'Purchased',
+    cell: ({ row }) => h('div', { class: 'text-muted-foreground text-xs' }, (row.getValue('total_words_purchased') as number).toLocaleString()),
+  },
+  {
     accessorKey: 'projects_count',
     header: () => h('div', { class: 'text-center' }, 'Projects'),
     cell: ({ row }) => h('div', { class: 'text-center font-medium' }, row.getValue('projects_count')),
@@ -62,5 +81,9 @@ export const userColumns: ColumnDef<UserRow>[] = [
     header: 'Joined',
     cell: ({ row }) =>
       h('div', { class: 'text-muted-foreground text-sm' }, new Date(row.getValue('created_at')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })),
+  },
+  {
+    id: 'actions',
+    cell: ({ row }) => h(UserActions, { user: row.original }),
   },
 ]

@@ -17,6 +17,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import { ref, computed, watchEffect, watch } from 'vue';
@@ -519,7 +520,11 @@ const bulkDeleteProjects = async () => {
                                         class="h-8 w-8 text-primary/80 mb-3" />
                                     <CardTitle
                                         class="text-lg font-semibold line-clamp-2 group-hover:text-primary transition-colors leading-tight">
-                                        {{ project.title || 'Untitled Project' }}
+                                        <SafeHtmlText
+                                            as="span"
+                                            class="block"
+                                            :content="project.title || 'Untitled Project'"
+                                        />
                                     </CardTitle>
                                 </div>
                             </CardHeader>
@@ -574,9 +579,11 @@ const bulkDeleteProjects = async () => {
 
                             <div class="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                                 <div class="md:col-span-4">
-                                    <h3 class="font-semibold truncate group-hover:text-primary transition-colors">
-                                        {{ project.title || 'Untitled Project' }}
-                                    </h3>
+                                    <SafeHtmlText
+                                        as="h3"
+                                        class="font-semibold truncate group-hover:text-primary transition-colors"
+                                        :content="project.title || 'Untitled Project'"
+                                    />
                                     <p class="text-xs text-muted-foreground flex items-center gap-2 mt-1">
                                         <span class="capitalize">{{ project.type }}</span>
                                         <span>•</span>

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
 import { Activity, ArrowLeft, ArrowRight, BookOpen, Brain, Clock, Edit, FileText, Play, Target, Zap, Sparkles, AlertTriangle, Check } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
@@ -620,10 +621,11 @@ const toggleWritingMode = async () => {
                         </Badge>
                     </div>
 
-                    <h1
-                        class="max-w-4xl text-2xl font-bold tracking-tight text-foreground sm:text-3xl md:text-4xl bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
-                        {{ project.title }}
-                    </h1>
+                    <SafeHtmlText
+                        as="h1"
+                        class="max-w-4xl text-2xl font-bold tracking-tight text-foreground sm:text-3xl md:text-4xl bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70"
+                        :content="project.title"
+                    />
 
                     <!-- Mode Toggle -->
                     <div

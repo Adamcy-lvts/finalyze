@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Project;
 use App\Models\ProjectGeneration;
 use App\Services\GenerationBroadcaster;
+use App\Services\WordBalanceService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,6 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class ConvertChaptersToHtml implements ShouldQueue
 {
@@ -24,7 +26,7 @@ class ConvertChaptersToHtml implements ShouldQueue
         public ProjectGeneration $generation
     ) {}
 
-    public function handle(GenerationBroadcaster $broadcaster): void
+    public function handle(GenerationBroadcaster $broadcaster, WordBalanceService $wordBalanceService): void
     {
         $startTime = microtime(true);
 
@@ -61,6 +63,9 @@ class ConvertChaptersToHtml implements ShouldQueue
 
             $totalDuration = round(microtime(true) - $this->getGenerationStartTime(), 2);
             $papersCollected = $this->project->collectedPapers()->count();
+
+            // Bill words used (only once per generation; uses delta to avoid double billing)
+            $this->billWordUsage($totalWordCount, $wordBalanceService);
 
             // Broadcast completion
             $broadcaster->completed(
@@ -106,8 +111,8 @@ class ConvertChaptersToHtml implements ShouldQueue
     private function getDownloadLinks(): array
     {
         return [
-            'docx' => route('projects.export.docx', $this->project->slug),
-            'pdf' => route('projects.export.pdf', $this->project->slug),
+            'docx' => route('export.project.word', $this->project),
+            'pdf' => route('export.project.pdf', $this->project),
         ];
     }
 
@@ -123,5 +128,57 @@ class ConvertChaptersToHtml implements ShouldQueue
             $exception->getMessage(),
             'html_conversion'
         );
+    }
+
+    /**
+     * Deduct words from user balance when generation completes.
+     * Bills only the delta not previously charged (metadata.words_billed).
+     */
+    private function billWordUsage(int $totalWordCount, WordBalanceService $wordBalanceService): void
+    {
+        $metadata = $this->generation->metadata ?? [];
+        $alreadyBilled = $metadata['words_billed'] ?? 0;
+        $wordsToBill = max(0, $totalWordCount - $alreadyBilled);
+
+        if ($wordsToBill <= 0) {
+            return;
+        }
+
+        try {
+            $wordBalanceService->deductForGeneration(
+                $this->project->user,
+                $wordsToBill,
+                sprintf(
+                    'Bulk project generation (%s)',
+                    $this->project->title ?? $this->project->topic ?? "Project {$this->project->id}"
+                ),
+                'bulk_project',
+                $this->project->id,
+                [
+                    'generation_id' => $this->generation->id,
+                    'words_billed' => $alreadyBilled,
+                    'total_words' => $totalWordCount,
+                ]
+            );
+
+            $metadata['words_billed'] = $alreadyBilled + $wordsToBill;
+            $this->generation->update(['metadata' => $metadata]);
+
+            Log::info('Word balance deducted for bulk generation completion', [
+                'project_id' => $this->project->id,
+                'generation_id' => $this->generation->id,
+                'words_billed' => $wordsToBill,
+                'total_billed' => $metadata['words_billed'],
+            ]);
+        } catch (Throwable $e) {
+            Log::error('Failed to deduct word balance for bulk generation', [
+                'project_id' => $this->project->id,
+                'generation_id' => $this->generation->id,
+                'words_to_bill' => $wordsToBill,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
     }
 }

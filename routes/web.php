@@ -73,6 +73,7 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::post('/{user}/adjust-balance', [AdminUserController::class, 'adjustBalance'])->name('admin.users.adjust-balance');
         Route::delete('/{user}', [AdminUserController::class, 'destroy'])->name('admin.users.destroy');
         Route::delete('/{user}/force', [AdminUserController::class, 'forceDestroy'])->name('admin.users.force-destroy');
+        Route::post('/{user}/reset-password', [AdminUserController::class, 'resetPassword'])->name('admin.users.reset-password');
         Route::post('/{user}/impersonate', [AdminUserController::class, 'impersonate'])->name('admin.users.impersonate');
     });
 

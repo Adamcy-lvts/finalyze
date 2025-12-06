@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\WordTransaction;
 use App\Models\User;
+use App\Models\WordTransaction;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -26,6 +26,9 @@ class AdminUserController extends Controller
                 'projects_count' => $user->projects_count,
                 'payments_count' => $user->payments_count,
                 'roles' => $user->getRoleNames(),
+                'word_balance' => $user->word_balance,
+                'total_words_purchased' => $user->total_words_purchased,
+                'package' => $user->successfulPayments()->latest()->with('wordPackage')->first()?->wordPackage?->name ?? 'None',
             ]);
 
         return Inertia::render('Admin/Users/Index', [
@@ -70,12 +73,25 @@ class AdminUserController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email',
+            'email' => 'required|email|unique:users,email,'.$user->id,
         ]);
 
         $user->update($data);
 
         return back()->with('success', 'User updated');
+    }
+
+    public function resetPassword(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user->update([
+            'password' => \Illuminate\Support\Facades\Hash::make($data['password']),
+        ]);
+
+        return back()->with('success', 'Password reset successfully');
     }
 
     public function ban(Request $request, User $user)

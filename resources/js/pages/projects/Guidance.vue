@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Separator } from '@/components/ui/separator';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import {
     ArrowLeft, BookOpen, ChevronDown, ChevronRight, Clock, FileText,
     Lightbulb, Target, Users, CheckCircle, ArrowRight, Brain,
@@ -315,9 +316,11 @@ const getGuidanceTypeIcon = (type: string) => {
                         <h1 class="text-2xl md:text-4xl font-bold tracking-tight">
                             Project Guidance
                         </h1>
-                        <p class="text-base md:text-xl text-muted-foreground line-clamp-2 md:line-clamp-none">
-                            {{ project.title }}
-                        </p>
+                        <SafeHtmlText
+                            as="p"
+                            class="text-base md:text-xl text-muted-foreground line-clamp-2 md:line-clamp-none"
+                            :content="project.title"
+                        />
                         <div class="flex flex-wrap items-center gap-3 md:gap-4 text-xs md:text-sm text-muted-foreground">
                             <span class="flex items-center gap-1">
                                 <Users class="h-3 w-3 md:h-4 md:w-4" />

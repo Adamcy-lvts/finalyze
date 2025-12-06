@@ -204,10 +204,15 @@ class User extends Authenticatable
      */
     public function getWordBalanceData(): array
     {
-        $totalAllocated = $this->total_words_purchased + $this->bonus_words_received;
+        // Guard against drift between counters by falling back to derived totals
+        $totalTracked = $this->total_words_purchased + $this->bonus_words_received;
+        $totalDerived = $this->word_balance + $this->total_words_used;
+        $totalAllocated = max($totalTracked, $totalDerived);
+
         $percentageUsed = $totalAllocated > 0
             ? round(($this->total_words_used / $totalAllocated) * 100, 1)
             : 0;
+        $percentageUsed = max(0, min(100, $percentageUsed));
 
         return [
             'balance' => $this->word_balance,
@@ -217,7 +222,7 @@ class User extends Authenticatable
             'bonus_received' => $this->bonus_words_received,
             'total_allocated' => $totalAllocated,
             'percentage_used' => $percentageUsed,
-            'percentage_remaining' => 100 - $percentageUsed,
+            'percentage_remaining' => max(0, 100 - $percentageUsed),
         ];
     }
 

@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue';
 import TemplateVariablePicker from '@/components/ui/template-variable-picker/TemplateVariablePicker.vue';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { cn } from '@/lib/utils';
 import { toTypedSchema } from '@vee-validate/zod';
@@ -551,9 +552,11 @@ onBeforeUnmount(() => {
                                                     <label
                                                         class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Title
                                                         / Topic</label>
-                                                    <p class="text-lg font-medium text-foreground">
-                                                        {{ project.title || project.topic || 'No title set' }}
-                                                    </p>
+                                                    <SafeHtmlText
+                                                        as="p"
+                                                        class="text-lg font-medium text-foreground"
+                                                        :content="project.title || project.topic || 'No title set'"
+                                                    />
                                                 </div>
                                             </div>
                                         </div>

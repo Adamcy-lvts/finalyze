@@ -151,7 +151,10 @@ class GenerateChapter implements ShouldQueue
     }
 
     /**
-     * Generate content with periodic progress broadcasts
+     * Generate content with AI service
+     *
+     * Note: Progress animation is handled on the frontend for better UX.
+     * The frontend animates progress between chapter.started and chapter.completed events.
      */
     private function generateWithProgressUpdates(
         ChapterController $controller,
@@ -160,21 +163,8 @@ class GenerateChapter implements ShouldQueue
         GenerationBroadcaster $broadcaster,
         int $totalChapters
     ): string {
-        // For non-streaming generation, we simulate progress
-        // In a real implementation, you might integrate with streaming AI
-        // and broadcast actual word count as it streams
-
-        $progressSteps = [30, 40, 50, 60, 70, 80];
-        $stepIndex = 0;
-        $lastBroadcast = time();
-
-        // Start generation
-        $content = $controller->callAiServiceWithWordTarget($prompt, $targetWordCount);
-
-        // Since the above is blocking, we can't show real progress
-        // In production, you'd want to use streaming + callbacks
-
-        return $content;
+        // Generate content (blocking call - frontend handles progress animation)
+        return $controller->callAiServiceWithWordTarget($prompt, $targetWordCount);
     }
 
     /**

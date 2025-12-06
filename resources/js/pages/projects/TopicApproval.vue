@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import AppLayout from '@/layouts/AppLayout.vue';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
-import { ArrowLeft, CheckCircle, Clock, Download, FileText, MessageSquare, XCircle, ShieldCheck } from 'lucide-vue-next';
+import { ArrowLeft, CheckCircle, Clock, Download, FileText, MessageSquare, XCircle, ShieldCheck, BookOpen, GraduationCap, School, User } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { toast } from 'vue-sonner';
 
@@ -189,13 +190,10 @@ const goBackToTopicSelection = async () => {
             <div class="mx-auto max-w-4xl space-y-10 p-6 pb-20 lg:p-10">
                 <!-- Back Navigation -->
                 <div class="flex items-center justify-between">
-                    <Button 
-                        @click="goBackToTopicSelection" 
-                        variant="ghost" 
-                        size="sm" 
-                        class="group text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mr-2">
+                    <Button @click="goBackToTopicSelection" variant="ghost" size="sm"
+                        class="group text-muted-foreground hover:text-foreground transition-colors">
+                        <div
+                            class="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mr-2">
                             <ArrowLeft class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
                         </div>
                         Back to Topic Selection
@@ -204,61 +202,125 @@ const goBackToTopicSelection = async () => {
 
                 <!-- Header -->
                 <div class="space-y-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 shadow-lg shadow-yellow-500/10 ring-1 ring-yellow-500/20">
+                    <div
+                        class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 shadow-lg shadow-yellow-500/10 ring-1 ring-yellow-500/20">
                         <Clock class="h-10 w-10 text-yellow-600" />
                     </div>
                     <div class="space-y-2">
-                        <h1 class="text-4xl font-bold tracking-tight sm:text-5xl bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                        <h1
+                            class="text-4xl font-bold tracking-tight sm:text-5xl bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
                             Awaiting Supervisor Approval
                         </h1>
                         <p class="mx-auto max-w-2xl text-lg text-muted-foreground leading-relaxed">
-                            Your project topic is ready for review. Share it with your supervisor and update the status below.
+                            Your project topic is ready for review. Share it with your supervisor and update the status
+                            below.
                         </p>
                     </div>
                 </div>
 
                 <!-- Project Context -->
                 <div class="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-                    <Card class="overflow-hidden border-border/40 bg-card/50 backdrop-blur-sm shadow-sm">
-                        <div class="grid grid-cols-1 divide-y divide-border/40 md:grid-cols-2 lg:grid-cols-4 md:divide-x md:divide-y-0">
-                            <div class="p-6 flex flex-col gap-2">
-                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Field of Study</span>
-                                <div class="flex items-center gap-2 font-semibold">
-                                    <div class="h-2 w-2 rounded-full bg-blue-500"></div>
-                                    {{ project.field_of_study }}
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <!-- Field of Study -->
+                        <Card v-if="project.field_of_study"
+                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
+                            <div
+                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors blur-2xl">
+                            </div>
+                            <div class="p-6 relative">
+                                <div
+                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 group-hover:scale-110 group-hover:bg-blue-500/20 transition-all duration-300">
+                                    <BookOpen class="h-5 w-5" />
+                                </div>
+                                <div class="space-y-1">
+                                    <span
+                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Field
+                                        of Study</span>
+                                    <div class="font-bold text-lg leading-tight text-foreground">
+                                        {{ project.field_of_study }}
+                                    </div>
                                 </div>
                             </div>
-                            <div class="p-6 flex flex-col gap-2">
-                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Academic Level</span>
-                                <div class="flex items-center gap-2 font-semibold">
-                                    <div class="h-2 w-2 rounded-full bg-purple-500"></div>
-                                    <span class="capitalize">{{ project.type }}</span>
+                        </Card>
+
+                        <!-- Academic Level -->
+                        <Card
+                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
+                            <div
+                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-purple-500/10 group-hover:bg-purple-500/20 transition-colors blur-2xl">
+                            </div>
+                            <div class="p-6 relative">
+                                <div
+                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all duration-300">
+                                    <GraduationCap class="h-5 w-5" />
+                                </div>
+                                <div class="space-y-1">
+                                    <span
+                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Academic
+                                        Level</span>
+                                    <div class="font-bold text-lg leading-tight text-foreground capitalize">
+                                        {{ project.type }}
+                                    </div>
                                 </div>
                             </div>
-                            <div class="p-6 flex flex-col gap-2">
-                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">University</span>
-                                <div class="flex items-center gap-2 font-semibold">
-                                    <div class="h-2 w-2 rounded-full bg-orange-500"></div>
-                                    <span class="truncate" :title="project.full_university_name || project.university">
+                        </Card>
+
+                        <!-- University -->
+                        <Card
+                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
+                            <div
+                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors blur-2xl">
+                            </div>
+                            <div class="p-6 relative">
+                                <div
+                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500 group-hover:scale-110 group-hover:bg-orange-500/20 transition-all duration-300">
+                                    <School class="h-5 w-5" />
+                                </div>
+                                <div class="space-y-1">
+                                    <span
+                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">University</span>
+                                    <div class="font-bold text-lg leading-tight text-foreground"
+                                        :title="project.full_university_name || project.university">
                                         {{ project.full_university_name || project.university }}
-                                    </span>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="p-6 flex flex-col gap-2">
-                                <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Supervisor</span>
-                                <div class="flex items-center gap-2 font-semibold">
-                                    <div class="h-2 w-2 rounded-full bg-green-500"></div>
-                                    {{ project.supervisor_name || 'Not assigned' }}
+                        </Card>
+
+                        <!-- Supervisor -->
+                        <Card
+                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
+                            <div
+                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-green-500/10 group-hover:bg-green-500/20 transition-colors blur-2xl">
+                            </div>
+                            <div class="p-6 relative">
+                                <div
+                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 text-green-500 group-hover:scale-110 group-hover:bg-green-500/20 transition-all duration-300">
+                                    <User class="h-5 w-5" />
+                                </div>
+                                <div class="space-y-1">
+                                    <span
+                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Supervisor</span>
+                                    <div class="font-bold text-lg leading-tight text-foreground">
+                                        {{ project.supervisor_name || 'Not assigned' }}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </Card>
+                        </Card>
+                    </div>
                 </div>
 
                 <div class="grid gap-8 md:grid-cols-1 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
                     <!-- Selected Topic Display -->
-                    <Card class="border-border/40 shadow-lg shadow-primary/5 overflow-hidden">
-                        <CardHeader class="border-b border-border/40 bg-muted/10 pb-6">
+                    <Card class="relative border-border/50 shadow-lg shadow-primary/5 overflow-hidden group">
+                        <div
+                            class="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 transition-colors blur-3xl pointer-events-none">
+                        </div>
+                        <div
+                            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-20">
+                        </div>
+
+                        <CardHeader class="pb-2 relative border-b border-border/40 bg-muted/10">
                             <div class="flex items-center gap-3">
                                 <div class="p-2 rounded-md bg-primary/10 text-primary">
                                     <MessageSquare class="h-5 w-5" />
@@ -269,10 +331,19 @@ const goBackToTopicSelection = async () => {
                                 </div>
                             </div>
                         </CardHeader>
-                        <CardContent class="p-6 md:p-8">
-                            <div class="rounded-xl bg-muted/30 p-6 border border-border/50">
-                                <h3 v-if="project.title" class="mb-3 text-xl font-semibold text-foreground">{{ project.title }}</h3>
-                                <p class="text-base leading-relaxed text-muted-foreground">{{ project.topic }}</p>
+                        <CardContent class="p-6 md:p-8 relative">
+                            <div class="space-y-4">
+                                <SafeHtmlText
+                                    v-if="project.title"
+                                    as="h3"
+                                    class="text-2xl font-bold text-foreground leading-tight"
+                                    :content="project.title"
+                                />
+                                <SafeHtmlText
+                                    as="div"
+                                    class="prose prose-invert max-w-none text-muted-foreground leading-relaxed"
+                                    :content="project.topic"
+                                />
                             </div>
                         </CardContent>
                     </Card>
@@ -280,22 +351,23 @@ const goBackToTopicSelection = async () => {
                     <!-- Action Area -->
                     <div class="grid gap-6 md:grid-cols-2">
                         <!-- Export for Supervisor Review -->
-                        <Card class="border-border/40 shadow-md hover:shadow-lg transition-all duration-300 flex flex-col">
-                            <CardHeader>
-                                <CardTitle class="flex items-center gap-2 text-lg">
+                        <Card
+                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:border-blue-500/30 flex flex-col">
+                            <div
+                                class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors blur-3xl">
+                            </div>
+                            <CardHeader class="relative">
+                                <CardTitle
+                                    class="flex items-center gap-2 text-lg group-hover:text-blue-500 transition-colors">
                                     <FileText class="h-5 w-5 text-blue-500" />
                                     Share with Supervisor
                                 </CardTitle>
-                                <CardDescription>Download a professional PDF proposal to submit to your supervisor.</CardDescription>
+                                <CardDescription>Download a professional PDF proposal to submit to your supervisor.
+                                </CardDescription>
                             </CardHeader>
-                            <CardContent class="mt-auto pt-0">
-                                <Button 
-                                    @click="exportTopicPdf" 
-                                    :disabled="isExporting" 
-                                    size="lg" 
-                                    variant="outline"
-                                    class="w-full h-12 border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-all"
-                                >
+                            <CardContent class="mt-auto pt-0 relative">
+                                <Button @click="exportTopicPdf" :disabled="isExporting" size="lg" variant="outline"
+                                    class="w-full h-12 border-blue-200/20 hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/50 transition-all">
                                     <Download v-if="!isExporting" class="mr-2 h-5 w-5" />
                                     <Clock v-else class="mr-2 h-5 w-5 animate-spin" />
                                     {{ isExporting ? 'Generating PDF...' : 'Download Proposal PDF' }}
@@ -304,30 +376,29 @@ const goBackToTopicSelection = async () => {
                         </Card>
 
                         <!-- Approval Actions -->
-                        <Card class="border-border/40 shadow-md hover:shadow-lg transition-all duration-300 flex flex-col">
-                            <CardHeader>
-                                <CardTitle class="flex items-center gap-2 text-lg">
+                        <Card
+                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:border-green-500/30 flex flex-col">
+                            <div
+                                class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-green-500/5 group-hover:bg-green-500/10 transition-colors blur-3xl">
+                            </div>
+                            <CardHeader class="relative">
+                                <CardTitle
+                                    class="flex items-center gap-2 text-lg group-hover:text-green-500 transition-colors">
                                     <ShieldCheck class="h-5 w-5 text-green-600" />
                                     Update Status
                                 </CardTitle>
                                 <CardDescription>Record your supervisor's decision to proceed.</CardDescription>
                             </CardHeader>
-                            <CardContent class="mt-auto pt-0 grid grid-cols-2 gap-3">
-                                <Button
-                                    @click="() => showApprovalDialog(true)"
-                                    :disabled="isSubmitting"
-                                    class="h-12 bg-green-600 hover:bg-green-700 text-white shadow-md shadow-green-600/20"
-                                >
+                            <CardContent class="mt-auto pt-0 grid grid-cols-2 gap-3 relative">
+                                <Button @click="() => showApprovalDialog(true)" :disabled="isSubmitting"
+                                    class="h-12 bg-green-600 hover:bg-green-700 text-white shadow-md shadow-green-600/20 transition-all hover:scale-[1.02]">
                                     <CheckCircle class="mr-2 h-5 w-5" />
                                     Approved
                                 </Button>
 
-                                <Button
-                                    @click="() => showApprovalDialog(false)"
-                                    :disabled="isSubmitting"
+                                <Button @click="() => showApprovalDialog(false)" :disabled="isSubmitting"
                                     variant="outline"
-                                    class="h-12 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                                >
+                                    class="h-12 border-red-200/20 text-red-500 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-600 transition-all hover:scale-[1.02]">
                                     <XCircle class="mr-2 h-5 w-5" />
                                     Rejected
                                 </Button>
@@ -341,7 +412,8 @@ const goBackToTopicSelection = async () => {
                     <DialogContent class="sm:max-w-md border-border/50 shadow-2xl">
                         <DialogHeader>
                             <DialogTitle class="flex items-center gap-2 text-xl">
-                                <div :class="pendingApproval ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'" class="p-2 rounded-full">
+                                <div :class="pendingApproval ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'"
+                                    class="p-2 rounded-full">
                                     <CheckCircle v-if="pendingApproval" class="h-5 w-5" />
                                     <XCircle v-else class="h-5 w-5" />
                                 </div>
@@ -350,19 +422,18 @@ const goBackToTopicSelection = async () => {
                             <DialogDescription class="pt-2 text-base">
                                 {{
                                     pendingApproval
-                                        ? 'Great news! Confirm that your supervisor has approved this topic. We will proceed to the next stage.'
-                                        : 'Confirm that your supervisor wants you to change this topic. You will be redirected to select a new one.'
+                                        ? `Great news! Confirm that your supervisor has approved this topic. We will proceed to
+                                the next stage.`
+                                        : `Confirm that your supervisor wants you to change this topic. You will be redirected
+                                to select a new one.`
                                 }}
                             </DialogDescription>
                         </DialogHeader>
                         <DialogFooter class="gap-2 sm:gap-0 mt-4">
                             <Button @click="showConfirmDialog = false" variant="ghost"> Cancel </Button>
-                            <Button
-                                @click="confirmApproval"
-                                :disabled="isSubmitting"
+                            <Button @click="confirmApproval" :disabled="isSubmitting"
                                 :class="pendingApproval ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'"
-                                class="min-w-[100px]"
-                            >
+                                class="min-w-[100px]">
                                 <Clock v-if="isSubmitting" class="mr-2 h-4 w-4 animate-spin" />
                                 {{ isSubmitting ? 'Processing...' : 'Confirm' }}
                             </Button>

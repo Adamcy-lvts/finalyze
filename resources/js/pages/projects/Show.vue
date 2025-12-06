@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
 import { ArrowLeft, BookOpen, Calendar, Edit, FileText, Lightbulb, Play, Settings, University } from 'lucide-vue-next';
 
@@ -95,7 +96,11 @@ const totalTargetWords = () => {
                     Back to Projects
                 </Button>
                 <div class="flex-1 space-y-3">
-                    <h1 class="text-4xl font-bold tracking-tight">{{ project.title || 'Untitled Project' }}</h1>
+                    <SafeHtmlText
+                        as="h1"
+                        class="text-4xl font-bold tracking-tight"
+                        :content="project.title || 'Untitled Project'"
+                    />
                     <div class="flex flex-wrap items-center gap-3">
                         <Badge variant="outline" class="px-2 py-1 text-xs capitalize">{{ project.type }}</Badge>
                         <Badge :variant="project.status === 'completed' ? 'default' : 'secondary'" class="px-2 py-1 text-xs">

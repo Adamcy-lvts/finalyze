@@ -6,7 +6,9 @@
     <div class="grid gap-4 lg:grid-cols-3">
       <Card class="lg:col-span-2 border border-border bg-card shadow-sm">
         <CardHeader>
-          <CardTitle class="text-base font-semibold text-foreground">{{ project.title }}</CardTitle>
+          <CardTitle class="text-base font-semibold text-foreground">
+            <SafeHtmlText as="span" :content="project.title" class="block" />
+          </CardTitle>
           <p class="text-sm text-muted-foreground">Owner: {{ project.user?.email ?? '—' }}</p>
         </CardHeader>
         <CardContent class="text-sm space-y-2 text-muted-foreground">
@@ -52,6 +54,7 @@
 <script setup lang="ts">
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import SafeHtmlText from '@/components/SafeHtmlText.vue'
 
 const props = defineProps<{
   project: {

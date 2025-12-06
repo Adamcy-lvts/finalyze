@@ -5,23 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ $project->title }}</title>
-    <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
-    <script>
-        // Detect if Paged.js script loaded
-        console.log('Attempting to load Paged.js from CDN...');
-
-        // Check if Paged object exists after script should have loaded
-        window.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded. Checking for Paged.js...', {
-                hasPagedPolyfill: typeof window.PagedPolyfill !== 'undefined',
-                hasPaged: typeof window.Paged !== 'undefined',
-                windowKeys: Object.keys(window).filter(k => k.toLowerCase().includes('page'))
-            });
-        });
-    </script>
     <style>
-        /* 
-            RESET & BASE STYLES 
+        /*
+            RESET & BASE STYLES
             Clean slate for Paged.js
         */
         * {
@@ -38,55 +24,26 @@
             background: white;
         }
 
-        /* 
-            PAGED.JS CONFIGURATION 
+        /*
+            PAGED.JS CONFIGURATION
             @page rules control the physical paper layout
+            NOTE: Page numbers are set via JavaScript handler after pagination
         */
         @page {
             size: A4;
             margin: 1in; /* Standard academic margins */
 
             @bottom-center {
-                content: counter(page);
                 font-family: 'Times New Roman', Times, serif;
                 font-size: 11pt;
             }
         }
 
-        /* Title Page: No page number */
-        @page:first {
-            @bottom-center {
-                content: none;
-            }
-        }
-
-        /* Frontmatter: Roman Numerals (i, ii, iii...) */
-        @page frontmatter {
-            @bottom-center {
-                content: counter(page, lower-roman);
-            }
-        }
-
-        /* Main Content: Arabic Numerals (1, 2, 3...) */
-        @page main {
-            @bottom-center {
-                content: counter(page);
-            }
-        }
-
-        /* References and Appendices continue main numbering */
-        @page references {
-            @bottom-center {
-                content: counter(page);
-            }
-        }
-
-        /* 
-            SECTION STYLING 
-            Each section corresponds to a named page type
+        /*
+            SECTION STYLING
+            Data attributes help JavaScript identify section types
         */
         section.title-page {
-            page: title;
             page-break-after: always;
             break-after: page;
             width: 100%;
@@ -95,27 +52,19 @@
         }
 
         section.frontmatter-section {
-            page: frontmatter;
             page-break-after: always;
             break-after: page;
             width: 100%;
         }
 
         section.chapter-section {
-            page: main;
             page-break-before: always;
             break-before: page;
             width: 100%;
         }
 
-        /* Reset page counter on first chapter */
-        section.first-chapter {
-            counter-reset: page 0;
-        }
-
         /* Minimal chapter content styling - let content render as stored */
         section.chapter-section * {
-            /* Remove any forced transformations */
             text-transform: none !important;
         }
 
@@ -192,70 +141,242 @@
         .chapter-title { font-size: 14pt; font-weight: bold; text-transform: uppercase; text-align: center; margin: 0; }
 
         /* Utility */
-        .pagedjs_pages { width: 100%; } /* Fix for Paged.js UI */
+        .pagedjs_pages { width: 100%; }
+
+        /* Custom page number display - positioned by Paged.js margin boxes */
+        .pagedjs_margin-bottom-center .pagedjs_margin-content::after {
+            content: attr(data-page-number);
+        }
     </style>
+
     <script>
-        // Global error handler to catch any JavaScript errors
+        // Global error handler
         window.addEventListener('error', function(event) {
-            console.error('Global Error:', {
-                message: event.message,
-                filename: event.filename,
-                lineno: event.lineno,
-                colno: event.colno,
-                error: event.error
-            });
+            console.error('Global Error:', event.message, event.filename, event.lineno);
         });
 
-        // Promise rejection handler
         window.addEventListener('unhandledrejection', function(event) {
             console.error('Unhandled Promise Rejection:', event.reason);
         });
 
-        // Set PagedConfig before Paged.js auto-executes
-        window.PagedConfig = {
-            auto: true,
-            before: () => {
-                console.log('✓ Paged.js: Starting pagination...');
+        /**
+         * Custom Page Number Handler for Paged.js
+         * This handler runs AFTER pagination and correctly sets page numbers:
+         * - Title page: No number
+         * - Frontmatter: Roman numerals (i, ii, iii...)
+         * - Main content: Arabic numerals starting from 1
+         */
+        class PageNumberHandler extends Paged.Handler {
+            constructor(chunker, polisher, caller) {
+                super(chunker, polisher, caller);
+                this.titlePageCount = 0;
+                this.frontmatterPageCount = 0;
+                this.mainContentStartIndex = -1;
+                this.pageTypes = []; // Track each page's type
+            }
 
-                // Find first chapter and add inline style to reset page counter
-                const firstChapter = document.querySelector('.first-chapter');
-                if (firstChapter) {
-                    console.log('✓ Found first chapter, applying counter reset');
-                    firstChapter.style.counterReset = 'page 0';
+            // Convert number to Roman numerals
+            toRoman(num) {
+                if (num <= 0) return '';
+                const romanNumerals = [
+                    { value: 1000, numeral: 'm' },
+                    { value: 900, numeral: 'cm' },
+                    { value: 500, numeral: 'd' },
+                    { value: 400, numeral: 'cd' },
+                    { value: 100, numeral: 'c' },
+                    { value: 90, numeral: 'xc' },
+                    { value: 50, numeral: 'l' },
+                    { value: 40, numeral: 'xl' },
+                    { value: 10, numeral: 'x' },
+                    { value: 9, numeral: 'ix' },
+                    { value: 5, numeral: 'v' },
+                    { value: 4, numeral: 'iv' },
+                    { value: 1, numeral: 'i' }
+                ];
+
+                let result = '';
+                for (const { value, numeral } of romanNumerals) {
+                    while (num >= value) {
+                        result += numeral;
+                        num -= value;
+                    }
                 }
-            },
-            after: (flow) => {
-                console.log('✓ Paged.js: Pagination complete', {
-                    totalPages: flow?.total || 'unknown',
-                    status: 'success'
+                return result;
+            }
+
+            // Detect what type of content is on a page
+            detectPageType(pageContent) {
+                if (!pageContent) return 'unknown';
+
+                // Check for title page
+                if (pageContent.querySelector('.title-page') ||
+                    pageContent.querySelector('[data-section-type="title"]')) {
+                    return 'title';
+                }
+
+                // Check for main content (chapters)
+                if (pageContent.querySelector('.chapter-section') ||
+                    pageContent.querySelector('.first-chapter') ||
+                    pageContent.querySelector('[data-section-type="chapter"]')) {
+                    return 'main';
+                }
+
+                // Check for frontmatter
+                if (pageContent.querySelector('.frontmatter-section') ||
+                    pageContent.querySelector('[data-section-type="frontmatter"]')) {
+                    return 'frontmatter';
+                }
+
+                return 'unknown';
+            }
+
+            // Called after each page is laid out
+            afterPageLayout(pageElement, page, breakToken) {
+                const pageIndex = page.position; // 0-based index
+                const pageContent = pageElement.querySelector('.pagedjs_page_content');
+
+                // Detect the type of content on this page
+                let pageType = this.detectPageType(pageContent);
+
+                // If we can't detect from content, inherit from previous page
+                if (pageType === 'unknown' && this.pageTypes.length > 0) {
+                    pageType = this.pageTypes[this.pageTypes.length - 1];
+                }
+
+                // Track when we first encounter main content
+                if (pageType === 'main' && this.mainContentStartIndex === -1) {
+                    this.mainContentStartIndex = pageIndex;
+                    console.log('Main content starts at page index:', pageIndex);
+                }
+
+                this.pageTypes[pageIndex] = pageType;
+
+                console.log(`Page ${pageIndex + 1}: type=${pageType}, mainStart=${this.mainContentStartIndex}`);
+            }
+
+            // Called after ALL pagination is complete - this is where we set page numbers
+            afterRendered(pages) {
+                console.log('Pagination complete. Total pages:', pages.length);
+                console.log('Page types:', this.pageTypes);
+                console.log('Main content starts at index:', this.mainContentStartIndex);
+
+                let frontmatterCounter = 0;
+                let mainCounter = 0;
+
+                pages.forEach((page, index) => {
+                    const pageType = this.pageTypes[index] || 'unknown';
+                    const pageElement = document.querySelector(`.pagedjs_page[data-page-number="${index + 1}"]`);
+
+                    if (!pageElement) {
+                        console.warn(`Could not find page element for index ${index}`);
+                        return;
+                    }
+
+                    // Find the bottom-center margin box
+                    const bottomCenter = pageElement.querySelector('.pagedjs_margin-bottom-center .pagedjs_margin-content');
+
+                    if (!bottomCenter) {
+                        console.warn(`Could not find bottom-center margin for page ${index + 1}`);
+                        return;
+                    }
+
+                    let pageNumberText = '';
+
+                    if (pageType === 'title') {
+                        // Title page: no number
+                        pageNumberText = '';
+                    } else if (pageType === 'frontmatter' || (pageType === 'unknown' && this.mainContentStartIndex === -1)) {
+                        // Frontmatter: Roman numerals
+                        frontmatterCounter++;
+                        pageNumberText = this.toRoman(frontmatterCounter);
+                    } else if (pageType === 'main' || (this.mainContentStartIndex !== -1 && index >= this.mainContentStartIndex)) {
+                        // Main content: Arabic numerals starting from 1
+                        mainCounter++;
+                        pageNumberText = String(mainCounter);
+                    } else {
+                        // Fallback: continue whatever numbering was active
+                        if (this.mainContentStartIndex !== -1 && index >= this.mainContentStartIndex) {
+                            mainCounter++;
+                            pageNumberText = String(mainCounter);
+                        } else {
+                            frontmatterCounter++;
+                            pageNumberText = this.toRoman(frontmatterCounter);
+                        }
+                    }
+
+                    // Set the page number
+                    bottomCenter.textContent = pageNumberText;
+                    bottomCenter.setAttribute('data-page-number', pageNumberText);
+
+                    console.log(`Set page ${index + 1} number to: "${pageNumberText}" (type: ${pageType})`);
                 });
-                window.status = 'ready_to_print';
-            },
-            onError: (error) => {
-                console.error('✗ Paged.js Error:', error);
-                // Still set status to allow PDF generation even with errors
+
+                console.log('Page numbering complete');
+                console.log(`Frontmatter pages: ${frontmatterCounter}, Main content pages: ${mainCounter}`);
+
+                // Signal ready for PDF generation
                 window.status = 'ready_to_print';
             }
+        }
+
+        // Configure Paged.js to NOT auto-start - we'll start it manually after registering handler
+        window.PagedConfig = {
+            auto: false
         };
 
-        console.log('✓ PDF Template loaded');
-        console.log('✓ PagedConfig set, waiting for Paged.js to initialize...');
+        console.log('PDF Template loaded, waiting for Paged.js...');
+    </script>
 
-        // Fallback: Set ready status after 5 seconds if Paged.js hasn't completed
+    <!-- Load Paged.js -->
+    <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
+
+    <script>
+        // Wait for DOM and Paged.js to be ready, then start pagination with our handler
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, checking for Paged.js...');
+
+            // Wait a moment for Paged.js to fully initialize
+            setTimeout(function() {
+                if (typeof Paged !== 'undefined') {
+                    console.log('Paged.js found, registering handler...');
+
+                    // Register our custom handler
+                    Paged.registerHandlers(PageNumberHandler);
+
+                    console.log('Starting pagination...');
+
+                    // Create new Paged instance and preview
+                    const paged = new Paged.Previewer();
+                    paged.preview().then(flow => {
+                        console.log('Pagination complete via manual preview', {
+                            totalPages: flow.total,
+                            pageCount: document.querySelectorAll('.pagedjs_page').length
+                        });
+                    }).catch(err => {
+                        console.error('Pagination error:', err);
+                        window.status = 'ready_to_print'; // Still allow PDF even on error
+                    });
+                } else {
+                    console.error('Paged.js not found!');
+                    window.status = 'ready_to_print';
+                }
+            }, 100);
+        });
+
+        // Fallback timeout
         setTimeout(function() {
             if (window.status !== 'ready_to_print') {
-                console.warn('⚠ Timeout: Paged.js did not complete. Setting ready status anyway.');
-                console.log('Current window.status:', window.status);
+                console.warn('Timeout: Setting ready status');
                 window.status = 'ready_to_print';
             }
-        }, 5000);
+        }, 10000);
     </script>
 </head>
 
 <body>
 
     <!-- TITLE PAGE -->
-    <section class="title-page">
+    <section class="title-page" data-section-type="title">
         <div class="university">{{ strtoupper($project->title) }}</div>
         <div class="main-title">BY</div>
         <div class="author-name">{{ strtoupper($project->user->name) }}</div>
@@ -279,19 +400,9 @@
         <div class="date">{{ strtoupper(now()->format('F, Y')) }}</div>
     </section>
 
-    <!-- PRELIMINARY PAGES -->
-    <!-- Each include must NOT have a wrapper div in the included file -->
-    <script>
-        console.log('Starting preliminary pages rendering...', {
-            pages: {!! json_encode(array_column($preliminaryPages ?? [], 'slug') ?? []) !!},
-            hasTableOfContents: {{ $chapters->count() > 0 ? 'true' : 'false' }},
-            hasTables: {{ (isset($project->tables) && count($project->tables) > 0) ? 'true' : 'false' }},
-            hasAbbreviations: {{ (isset($project->abbreviations) && count($project->abbreviations) > 0) ? 'true' : 'false' }}
-        });
-    </script>
-
+    <!-- PRELIMINARY PAGES (FRONTMATTER) -->
     @foreach($preliminaryPages as $page)
-        <section class="frontmatter-section">
+        <section class="frontmatter-section" data-section-type="frontmatter">
             <div class="section-content">
                 <h2>{{ strtoupper($page['title']) }}</h2>
                 <div class="preliminary-content">{!! $page['html'] !!}</div>
@@ -299,7 +410,8 @@
         </section>
     @endforeach
 
-    <section class="frontmatter-section">
+    <!-- TABLE OF CONTENTS -->
+    <section class="frontmatter-section" data-section-type="frontmatter">
         <div class="section-content">
             <h2>Table of Contents</h2>
 
@@ -359,7 +471,8 @@
         </div>
     </section>
 
-    <section class="frontmatter-section">
+    <!-- LIST OF TABLES -->
+    <section class="frontmatter-section" data-section-type="frontmatter">
         <div class="section-content">
             <h2>List of Tables</h2>
 
@@ -375,7 +488,8 @@
         </div>
     </section>
 
-    <section class="frontmatter-section">
+    <!-- LIST OF ABBREVIATIONS -->
+    <section class="frontmatter-section" data-section-type="frontmatter">
         <div class="section-content">
             <h2>List of Abbreviations and Acronyms</h2>
 
@@ -394,26 +508,9 @@
         </div>
     </section>
 
-    <!-- MAIN CONTENT -->
-    <script>
-        console.log('Starting chapter rendering...', {
-            totalChapters: {{ $chapters->count() }},
-            chapterIds: @json($chapters->pluck('id')),
-            chapterNumbers: @json($chapters->pluck('chapter_number')),
-            chapterTitles: @json($chapters->pluck('title'))
-        });
-    </script>
-
+    <!-- MAIN CONTENT: CHAPTERS -->
     @foreach($chapters as $index => $chapter)
-        <section class="chapter-section {{ $loop->first ? 'first-chapter' : '' }}">
-            <script>
-                console.log('Rendering chapter {{ $chapter->chapter_number }}', {
-                    id: {{ $chapter->id }},
-                    title: @json($chapter->title),
-                    hasContent: {{ isset($chapterContents[$chapter->id]) && !empty($chapterContents[$chapter->id]) ? 'true' : 'false' }},
-                    contentLength: {{ isset($chapterContents[$chapter->id]) ? strlen($chapterContents[$chapter->id]) : 0 }}
-                });
-            </script>
+        <section class="chapter-section {{ $loop->first ? 'first-chapter' : '' }}" data-section-type="chapter" data-chapter-number="{{ $chapter->chapter_number }}">
             @php
                 // Format chapter headings: "CHAPTER ONE: INTRODUCTION" becomes two centered lines
                 $content = $chapterContents[$chapter->id] ?? '<p>No content available for this chapter.</p>';
@@ -423,8 +520,8 @@
                     '/<(h[1-6])>(CHAPTER\s+[^:]+):\s*(.+?)<\/\1>/i',
                     function($matches) {
                         $tag = $matches[1];
-                        $chapterNumber = trim($matches[2]); // e.g., "CHAPTER ONE"
-                        $chapterTitle = trim($matches[3]);   // e.g., "INTRODUCTION"
+                        $chapterNumber = trim($matches[2]);
+                        $chapterTitle = trim($matches[3]);
 
                         return '<div class="chapter-heading-wrapper">' .
                                '<' . $tag . ' class="chapter-number-line">' . strtoupper($chapterNumber) . '</' . $tag . '>' .
@@ -438,12 +535,8 @@
         </section>
     @endforeach
 
-    <script>
-        console.log('All chapters rendered successfully');
-    </script>
-
     <!-- REFERENCES -->
-    <section class="chapter-section">
+    <section class="chapter-section" data-section-type="chapter">
         <div class="chapter-title">REFERENCES</div>
         <div class="content">
             @if($project->references)
@@ -455,7 +548,7 @@
     </section>
 
     <!-- APPENDICES -->
-    <section class="chapter-section">
+    <section class="chapter-section" data-section-type="chapter">
         <div class="chapter-title">APPENDICES</div>
         <div class="content">
             @if($project->appendices)
@@ -466,12 +559,6 @@
             @endif
         </div>
     </section>
-
-    <script>
-        console.log('All sections rendered successfully. Document ready for Paged.js pagination.', {
-            timestamp: new Date().toISOString()
-        });
-    </script>
 
 </body>
 </html>

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
 import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info } from 'lucide-vue-next';
 import { computed } from 'vue';
@@ -183,8 +184,11 @@ const isChapterComplete = (chapter: any) => {
                                     <div class="space-y-1">
                                         <Badge variant="outline" class="mb-2 bg-background/50 backdrop-blur">{{
                                             activeProject.type }}</Badge>
-                                        <h3 class="text-xl md:text-2xl font-bold tracking-tight line-clamp-2">{{
-                                            activeProject.title }}</h3>
+                                        <SafeHtmlText
+                                            as="h3"
+                                            class="text-xl md:text-2xl font-bold tracking-tight line-clamp-2"
+                                            :content="activeProject.title"
+                                        />
                                         <p class="text-muted-foreground flex items-center gap-2 text-sm md:text-base">
                                             <span
                                                 class="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>

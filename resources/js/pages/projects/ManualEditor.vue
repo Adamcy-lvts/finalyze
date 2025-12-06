@@ -15,6 +15,7 @@ import MobileNavOverlay from '@/components/manual-editor/MobileNavOverlay.vue'
 import DefensePreparationPanel from '@/components/chapter-editor/DefensePreparationPanel.vue'
 import ChapterNavigation from '@/components/chapter-editor/ChapterNavigation.vue'
 import ExportMenu from '@/components/chapter-editor/ExportMenu.vue'
+import SafeHtmlText from '@/components/SafeHtmlText.vue'
 import { Toaster } from '@/components/ui/sonner'
 import CitationHelper from '@/components/chapter-editor/CitationHelper.vue'
 import { useDark, useToggle } from '@vueuse/core'
@@ -491,8 +492,12 @@ const markAsComplete = async () => {
         <!-- Project & Chapter Info -->
         <div class="flex flex-col justify-center min-w-0 flex-1">
           <div class="hidden md:flex items-center gap-2 text-xs font-medium text-muted-foreground mb-1">
-            <span class="hover:text-foreground transition-colors cursor-pointer truncate"
-              @click="router.visit(route('projects.show', project.slug))">{{ project.title }}</span>
+            <SafeHtmlText
+              as="span"
+              class="hover:text-foreground transition-colors cursor-pointer truncate"
+              :content="project.title"
+              @click="router.visit(route('projects.show', project.slug))"
+            />
             <!-- <ChevronRight class="w-3 h-3 opacity-50 flex-shrink-0" />
             <span class="truncate text-foreground/80">{{ project.topic || 'No Topic' }}</span> -->
           </div>

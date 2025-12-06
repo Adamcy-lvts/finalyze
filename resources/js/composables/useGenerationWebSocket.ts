@@ -1,6 +1,8 @@
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Echo from 'laravel-echo'
-import Pusher from 'pusher-js'
+import axios from 'axios'
+
+// Pusher is imported by Echo internally
 
 // Types
 export interface GenerationStage {
@@ -99,8 +101,16 @@ export function useGenerationWebSocket(projectId: number) {
     const knownChapters = new Set<number>()
 
     // Echo instance
-    let echoInstance: Echo | null = null
+    let echoInstance: Echo<any> | null = null
     let channel: any = null
+
+    // Polling fallback
+    let pollingInterval: ReturnType<typeof setInterval> | null = null
+    const POLLING_INTERVAL_MS = 5000 // Poll every 5 seconds as fallback
+
+    // Progress animation for smooth visual feedback
+    let progressAnimationInterval: ReturnType<typeof setInterval> | null = null
+    const PROGRESS_ANIMATION_MS = 2000 // Animate progress every 2 seconds
 
     // Computed
     const isGenerating = computed(() => 
@@ -246,10 +256,13 @@ export function useGenerationWebSocket(projectId: number) {
         // Initialize stages
         initializeStages(event.total_chapters || 5)
 
+        // Start polling as fallback for missed WebSocket events
+        startPolling()
+
         addToActivityLog({
             type: event.is_resume ? 'info' : 'stage',
-            message: event.is_resume 
-                ? '🔄 Resuming generation sequence...' 
+            message: event.is_resume
+                ? '🔄 Resuming generation sequence...'
                 : '🚀 Starting generation sequence...',
         })
     }
@@ -284,7 +297,10 @@ export function useGenerationWebSocket(projectId: number) {
 
     const handleChapterStarted = (event: GenerationEventPayload) => {
         const chapterNum = event.chapter_number!
-        
+
+        // Stop any previous animation
+        stopProgressAnimation()
+
         state.value.progress = event.progress
         state.value.currentStage = `chapter_generation_${chapterNum}`
         state.value.message = event.message
@@ -306,8 +322,11 @@ export function useGenerationWebSocket(projectId: number) {
         if (stage) {
             stage.status = 'active'
             stage.progress = 0
-            stage.chapterProgress = 0
+            stage.chapterProgress = 20 // Start at 20% (prompt building phase)
         }
+
+        // Start progress animation for smooth visual feedback
+        startProgressAnimation(chapterNum, 80)
 
         addToActivityLog({
             type: 'chapter_progress',
@@ -340,6 +359,9 @@ export function useGenerationWebSocket(projectId: number) {
 
     const handleChapterCompleted = (event: GenerationEventPayload) => {
         const chapterNum = event.chapter_number!
+
+        // Stop progress animation for this chapter
+        stopProgressAnimation()
 
         state.value.progress = event.progress
         state.value.message = event.message
@@ -376,6 +398,10 @@ export function useGenerationWebSocket(projectId: number) {
         state.value.currentStage = 'completed'
         state.value.message = 'Project generation completed successfully!'
 
+        // Stop polling and animation - generation is done
+        stopPolling()
+        stopProgressAnimation()
+
         // Mark HTML conversion as complete
         const conversionStage = stages.value.find(s => s.id === 'html_conversion')
         if (conversionStage) {
@@ -402,6 +428,10 @@ export function useGenerationWebSocket(projectId: number) {
         state.value.status = 'failed'
         state.value.message = event.error_message || 'Generation failed'
         state.value.error = event.error_message || null
+
+        // Stop polling and animation - generation failed
+        stopPolling()
+        stopProgressAnimation()
 
         // Mark current stage as error
         const currentStage = stages.value.find(s => s.id === event.failed_stage)
@@ -549,8 +579,280 @@ export function useGenerationWebSocket(projectId: number) {
         }
     }
 
+    const mapDetailTypeToLogType = (type: string): ActivityLogEntry['type'] => {
+        switch (type) {
+            case 'success':
+                return 'success'
+            case 'error':
+                return 'error'
+            case 'chapter_completed':
+                return 'chapter_completed'
+            case 'chapter_started':
+            case 'chapter_progress':
+                return 'chapter_progress'
+            case 'mining':
+                return 'mining'
+            case 'conversion':
+                return 'conversion'
+            case 'stage':
+                return 'stage'
+            default:
+                return 'info'
+        }
+    }
+
+    const restoreFromApiData = (apiData: {
+        status: GenerationState['status']
+        progress: number
+        current_stage: string
+        message: string
+        details?: any[]
+        metadata?: Record<string, any>
+        chapter_statuses?: {
+            chapter_number: number
+            title?: string
+            status?: string
+            word_count?: number
+            target_word_count?: number
+            is_completed?: boolean
+        }[]
+        download_links?: { docx: string; pdf: string } | null
+    }) => {
+        state.value.status = apiData.status
+        state.value.progress = apiData.progress ?? 0
+        state.value.currentStage = apiData.current_stage || ''
+        state.value.message = apiData.message || ''
+        state.value.error = apiData.status === 'failed' ? apiData.message : null
+
+        metadata.value = apiData.metadata || {}
+        downloadLinks.value = apiData.download_links || null
+
+        knownChapters.clear()
+
+        const totalChapters =
+            apiData.chapter_statuses?.length ||
+            metadata.value.total_chapters ||
+            5
+
+        initializeStages(totalChapters)
+
+        // Keep metadata aligned with the number of chapters we restored
+        metadata.value = {
+            ...metadata.value,
+            total_chapters: metadata.value.total_chapters || totalChapters,
+        }
+
+        apiData.chapter_statuses?.forEach(chapter => {
+            const stage = stages.value.find(s => s.id === `chapter_generation_${chapter.chapter_number}`)
+            if (!stage) return
+
+            stage.description = chapter.title || stage.description
+            stage.targetWordCount = chapter.target_word_count ?? stage.targetWordCount
+
+            if (chapter.is_completed || chapter.status === 'completed') {
+                stage.status = 'completed'
+                stage.progress = 100
+                stage.chapterProgress = 100
+                stage.wordCount = chapter.word_count
+                stage.generationTime = metadata.value?.chapter_timings?.[chapter.chapter_number]
+            }
+        })
+
+        if (['processing', 'pending'].includes(apiData.status)) {
+            if (apiData.current_stage) {
+                const currentStage = stages.value.find(s => s.id === apiData.current_stage)
+                if (currentStage) {
+                    currentStage.status = 'active'
+
+                    if (currentStage.id.startsWith('chapter_generation_')) {
+                        const chapterNum = Number(apiData.current_stage.replace('chapter_generation_', ''))
+                        const chapterProgress = apiData.metadata?.chapter_progress ?? metadata.value.chapter_progress ?? 0
+                        const currentWordCount = apiData.metadata?.current_word_count ?? metadata.value.current_word_count
+
+                        metadata.value = {
+                            ...metadata.value,
+                            current_chapter: chapterNum,
+                            chapter_progress: chapterProgress,
+                            current_word_count: currentWordCount,
+                        }
+
+                        currentStage.chapterProgress = chapterProgress
+                        currentStage.wordCount = currentWordCount ?? currentStage.wordCount
+
+                        startProgressAnimation(chapterNum, 80)
+                    }
+                }
+
+                // If we're past literature mining, ensure it shows as completed
+                if (apiData.current_stage.includes('chapter_generation')) {
+                    const miningStage = stages.value.find(s => s.id === 'literature_mining')
+                    if (miningStage) {
+                        miningStage.status = 'completed'
+                        miningStage.progress = 100
+                    }
+                }
+
+                if (apiData.current_stage === 'html_conversion') {
+                    const conversionStage = stages.value.find(s => s.id === 'html_conversion')
+                    if (conversionStage) {
+                        conversionStage.status = 'active'
+                        conversionStage.progress = apiData.progress || conversionStage.progress
+                    }
+                }
+            }
+
+            startPolling()
+        }
+
+        if (apiData.status === 'completed') {
+            state.value.progress = 100
+            stages.value.forEach(stage => {
+                stage.status = 'completed'
+                stage.progress = 100
+                if (stage.chapterProgress !== undefined) {
+                    stage.chapterProgress = 100
+                }
+            })
+        }
+
+        if (apiData.status === 'failed' && apiData.current_stage) {
+            const failedStage = stages.value.find(s => s.id === apiData.current_stage)
+            if (failedStage) {
+                failedStage.status = 'error'
+            }
+        }
+
+        if (apiData.details?.length) {
+            activityLog.value = apiData.details
+                .map(detail => ({
+                    timestamp: detail.timestamp,
+                    type: mapDetailTypeToLogType(detail.type),
+                    message: detail.message,
+                    chapter: detail.chapter,
+                    generationTime: detail.generation_time,
+                    source: detail.source,
+                }))
+                .reverse()
+        }
+    }
+
+    // Start polling fallback for robustness
+    const startPolling = () => {
+        if (pollingInterval) return // Already polling
+
+        console.log('📡 Starting polling fallback')
+        pollingInterval = setInterval(async () => {
+            if (!isGenerating.value) {
+                stopPolling()
+                return
+            }
+
+            try {
+                const response = await axios.get(`/api/projects/${projectId}/bulk-generate/status`)
+                const data = response.data
+
+                // Only update if we have newer data (higher progress or different status)
+                if (data.progress > state.value.progress || data.status !== state.value.status) {
+                    console.log('📊 Polling update received:', {
+                        progress: data.progress,
+                        status: data.status,
+                        stage: data.current_stage,
+                    })
+
+                    state.value.progress = data.progress
+                    state.value.status = data.status
+                    state.value.message = data.message
+                    state.value.currentStage = data.current_stage
+
+                    // Update metadata
+                    if (data.metadata) {
+                        metadata.value = { ...metadata.value, ...data.metadata }
+
+                        // Update chapter progress from metadata
+                        if (data.metadata.chapter_progress !== undefined && data.metadata.current_chapter) {
+                            const chapterNum = data.metadata.current_chapter
+                            const stage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
+                            if (stage) {
+                                stage.chapterProgress = data.metadata.chapter_progress
+                                stage.wordCount = data.metadata.current_word_count || 0
+                            }
+                        }
+                    }
+
+                    // Handle completion
+                    if (data.status === 'completed') {
+                        downloadLinks.value = data.download_links
+                        stopPolling()
+                    }
+
+                    // Handle failure
+                    if (data.status === 'failed') {
+                        state.value.error = data.message
+                        stopPolling()
+                    }
+                }
+            } catch (error) {
+                console.warn('Polling request failed:', error)
+            }
+        }, POLLING_INTERVAL_MS)
+    }
+
+    // Stop polling
+    const stopPolling = () => {
+        if (pollingInterval) {
+            clearInterval(pollingInterval)
+            pollingInterval = null
+            console.log('📡 Polling stopped')
+        }
+    }
+
+    // Start progress animation for smooth visual feedback during chapter generation
+    const startProgressAnimation = (chapterNum: number, targetProgress: number = 80) => {
+        stopProgressAnimation()
+
+        const stage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
+        if (!stage) return
+
+        const progressIncrement = 3 // Increment by 3% each tick
+
+        console.log(`🎬 Starting progress animation for Chapter ${chapterNum}`)
+
+        progressAnimationInterval = setInterval(() => {
+            const currentStage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
+            if (!currentStage || currentStage.status !== 'active') {
+                stopProgressAnimation()
+                return
+            }
+
+            // Gradually increase progress toward target
+            const current = currentStage.chapterProgress || 0
+            if (current < targetProgress) {
+                currentStage.chapterProgress = Math.min(current + progressIncrement, targetProgress)
+
+                // Also simulate word count increase
+                if (currentStage.targetWordCount) {
+                    const estimatedWords = Math.floor(
+                        (currentStage.chapterProgress / 100) * currentStage.targetWordCount
+                    )
+                    currentStage.wordCount = estimatedWords
+                }
+            }
+        }, PROGRESS_ANIMATION_MS)
+    }
+
+    // Stop progress animation
+    const stopProgressAnimation = () => {
+        if (progressAnimationInterval) {
+            clearInterval(progressAnimationInterval)
+            progressAnimationInterval = null
+        }
+    }
+
     // Disconnect from WebSocket
     const disconnect = () => {
+        stopPolling()
+        stopProgressAnimation()
+
         if (channel) {
             channel.stopListening('.generation.started')
             channel.stopListening('.generation.literature_mining')
@@ -615,6 +917,8 @@ export function useGenerationWebSocket(projectId: number) {
         // Methods
         connect,
         disconnect,
+        restoreFromApiData,
         reset,
+        startPolling,
     }
 }

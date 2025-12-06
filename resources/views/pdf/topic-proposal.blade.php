@@ -6,87 +6,149 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Topic Proposal</title>
     <style>
+        @page {
+            margin: 2cm;
+        }
+
         body {
-            font-family: 'Times New Roman', serif;
-            font-size: 11pt;
-            line-height: 1.4;
-            color: #000;
-            margin: 20px;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-size: 9pt;
+            line-height: 1.5;
+            color: #333;
             background: white;
         }
-        
+
         .header {
             text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 1px solid #000;
+            margin-bottom: 25px;
+            border-bottom: 1px solid #eee;
             padding-bottom: 20px;
         }
-        
+
         .header h1 {
-            font-size: 16pt;
-            font-weight: bold;
+            font-size: 14pt;
+            font-weight: 700;
             text-transform: uppercase;
-            margin: 0 0 8px 0;
+            margin: 0 0 5px 0;
+            color: #111;
+            letter-spacing: 0.5px;
+        }
+
+        .header h2 {
+            font-size: 10pt;
+            font-weight: 500;
+            margin: 0 0 3px 0;
+            color: #555;
+        }
+
+        .header h3 {
+            font-size: 9pt;
+            font-weight: 400;
+            margin: 0;
+            color: #666;
+        }
+
+        .proposal-badge {
+            display: inline-block;
+            background-color: #f3f4f6;
+            color: #111;
+            font-size: 8pt;
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 4px;
+            margin-top: 15px;
             letter-spacing: 1px;
         }
-        
-        .header h2 {
-            font-size: 13pt;
-            font-weight: bold;
-            margin: 0 0 5px 0;
+
+        .section {
+            margin-bottom: 25px;
         }
-        
-        .header h3 {
-            font-size: 12pt;
-            margin: 0 0 15px 0;
-        }
-        
-        .proposal-title {
-            font-size: 14pt;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin: 15px 0 5px 0;
-        }
-        
-        .proposal-subtitle {
-            font-size: 10pt;
-            margin: 0;
-        }
-        
+
         .section-title {
-            font-size: 12pt;
-            font-weight: bold;
-            margin: 25px 0 15px 0;
-            border-bottom: 1px solid #000;
-            padding-bottom: 3px;
+            font-size: 9pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #888;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 6px;
         }
-        
-        .info-item {
+
+        .info-grid {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .info-grid td {
+            padding: 5px 0;
+            vertical-align: top;
+        }
+
+        .info-label {
+            width: 140px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .info-value {
+            color: #111;
+            font-weight: 600;
+        }
+
+        .topic-box {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .topic-title {
+            font-size: 12pt;
+            font-weight: 700;
+            color: #111;
             margin-bottom: 8px;
-            font-size: 11pt;
+            line-height: 1.3;
         }
-        
-        .info-item strong {
-            font-weight: bold;
-        }
-        
-        .project-title {
-            text-align: center;
-            font-weight: bold;
-            font-size: 12pt;
-            margin: 15px 0;
-            padding: 10px;
-            border: 1px solid #000;
-        }
-        
+
         .topic-description {
-            font-size: 11pt;
-            line-height: 1.5;
+            font-size: 10pt;
+            color: #444;
             text-align: justify;
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #000;
+            white-space: pre-wrap;
+        }
+
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 7pt;
+            color: #999;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+
+        .signature-section {
+            margin-top: 40px;
+            page-break-inside: avoid;
+        }
+
+        .signature-grid {
+            width: 100%;
+            margin-top: 30px;
+        }
+
+        .signature-box {
+            border-top: 1px solid #ccc;
+            width: 200px;
+            padding-top: 8px;
+            text-align: center;
+            font-size: 8pt;
+            color: #666;
         }
     </style>
 </head>
@@ -95,48 +157,91 @@
     <!-- Header Section -->
     <div class="header">
         <h1>{{ $project->full_university_name }}</h1>
-        <h2>Faculty of {{ ucwords($project->faculty) }}</h2>
-        <h3>Department of {{ $project->course }}</h3>
+        <h2>Faculty of {{ ucwords($project->facultyRelation->name) }}</h2>
+        <h3>Department of {{ $project->departmentRelation->name }}</h3>
         
-        <div class="proposal-title">PROJECT TOPIC PROPOSAL</div>
-        <p class="proposal-subtitle">For {{ ucfirst($project->type) }} {{ $project->category->name ?? 'Project' }}</p>
+        <div class="proposal-badge">Project Topic Proposal</div>
     </div>
 
     <!-- Student Information -->
-    <div>
-        <div class="section-title">STUDENT INFORMATION</div>
-        <div class="info-item">
-            <strong>Student Name:</strong> {{ $project->user->name }}
-        </div>
-        <div class="info-item">
-            <strong>Course of Study:</strong> {{ $project->course }}
-        </div>
-        <div class="info-item">
-            <strong>Field of Study:</strong> {{ $project->field_of_study }}
-        </div>
-        <div class="info-item">
-            <strong>Project Type:</strong> {{ ucfirst($project->type) }}
-        </div>
-        <div class="info-item">
-            <strong>Academic Session:</strong> {{ now()->year }}/{{ now()->year + 1 }}
-        </div>
+    <div class="section">
+        <div class="section-title">Student Details</div>
+        <table class="info-grid">
+            <tr>
+                <td class="info-label">Student Name:</td>
+                <td class="info-value">{{ $project->user->name }}</td>
+            </tr>
+            @if($project->user->matric_no)
+            <tr>
+                <td class="info-label">Student ID:</td>
+                <td class="info-value">{{ $project->user->matric_no }}</td>
+            </tr>
+            @endif
+            @if($project->course)
+            <tr>
+                <td class="info-label">Program:</td>
+                <td class="info-value">{{ $project->course }}</td>
+            </tr>
+            @endif
+            @if($project->field_of_study)
+            <tr>
+                <td class="info-label">Field of Study:</td>
+                <td class="info-value">{{ $project->field_of_study }}</td>
+            </tr>
+            @endif
+            @if($project->type)
+            <tr>
+                <td class="info-label">Level:</td>
+                <td class="info-value">{{ ucfirst($project->type) }}</td>
+            </tr>
+            @endif
+            @if($project->session)
+            <tr>
+                <td class="info-label">Session:</td>
+                <td class="info-value">{{ now()->year }}/{{ now()->year + 1 }}</td>
+            </tr>
+            @endif
+        </table>
     </div>
 
     <!-- Project Topic -->
-    <div>
-        <div class="section-title">PROPOSED PROJECT TOPIC</div>
+    <div class="section">
+        <div class="section-title">Proposed Research Topic</div>
 
-        @if ($project->topic)
-            <div>
-                <strong>Project Topic:</strong>
-                <div class="project-title">{{ $project->topic }}</div>
-            </div>
-        @endif
-
-        <div>
-            <strong>Topic Description:</strong>
-            <div class="topic-description">{{ $project->description }}</div>
+        <div class="topic-box">
+            @if ($project->topic)
+                <div class="topic-title">{{ $project->topic }}</div>
+            @else
+                <div class="topic-title" style="color: #999; font-style: italic;">No topic selected yet</div>
+            @endif
+            
+            @if($project->description)
+                <div class="topic-description">{{ $project->description }}</div>
+            @endif
         </div>
+    </div>
+
+    <!-- Signature Section -->
+    <div class="signature-section">
+        <div class="section-title">Approval</div>
+        <table class="signature-grid">
+            <tr>
+                <td align="left">
+                    <div class="signature-box">
+                        Student's Signature & Date
+                    </div>
+                </td>
+                <td align="right">
+                    <div class="signature-box">
+                        Supervisor's Signature & Date
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        Generated by Finalyze • {{ now()->format('F j, Y') }}
     </div>
 </body>
 

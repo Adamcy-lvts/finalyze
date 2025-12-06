@@ -138,8 +138,8 @@ class BulkGenerationController extends Controller
             'metadata' => $generation->metadata ?? [],
             'chapter_statuses' => $chapterStatuses,
             'download_links' => $generation->status === 'completed' ? [
-                'docx' => route('projects.export.docx', $project->slug),
-                'pdf' => route('projects.export.pdf', $project->slug),
+                'docx' => route('export.project.word', $project),
+                'pdf' => route('export.project.pdf', $project),
             ] : null,
         ]);
     }

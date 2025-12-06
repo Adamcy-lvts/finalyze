@@ -154,21 +154,22 @@ class TopicController extends Controller
                     $recentTopicRequest = $this->hasRecentTopicRequest($project);
 
                     if (! $recentTopicRequest && count($cachedTopics) >= 8 && ! $request->boolean('regenerate')) {
-                        // Convert cached topics to enriched format
+                        // Convert cached topics to enriched format (preserve stored metadata when available)
                         $enrichedCachedTopics = collect($cachedTopics)
                             ->map(function ($topic, $index) {
+                                $title = $topic['title'] ?? $topic['topic'] ?? $topic;
+                                $description = $topic['description'] ?? 'Research topic in your field of study';
+
                                 return [
                                     'id' => $index + 1,
-                                    'title' => $topic['topic'] ?? $topic['title'] ?? $topic,
-                                    'description' => $this->convertMarkdownToHtml(
-                                        $topic['description'] ?? 'Research topic in your field of study'
-                                    ),
-                                    'difficulty' => 'Intermediate',
-                                    'timeline' => '6-9 months',
-                                    'resource_level' => 'Medium',
-                                    'feasibility_score' => 75,
-                                    'keywords' => [],
-                                    'research_type' => 'Applied Research',
+                                    'title' => $title,
+                                    'description' => $this->convertMarkdownToHtml($description),
+                                    'difficulty' => $topic['difficulty'] ?? 'Intermediate',
+                                    'timeline' => $topic['timeline'] ?? '6-9 months',
+                                    'resource_level' => $topic['resource_level'] ?? 'Medium',
+                                    'feasibility_score' => $topic['feasibility_score'] ?? 75,
+                                    'keywords' => $topic['keywords'] ?? [],
+                                    'research_type' => $topic['research_type'] ?? 'Applied Research',
                                 ];
                             })
                             ->toArray();
@@ -279,7 +280,7 @@ class TopicController extends Controller
                         ]);
 
                         // Small delay to ensure smooth streaming
-                            usleep(10000); // 10ms delay
+                        usleep(10000); // 10ms delay
                     }
 
                     // Parse and process the generated topics
@@ -288,7 +289,19 @@ class TopicController extends Controller
                     ]);
 
                     $topics = $this->parseAndValidateTopics($generatedContent, $project);
-                    $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
+                    $totalTopics = count($topics);
+
+                    // Enrich topics while streaming heartbeat progress to keep the SSE connection alive
+                    $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project, function (array $progress) use ($totalTopics) {
+                        $current = $progress['current'] ?? 0;
+                        $title = $progress['title'] ?? 'Topic';
+
+                        $this->sendSSEMessage('progress', [
+                            'message' => "Enriching topic {$current}/{$totalTopics}: ".Str::limit($title, 80),
+                            'current' => $current,
+                            'total' => $totalTopics,
+                        ]);
+                    });
 
                     // Cache the generated topics
                     $this->storeTopicsInDatabase($topics, $project);
@@ -1277,17 +1290,20 @@ Generate topics that are:
         return $topics;
     }
 
-    private function enrichTopicsWithMetadata(array $topics, Project $project): array
+    private function enrichTopicsWithMetadata(array $topics, Project $project, ?callable $progressCallback = null): array
     {
         $enrichedTopics = [];
 
         foreach ($topics as $index => $topic) {
+            // Normalize title to HTML for consistent rendering, while preserving the raw title for logging
+            $titleHtml = $this->convertMarkdownToHtml($topic);
+
             $metadata = $this->analyzeTopicMetadata($topic, $project);
             $description = $this->generateTopicDescription($topic, $project);
 
             $enrichedTopics[] = [
                 'id' => $index + 1,
-                'title' => $topic,
+                'title' => $titleHtml,
                 'description' => $this->convertMarkdownToHtml($description),
                 'difficulty' => $metadata['difficulty'],
                 'timeline' => $metadata['timeline'],
@@ -1296,6 +1312,14 @@ Generate topics that are:
                 'keywords' => $metadata['keywords'],
                 'research_type' => $metadata['research_type'],
             ];
+
+            // Send incremental progress updates if a callback is provided (used for SSE heartbeats)
+            if ($progressCallback) {
+                $progressCallback([
+                    'current' => $index + 1,
+                    'title' => $topic,
+                ]);
+            }
         }
 
         // Store enriched topics in database for future caching
@@ -1606,7 +1630,8 @@ Requirements:
 - Keep it student-friendly and motivating
 - Focus on learning outcomes and real-world relevance
 - Write entirely in the third-person perspective (e.g., \"the student will\", \"this project explores\"). Never address the reader as \"you\" or \"your\".
-- Maximum 150 words";
+- Maximum 150 words
+- DO NOT use any headers, titles, or prefixes (e.g., \"Description:\", \"## Research Topic\"). Return ONLY the paragraph text.";
 
             $userPrompt = "Generate a description for this research topic:
 
@@ -1635,6 +1660,12 @@ The description should help a student understand what this topic involves and wh
             $aiDuration = ($aiEndTime - $aiStartTime) * 1000; // Convert to milliseconds
 
             $description = $this->enforceThirdPersonPerspective(trim($description));
+            
+            // cleanup potential headers if AI ignores instructions
+            $description = preg_replace('/^#+\s*Description.*$/m', '', $description);
+            $description = preg_replace('/^Description:?\s*/i', '', $description);
+            $description = preg_replace('/^Research Topic Description:?\s*/i', '', $description);
+            
             $description = $this->convertMarkdownToHtml($description);
             $totalDuration = (microtime(true) - $startTime) * 1000;
 
@@ -1733,8 +1764,10 @@ The description should help a student understand what this topic involves and wh
                 return [
                     'id' => $index + 1,
                     'title' => $topic->title,
-                    'description' => $this->convertMarkdownToHtml(
-                        $topic->description ?? 'Research topic in '.$topic->field_of_study
+                    'description' => $this->cleanTopicDescription(
+                        $this->convertMarkdownToHtml(
+                            $topic->description ?? 'Research topic in '.$topic->field_of_study
+                        )
                     ),
                     'difficulty' => $topic->difficulty ?? 'Intermediate',
                     'timeline' => $topic->timeline ?? '6-9 months',
@@ -1778,10 +1811,17 @@ The description should help a student understand what this topic involves and wh
             ->limit(10)
             ->get()
             ->map(function ($topic) {
+                // Titles/descriptions are already stored as HTML; keep as-is
                 return [
                     'topic' => $topic->title,
                     'title' => $topic->title,
-                    'description' => $topic->description ?? 'Research topic in '.$topic->field_of_study,
+                    'description' => $this->cleanTopicDescription($topic->description ?? 'Research topic in '.$topic->field_of_study),
+                    'difficulty' => $topic->difficulty,
+                    'timeline' => $topic->timeline,
+                    'resource_level' => $topic->resource_level,
+                    'feasibility_score' => $topic->feasibility_score,
+                    'keywords' => $topic->keywords ?? [],
+                    'research_type' => $topic->research_type,
                 ];
             })
             ->toArray();
@@ -1820,26 +1860,41 @@ The description should help a student understand what this topic involves and wh
 
             foreach ($topics as $topic) {
                 // Handle both string and array topic formats
-                if (is_string($topic)) {
-                    $topicData = [
+                $topicData = match (true) {
+                    is_string($topic) => [
                         'title' => $topic,
                         'description' => 'Research topic in '.($project->field_of_study ?? $project->course),
                         'difficulty' => 'moderate',
-                        'timeline' => '6 months',
-                        'resourceLevel' => 'moderate',
+                        'timeline' => '6-9 months',
+                        'resource_level' => 'medium',
+                        'resourceLevel' => 'medium',
+                        'feasibility_score' => 75,
                         'feasibilityScore' => 75,
                         'keywords' => [],
+                        'research_type' => 'applied',
                         'researchType' => 'applied',
-                    ];
-                } elseif (is_array($topic)) {
-                    $topicData = $topic;
-                } else {
-                    // Skip invalid topic format
-                    continue;
+                    ],
+                    is_array($topic) => $topic,
+                    default => null,
+                };
+
+                if (! $topicData) {
+                    continue; // Skip invalid topic format
                 }
 
+                // Normalize keys so we don't lose metadata when storing to DB
+                $difficulty = $topicData['difficulty'] ?? $topicData['difficulty_level'] ?? 'moderate';
+                $timeline = $topicData['timeline'] ?? $topicData['duration'] ?? '6-9 months';
+                $resourceLevel = $topicData['resource_level'] ?? $topicData['resourceLevel'] ?? 'medium';
+                $feasibilityScore = $topicData['feasibility_score'] ?? $topicData['feasibilityScore'] ?? null;
+                $feasibilityScore = $feasibilityScore !== null ? (int) $feasibilityScore : 75;
+                $researchType = $topicData['research_type'] ?? $topicData['researchType'] ?? 'applied';
+                $keywords = $topicData['keywords'] ?? [];
+
                 // Check if topic already exists to avoid duplicates
-                $existingTopic = ProjectTopic::where('title', $topicData['title'])
+                $titleHtml = $this->convertMarkdownToHtml($topicData['title']);
+
+                $existingTopic = ProjectTopic::where('title', $titleHtml)
                     ->where('course', $context['course'])
                     ->where('academic_level', $context['academic_level'])
                     ->first();
@@ -1855,14 +1910,14 @@ The description should help a student understand what this topic involves and wh
                         'course' => $context['course'],
                         'university' => $context['university'],
                         'academic_level' => $context['academic_level'],
-                        'title' => $topicData['title'],
+                        'title' => $titleHtml,
                         'description' => $descriptionHtml,
-                        'difficulty' => $topicData['difficulty'] ?? 'moderate',
-                        'timeline' => $topicData['timeline'] ?? '6 months',
-                        'resource_level' => $topicData['resourceLevel'] ?? 'moderate',
-                        'feasibility_score' => $topicData['feasibilityScore'] ?? 75,
-                        'keywords' => $topicData['keywords'] ?? [],
-                        'research_type' => $topicData['researchType'] ?? 'applied',
+                        'difficulty' => $difficulty,
+                        'timeline' => $timeline,
+                        'resource_level' => $resourceLevel,
+                        'feasibility_score' => $feasibilityScore,
+                        'keywords' => $keywords,
+                        'research_type' => $researchType,
                         'selection_count' => 0,
                         'last_selected_at' => null,
                     ]);

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import axios from 'axios';
 import { BookCheck, X, CheckCircle, AlertTriangle, Loader } from 'lucide-vue-next';
 import { onMounted, onUnmounted, ref } from 'vue';
@@ -295,7 +296,11 @@ onUnmounted(() => {
                 <div class="flex items-center gap-2">
                     <BookCheck class="h-5 w-5 text-primary" />
                     <div>
-                        <h1 class="text-lg font-bold">{{ props.project.title }}</h1>
+                        <SafeHtmlText
+                            as="h1"
+                            class="text-lg font-bold"
+                            :content="props.project.title"
+                        />
                         <p class="text-sm text-muted-foreground">
                             Citation Verification • Chapter {{ props.chapter.chapter_number }} • {{ currentWordCount }} / {{ targetWordCount }} words
                         </p>

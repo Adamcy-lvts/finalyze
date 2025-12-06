@@ -8,6 +8,7 @@ import AppLayout from '@/layouts/AppLayout.vue'
 import { useGenerationWebSocket } from '@/composables/useGenerationWebSocket'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
+import SafeHtmlText from '@/components/SafeHtmlText.vue'
 import {
     ArrowLeft,
     AlertTriangle,
@@ -22,13 +23,14 @@ import {
     Wifi,
     WifiOff,
     RefreshCw,
-    Download,
     Eye,
     Loader2,
 } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { route } from 'ziggy-js'
+import PurchaseModal from '@/components/PurchaseModal.vue'
+import { useWordBalance } from '@/composables/useWordBalance'
 
 interface Project {
     id: number
@@ -67,12 +69,23 @@ const {
     estimatedTimeRemaining,
     connect,
     disconnect,
+    restoreFromApiData,
     reset,
 } = useGenerationWebSocket(props.project.id)
 
+// Word balance guard
+const {
+    showPurchaseModal,
+    requiredWordsForModal,
+    actionDescriptionForModal,
+    checkAndPrompt,
+    closePurchaseModal,
+    estimates,
+} = useWordBalance()
+
 // Local state
 const isStarting = ref(false)
-const showDownloadMenu = ref(false)
+const isDownloadingPdf = ref(false)
 
 // Computed
 const connectionStatusColor = computed(() => {
@@ -132,6 +145,29 @@ const getStageIcon = (stageId: string) => {
 const startGeneration = async (resume = false) => {
     if (isStarting.value || isGenerating.value) return
 
+    const remainingChapters = props.project.chapters?.filter(
+        (c: any) => c.status !== 'completed' && (c.word_count ?? 0) <= 0
+    ).length || props.project.chapters?.length || 1
+
+    const avgTarget = (() => {
+        const targets = (props.project.chapters || [])
+            .map((c: any) => c.target_word_count)
+            .filter((t: any) => typeof t === 'number' && t > 0)
+
+        if (targets.length > 0) {
+            return Math.ceil(targets.reduce((sum: number, val: number) => sum + val, 0) / targets.length)
+        }
+
+        return 2000 // conservative default
+    })()
+
+    const requiredWords = estimates.chapter(avgTarget) * remainingChapters
+    const actionLabel = resume ? 'resume bulk generation' : 'bulk generate chapters'
+
+    if (!checkAndPrompt(requiredWords, actionLabel)) {
+        return
+    }
+
     isStarting.value = true
 
     if (!resume) {
@@ -169,10 +205,69 @@ const cancelGeneration = async () => {
     }
 }
 
-const downloadFile = async (format: 'docx' | 'pdf') => {
-    const link = downloadLinks.value?.[format]
-    if (link) {
-        window.open(link, '_blank')
+const downloadProjectPdf = async () => {
+    if (isDownloadingPdf.value) return
+
+    const pdfUrl = downloadLinks.value?.pdf || route('export.project.pdf', { project: props.project.slug })
+    const projectName = props.project.title || props.project.topic || 'Project'
+
+    isDownloadingPdf.value = true
+    toast.loading('Generating project PDF...', { id: 'download-project-pdf' })
+
+    try {
+        const response = await fetch(pdfUrl, {
+            method: 'GET',
+            headers: {
+                Accept: 'application/pdf',
+            },
+        })
+
+        if (response.ok) {
+            const contentType = response.headers.get('content-type')
+            if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json()
+                toast.error('Export Failed', {
+                    id: 'download-project-pdf',
+                    description: errorData.message || 'An error occurred during PDF export.',
+                })
+                return
+            }
+
+            const blob = await response.blob()
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `${props.project.slug}_full_project.pdf`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+
+            toast.success('Project PDF exported successfully!', {
+                id: 'download-project-pdf',
+                description: `${projectName} has been downloaded as PDF.`,
+            })
+        } else {
+            try {
+                const errorData = await response.json()
+                toast.error('Export Failed', {
+                    id: 'download-project-pdf',
+                    description: errorData.message || 'An error occurred during PDF export.',
+                })
+            } catch (error) {
+                toast.error('Export Failed', {
+                    id: 'download-project-pdf',
+                    description: 'Unable to export project as PDF. Please try again.',
+                })
+            }
+        }
+    } catch (error) {
+        toast.error('Export Failed', {
+            id: 'download-project-pdf',
+            description: 'Network error occurred. Please check your connection and try again.',
+        })
+    } finally {
+        isDownloadingPdf.value = false
     }
 }
 
@@ -199,20 +294,9 @@ onMounted(async () => {
         const response = await axios.get(
             route('api.projects.bulk-generate.status', props.project.slug)
         )
-        
-        if (['processing', 'pending'].includes(response.data.status)) {
-            // Generation is in progress, WebSocket will pick it up
-            state.value.status = response.data.status
-            state.value.progress = response.data.progress
-            state.value.currentStage = response.data.current_stage
-            state.value.message = response.data.message
-        } else if (response.data.status === 'completed') {
-            state.value.status = 'completed'
-            state.value.progress = 100
-            downloadLinks.value = response.data.download_links
-        } else if (response.data.status === 'failed' && response.data.progress > 0) {
-            state.value.status = 'failed'
-            state.value.progress = response.data.progress
+
+        if (response.data.status !== 'not_started') {
+            restoreFromApiData(response.data)
         }
     } catch (error) {
         console.error('Failed to check generation status:', error)
@@ -222,252 +306,179 @@ onMounted(async () => {
 
 <template>
     <AppLayout :title="pageTitle">
-        <div class="min-h-screen bg-gradient-to-b from-background to-muted/20 p-4 md:p-8">
-            <div class="max-w-6xl mx-auto space-y-6">
+        <!-- Background Effects -->
+        <div class="fixed inset-0 overflow-hidden pointer-events-none">
+            <div
+                class="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-primary/10 rounded-full blur-[100px] mix-blend-screen animate-pulse duration-3000" />
+            <div
+                class="absolute bottom-[-10%] left-[-5%] w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-[120px] mix-blend-screen" />
+        </div>
+
+        <div class="relative min-h-screen p-4 md:p-8 lg:p-12">
+            <div class="max-w-5xl mx-auto space-y-8">
                 <!-- Header -->
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <Button variant="ghost" size="icon" @click="goBack">
+                <div class="flex flex-col gap-6">
+                    <!-- Top Bar with Back Button and Status -->
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <Button variant="outline" size="icon" @click="goBack"
+                            class="rounded-xl border-dashed border-gray-600/30 hover:bg-gray-100/10 hover:border-primary/50 transition-all shrink-0">
                             <ArrowLeft class="h-5 w-5" />
                         </Button>
-                        <div>
-                            <h1 class="text-2xl md:text-3xl font-bold tracking-tight">
-                                {{ pageTitle }}
-                            </h1>
-                            <p class="text-muted-foreground mt-1">
-                                {{ project.title || project.topic }}
-                            </p>
+
+                        <!-- Connection Status Badge -->
+                        <div
+                            class="flex items-center gap-3 px-4 py-2 rounded-full border border-border/50 bg-background/50 backdrop-blur-md shadow-sm self-end md:self-auto">
+                            <div class="relative flex h-3 w-3">
+                                <span v-if="state.isConnected"
+                                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-3 w-3"
+                                    :class="state.isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+                            </div>
+                            <span class="text-sm font-medium" :class="connectionStatusColor">
+                                {{ state.isConnected ? 'System Online' : 'Connecting...' }}
+                            </span>
                         </div>
                     </div>
 
-                    <!-- Connection Status -->
-                    <div class="flex items-center gap-2 text-sm">
-                        <component
-                            :is="state.isConnected ? Wifi : WifiOff"
-                            :class="['h-4 w-4', connectionStatusColor]"
-                        />
-                        <span :class="connectionStatusColor">
-                            {{ state.isConnected ? 'Connected' : 'Connecting...' }}
-                        </span>
+                    <!-- Main Title Section -->
+                    <div class="space-y-2">
+                        <SafeHtmlText as="h1"
+                            class="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent leading-tight"
+                            :content="project.title || project.topic" />
+                        <p class="text-xl text-muted-foreground font-light tracking-wide">
+                            {{ pageTitle }}
+                        </p>
                     </div>
                 </div>
 
                 <!-- Error Alert -->
-                <Alert v-if="state.error && !isGenerating" variant="destructive">
-                    <AlertTriangle class="h-4 w-4" />
-                    <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>
-                        {{ state.error }}
-                    </AlertDescription>
-                </Alert>
+                <transition enter-active-class="transition duration-300 ease-out"
+                    enter-from-class="transform -translate-y-2 opacity-0"
+                    enter-to-class="transform translate-y-0 opacity-100"
+                    leave-active-class="transition duration-200 ease-in"
+                    leave-from-class="transform translate-y-0 opacity-100"
+                    leave-to-class="transform -translate-y-2 opacity-0">
+                    <Alert v-if="state.error && !isGenerating" variant="destructive"
+                        class="border-red-500/50 bg-red-500/10">
+                        <AlertTriangle class="h-4 w-4" />
+                        <AlertTitle>Execution Error</AlertTitle>
+                        <AlertDescription>
+                            {{ state.error }}
+                        </AlertDescription>
+                    </Alert>
+                </transition>
 
-                <!-- Main Content -->
-                <div class="grid gap-6 lg:grid-cols-12">
-                    <!-- Progress Section -->
-                    <div class="lg:col-span-7 space-y-6">
-                        <!-- Progress Card -->
-                        <Card class="p-6">
-                            <div class="space-y-4">
-                                <!-- Overall Progress -->
-                                <div class="space-y-2">
-                                    <div class="flex justify-between text-sm">
-                                        <span class="font-medium">Overall Progress</span>
-                                        <span class="text-muted-foreground">
-                                            {{ Math.round(state.progress) }}%
-                                        </span>
-                                    </div>
-                                    <div class="h-3 w-full overflow-hidden rounded-full bg-muted">
-                                        <div
-                                            class="h-full bg-primary transition-all duration-500 ease-out"
-                                            :style="{ width: `${state.progress}%` }"
-                                        />
-                                    </div>
-                                    <p class="text-sm text-muted-foreground">
-                                        {{ progressDescription }}
-                                    </p>
-                                </div>
+                <!-- Main Grid -->
+                <div class="grid lg:grid-cols-12 gap-8 items-start relative">
 
-                                <!-- Time Estimate -->
-                                <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Clock class="h-4 w-4" />
-                                    <span>{{ estimatedTimeRemaining }}</span>
-                                </div>
+                    <!-- Left Column: Generation Sequence -->
+                    <div class="lg:col-span-7 space-y-8 order-2 lg:order-1">
+                        <!-- Stages Timeline -->
+                        <div class="space-y-6 pl-2 z-10 relative">
+                            <h2 class="text-xl font-semibold tracking-tight">Generation Sequence</h2>
 
-                                <!-- Action Buttons -->
-                                <div class="flex flex-wrap gap-3 pt-2">
-                                    <Button
-                                        v-if="!isGenerating && !isCompleted"
-                                        @click="startGeneration(canResume)"
-                                        :disabled="isStarting || !state.isConnected"
-                                        size="lg"
-                                    >
-                                        <Loader2 v-if="isStarting" class="mr-2 h-5 w-5 animate-spin" />
-                                        <Play v-else class="mr-2 h-5 w-5" />
-                                        {{ canResume ? 'Resume Generation' : 'Start Generation' }}
-                                    </Button>
-
-                                    <Button
-                                        v-if="isGenerating"
-                                        variant="destructive"
-                                        @click="cancelGeneration"
-                                    >
-                                        Cancel
-                                    </Button>
-
-                                    <template v-if="isCompleted">
-                                        <Button @click="viewProject">
-                                            <Eye class="mr-2 h-4 w-4" />
-                                            View Project
-                                        </Button>
-                                        <Button variant="outline" @click="downloadFile('docx')">
-                                            <Download class="mr-2 h-4 w-4" />
-                                            Download DOCX
-                                        </Button>
-                                    </template>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- Stages -->
-                        <div class="space-y-3">
-                            <h2 class="text-lg font-semibold tracking-tight">Generation Stages</h2>
-
-                            <div class="space-y-0">
+                            <div class="relative space-y-0">
+                                <!-- Continuous Line Background -->
                                 <div
-                                    v-for="(stage, index) in stages"
-                                    :key="stage.id"
-                                    class="flex gap-4"
-                                >
-                                    <!-- Stage Indicator -->
+                                    class="absolute left-[19px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-border/50 via-border/30 to-transparent">
+                                </div>
+
+                                <div v-for="(stage, index) in stages" :key="stage.id" class="relative flex gap-4 group">
+                                    <!-- Stage Icon/Indicator -->
                                     <div class="flex flex-col items-center">
-                                        <div
-                                            class="flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300"
+                                        <div class="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-sm transition-all duration-500"
                                             :class="{
-                                                'border-muted bg-background': stage.status === 'pending',
-                                                'border-primary bg-primary/10 animate-pulse': stage.status === 'active',
-                                                'border-green-500 bg-green-500': stage.status === 'completed',
-                                                'border-red-500 bg-red-500/10': stage.status === 'error',
-                                            }"
-                                        >
-                                            <Check
-                                                v-if="stage.status === 'completed'"
-                                                class="h-5 w-5 text-white"
-                                            />
-                                            <Loader2
-                                                v-else-if="stage.status === 'active'"
-                                                class="h-5 w-5 text-primary animate-spin"
-                                            />
-                                            <AlertTriangle
-                                                v-else-if="stage.status === 'error'"
-                                                class="h-5 w-5 text-red-500"
-                                            />
-                                            <component
-                                                v-else
-                                                :is="getStageIcon(stage.id)"
-                                                class="h-5 w-5 text-muted-foreground"
-                                            />
+                                                'border-muted bg-card scale-95 opacity-70': stage.status === 'pending',
+                                                'border-primary bg-background ring-2 ring-primary/20 scale-110 shadow-[0_0_10px_rgba(var(--primary),0.3)]': stage.status === 'active',
+                                                'border-green-500 bg-green-500 text-white scale-100 shadow-green-500/20': stage.status === 'completed',
+                                                'border-red-500 bg-red-500/10 text-red-500': stage.status === 'error',
+                                            }">
+                                            <Check v-if="stage.status === 'completed'" class="h-4 w-4 stroke-[3]" />
+                                            <Loader2 v-else-if="stage.status === 'active'"
+                                                class="h-4 w-4 animate-spin text-primary" />
+                                            <AlertTriangle v-else-if="stage.status === 'error'" class="h-4 w-4" />
+                                            <component v-else :is="getStageIcon(stage.id)"
+                                                class="h-3.5 w-3.5 text-muted-foreground" />
                                         </div>
 
-                                        <!-- Connecting Line -->
-                                        <div
-                                            v-if="index < stages.length - 1"
-                                            class="relative w-0.5 h-16 my-2"
-                                        >
-                                            <div class="absolute left-0 top-0 w-full h-full bg-muted/30" />
-                                            <div
-                                                class="absolute left-0 top-0 w-full bg-green-500 origin-top transition-transform duration-1000 ease-out"
-                                                :class="{
-                                                    'scale-y-0': stage.status === 'pending',
-                                                    'scale-y-100': stage.status === 'completed',
-                                                }"
-                                                :style="{ height: '100%' }"
-                                            />
+                                        <!-- Active Line Segment -->
+                                        <div v-if="index < stages.length - 1"
+                                            class="w-0.5 flex-1 transition-all duration-700 ease-in-out mt-[-1px] mb-[-1px]"
+                                            :class="{
+                                                'bg-gradient-to-b from-green-500 to-transparent': stage.status === 'completed',
+                                                'bg-transparent': stage.status !== 'completed'
+                                            }">
+                                            <div v-if="stage.status === 'active'"
+                                                class="w-full h-full bg-gradient-to-b from-primary to-transparent animate-pulse shadow-[0_0_10px_rgba(var(--primary),0.5)]">
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <!-- Stage Content -->
-                                    <div class="flex-1 py-1.5 min-w-0">
-                                        <div class="flex items-center justify-between gap-2 mb-1">
-                                            <h3
-                                                class="font-semibold text-base transition-colors duration-300"
-                                                :class="{
-                                                    'text-muted-foreground': stage.status === 'pending',
-                                                    'text-foreground': stage.status === 'active',
-                                                    'text-green-600 dark:text-green-400': stage.status === 'completed',
-                                                    'text-red-600': stage.status === 'error',
-                                                }"
-                                            >
-                                                {{ stage.name }}
-                                            </h3>
-
-                                            <span
-                                                v-if="stage.status === 'active' && stage.chapterProgress !== undefined"
-                                                class="text-xs font-semibold text-primary tabular-nums"
-                                            >
-                                                {{ Math.round(stage.chapterProgress) }}%
-                                            </span>
-                                        </div>
-
-                                        <p
-                                            class="text-sm mb-2 transition-colors duration-300"
-                                            :class="{
-                                                'text-muted-foreground/60': stage.status === 'pending',
-                                                'text-muted-foreground': stage.status === 'active',
-                                                'text-green-600/80 dark:text-green-400/80': stage.status === 'completed',
-                                                'text-red-600/80': stage.status === 'error',
-                                            }"
-                                        >
-                                            {{ stage.description }}
-                                        </p>
-
-                                        <!-- Word Count & Progress Bar for chapter stages -->
+                                    <!-- Content -->
+                                    <div class="flex-1 pb-6 min-w-0 transition-opacity duration-300"
+                                        :class="{ 'opacity-50 hover:opacity-100': stage.status === 'pending' }">
                                         <div
-                                            v-if="stage.id.startsWith('chapter_generation_')"
-                                            class="flex items-center gap-3"
-                                        >
-                                            <div
-                                                v-if="(stage.wordCount ?? 0) > 0 || (stage.targetWordCount ?? 0) > 0"
-                                                class="text-xs tabular-nums"
-                                                :class="{
-                                                    'text-muted-foreground/50': stage.status === 'pending',
-                                                    'text-muted-foreground': stage.status === 'active',
-                                                    'text-green-600/80': stage.status === 'completed',
-                                                }"
-                                            >
-                                                <span :class="{ 'text-primary font-medium': stage.status === 'active' }">
-                                                    {{ stage.wordCount?.toLocaleString() ?? 0 }}
-                                                </span>
-                                                <span class="text-muted-foreground/50"> / </span>
-                                                {{ stage.targetWordCount?.toLocaleString() ?? 0 }} words
-                                            </div>
+                                            class="flex items-center justify-between gap-4 p-4 rounded-xl border border-border/10 bg-card/10 backdrop-blur-md hover:border-primary/20 hover:bg-card/30 hover:shadow-[0_0_20px_rgba(var(--primary),0.1)] transition-all duration-300 group-hover:bg-card/20">
+                                            <div class="space-y-1 flex-1">
+                                                <div class="flex items-center gap-2">
+                                                    <h3 class="font-semibold text-base tracking-tight" :class="{
+                                                        'text-foreground': stage.status === 'active' || stage.status === 'completed',
+                                                        'text-muted-foreground': stage.status === 'pending',
+                                                        'text-red-500': stage.status === 'error',
+                                                    }">
+                                                        {{ stage.name }}
+                                                    </h3>
+                                                    <Badge v-if="stage.status === 'completed' && stage.generationTime"
+                                                        variant="secondary"
+                                                        class="text-[10px] h-5 px-1.5 font-mono bg-secondary/50 text-secondary-foreground/70">
+                                                        {{ stage.generationTime }}s
+                                                    </Badge>
+                                                </div>
 
-                                            <!-- Progress Bar -->
-                                            <div
-                                                v-if="stage.status === 'active' && stage.chapterProgress !== undefined"
-                                                class="flex-1"
-                                            >
-                                                <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted/30">
+                                                <p class="text-sm text-balance leading-relaxed" :class="{
+                                                    'text-muted-foreground/80': stage.status !== 'active',
+                                                    'text-primary/90 font-medium': stage.status === 'active'
+                                                }">
+                                                    {{ stage.description }}
+                                                </p>
+
+                                                <!-- Chapter specific stats -->
+                                                <div v-if="stage.id.startsWith('chapter_generation_') && (stage.status === 'active' || stage.status === 'completed')"
+                                                    class="mt-3 bg-secondary/30 rounded-lg p-3 space-y-2.5 border border-border/30 shadow-inner">
                                                     <div
-                                                        class="h-full bg-primary transition-all duration-500 ease-out"
-                                                        :style="{ width: `${stage.chapterProgress}%` }"
-                                                    />
+                                                        class="flex justify-between text-xs font-medium text-muted-foreground">
+                                                        <span
+                                                            class="uppercase tracking-wider text-[10px]">Progress</span>
+                                                        <span class="font-mono text-xs tracking-tight">
+                                                            <span
+                                                                :class="{ 'text-primary font-bold': stage.status === 'active', 'text-green-500 font-bold': stage.status === 'completed' }">
+                                                                {{ stage.wordCount?.toLocaleString() ?? 0 }}
+                                                            </span>
+                                                            <span class="opacity-50 mx-1">/</span>
+                                                            {{ stage.targetWordCount?.toLocaleString() ?? 0 }} words
+                                                        </span>
+                                                    </div>
+                                                    <div
+                                                        class="h-2 w-full overflow-hidden rounded-full bg-background/50 border border-white/5">
+                                                        <div class="h-full transition-all duration-700 ease-out relative overflow-hidden"
+                                                            :class="{
+                                                                'bg-gradient-to-r from-green-500 to-emerald-400': stage.status === 'completed',
+                                                                'bg-gradient-to-r from-blue-500 to-indigo-500': stage.status === 'active'
+                                                            }"
+                                                            :style="{ width: stage.status === 'completed' ? '100%' : `${stage.chapterProgress}%` }">
+                                                            <!-- Shimmer Effect for Active State -->
+                                                            <div v-if="stage.status === 'active'"
+                                                                class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-20deg] animate-shimmer"
+                                                                style="background-size: 200% 100%;"></div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div v-else-if="stage.status === 'completed'" class="flex-1">
-                                                <div class="h-1.5 w-full overflow-hidden rounded-full bg-green-200 dark:bg-green-900/30">
-                                                    <div class="h-full bg-green-500 w-full" />
-                                                </div>
-                                            </div>
-                                        </div>
 
-                                        <!-- Generation Time Badge -->
-                                        <div
-                                            v-if="stage.status === 'completed' && stage.generationTime"
-                                            class="mt-1"
-                                        >
-                                            <Badge variant="secondary" class="text-xs">
-                                                {{ stage.generationTime }}s
-                                            </Badge>
+                                            <!-- Simple active indicator arrow -->
+                                            <div v-if="stage.status === 'active'" class="text-primary hidden sm:block">
+                                                <Loader2 class="h-4 w-4 animate-spin" />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -475,50 +486,186 @@ onMounted(async () => {
                         </div>
                     </div>
 
-                    <!-- Activity Feed Section -->
-                    <div class="lg:col-span-5">
-                        <div class="sticky top-24">
-                            <div class="mb-4 flex items-center gap-2">
-                                <Terminal class="h-4 w-4 text-muted-foreground" />
-                                <h2 class="text-lg font-semibold tracking-tight">System Activity</h2>
+                    <!-- Right Column: Control & Logs (Sticky) -->
+                    <div
+                        class="lg:col-span-5 flex flex-col gap-6 lg:sticky lg:top-24 lg:h-[calc(100vh-6rem)] order-1 lg:order-2">
+                        <!-- Main Control Card -->
+                        <div class="group relative z-20">
+                            <!-- Glow Effect -->
+                            <div
+                                class="absolute -inset-0.5 bg-gradient-to-r from-primary/30 to-purple-500/30 rounded-2xl blur opacity-30 group-hover:opacity-50 transition duration-1000">
                             </div>
 
-                            <Card class="overflow-hidden border-muted bg-card/50 shadow-sm">
-                                <div class="h-[400px] overflow-y-auto p-4 font-mono text-xs scrollbar-thin">
-                                    <div
-                                        v-if="activityLog.length === 0"
-                                        class="flex h-full flex-col items-center justify-center text-muted-foreground/50"
-                                    >
-                                        <Terminal class="mb-2 h-8 w-8 opacity-20" />
-                                        <p>Waiting to start...</p>
+                            <Card
+                                class="relative p-6 md:p-8 border-border/50 bg-card/80 backdrop-blur-xl transition-all duration-300 shadow-2xl">
+                                <div class="space-y-6 md:space-y-8">
+                                    <!-- Circular Progress Ring & Text -->
+                                    <div class="flex flex-col items-center justify-center py-6">
+                                        <div class="relative w-48 h-48">
+                                            <!-- SVG Circle -->
+                                            <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                                                <!-- Background Circle -->
+                                                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor"
+                                                    class="text-secondary/30" stroke-width="8" />
+                                                <!-- Progress Circle -->
+                                                <circle cx="50" cy="50" r="45" fill="none"
+                                                    stroke="url(#progress-gradient)" stroke-width="8"
+                                                    stroke-linecap="round" class="transition-all duration-1000 ease-out"
+                                                    :stroke-dasharray="2 * Math.PI * 45"
+                                                    :stroke-dashoffset="2 * Math.PI * 45 * (1 - state.progress / 100)" />
+                                                <!-- Gradient Definition -->
+                                                <defs>
+                                                    <linearGradient id="progress-gradient" x1="0%" y1="0%" x2="100%"
+                                                        y2="0%">
+                                                        <stop offset="0%" stop-color="#3b82f6" />
+                                                        <stop offset="50%" stop-color="#6366f1" />
+                                                        <stop offset="100%" stop-color="#a855f7" />
+                                                    </linearGradient>
+                                                </defs>
+                                            </svg>
+
+                                            <!-- Centered Text -->
+                                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                                <span class="text-4xl font-bold tabular-nums tracking-tighter">{{
+                                                    Math.round(state.progress) }}%</span>
+                                                <span
+                                                    class="text-xs font-medium uppercase tracking-widest text-muted-foreground/80 mt-1">
+                                                    {{ isCompleted ? 'Complete' : 'Progress' }}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-6 text-center space-y-2">
+                                            <p
+                                                class="text-base text-muted-foreground leading-relaxed animate-pulse-slow">
+                                                {{ progressDescription }}
+                                            </p>
+                                            <div
+                                                class="flex items-center justify-center gap-2 text-sm text-muted-foreground bg-secondary/30 px-3 py-1 rounded-full w-fit mx-auto">
+                                                <Clock class="h-4 w-4 text-primary" />
+                                                <span class="font-mono">{{ estimatedTimeRemaining }}</span>
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div v-else class="space-y-3">
-                                        <div
-                                            v-for="(activity, index) in activityLog"
-                                            :key="index"
-                                            class="group flex gap-3 transition-opacity duration-500"
-                                            :class="{ 'opacity-50': index > 5 }"
-                                        >
-                                            <span class="shrink-0 text-muted-foreground/50 select-none">
+                                    <!-- Action Buttons -->
+                                    <div class="flex flex-col gap-4 pt-4 border-t border-border/50">
+                                        <Button v-if="!isGenerating && !isCompleted" @click="startGeneration(canResume)"
+                                            :disabled="isStarting || !state.isConnected" size="lg"
+                                            class="w-full rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] text-base font-semibold py-6">
+                                            <Loader2 v-if="isStarting" class="mr-2 h-5 w-5 animate-spin" />
+                                            <Play v-else class="mr-2 h-5 w-5 fill-current" />
+                                            {{ canResume ? 'Resume Operation' : 'Initialize Generation' }}
+                                        </Button>
+
+                                        <Button v-if="isGenerating" variant="destructive" size="lg"
+                                            @click="cancelGeneration"
+                                            class="w-full rounded-xl shadow-lg shadow-destructive/20 hover:bg-destructive/90 py-6">
+                                            Cancel Process
+                                        </Button>
+
+                                        <template v-if="isCompleted">
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <Button @click="viewProject" size="lg"
+                                                    class="rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all text-base py-6">
+                                                    <Edit class="mr-2 h-5 w-5" />
+                                                    View in Editor
+                                                </Button>
+                                                <Button variant="secondary" size="lg" @click="downloadProjectPdf"
+                                                    :disabled="isDownloadingPdf"
+                                                    class="rounded-xl hover:bg-secondary/80 py-6">
+                                                    <Loader2 v-if="isDownloadingPdf"
+                                                        class="mr-2 h-4 w-4 animate-spin" />
+                                                    <FileText v-else class="mr-2 h-4 w-4" />
+                                                    Export PDF
+                                                </Button>
+                                            </div>
+
+                                            <!-- AI Disclaimer -->
+                                            <Alert variant="default"
+                                                class="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
+                                                <AlertTriangle class="h-4 w-4" />
+                                                <AlertDescription class="text-xs leading-relaxed">
+                                                    AI is not perfect and can make mistakes. Please review each chapter
+                                                    and make adjustments where necessary. This will also help you know
+                                                    the project well enough to defend it.
+                                                </AlertDescription>
+                                            </Alert>
+                                        </template>
+                                    </div>
+                                </div>
+                            </Card>
+                        </div>
+
+                        <!-- System Logs (Flex container to fill remaining height) -->
+                        <div class="hidden lg:flex flex-col flex-1 min-h-0 relative">
+                            <!-- Header -->
+                            <div class="flex items-center justify-between px-1 bg-background pb-2">
+                                <div class="flex items-center gap-2">
+                                    <Terminal class="h-5 w-5 text-muted-foreground" />
+                                    <h2 class="text-lg font-semibold tracking-tight">System Logs</h2>
+                                </div>
+                                <div class="flex gap-1.5">
+                                    <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                                    <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                                    <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                                </div>
+                            </div>
+
+                            <Card
+                                class="flex-1 overflow-hidden bg-[#0c0c0c] border-gray-800 shadow-2xl rounded-xl flex flex-col">
+                                <!-- Terminal Header -->
+                                <div class="bg-gray-900/50 border-b border-gray-800 p-2 flex justify-center shrink-0">
+                                    <span
+                                        class="text-[10px] uppercase font-mono tracking-widest text-gray-500">generation-task.sh</span>
+                                </div>
+
+                                <!-- Terminal Content -->
+                                <div
+                                    class="flex-1 overflow-y-auto p-4 font-mono text-xs md:text-sm scrollbar-hide relative">
+
+                                    <transition-group name="list" tag="div" class="space-y-2">
+                                        <div v-if="activityLog.length === 0" key="empty"
+                                            class="absolute inset-0 flex flex-col items-center justify-center text-gray-700 select-none">
+                                            <div class="animate-pulse flex flex-col items-center gap-2">
+                                                <Terminal class="h-10 w-10 opacity-20" />
+                                                <p class="font-sans text-sm">Waiting for initialization...</p>
+                                            </div>
+                                        </div>
+
+                                        <div v-for="(activity, index) in activityLog" :key="index"
+                                            class="flex gap-3 items-start border-l-2 pl-3 py-0.5 transition-all hover:bg-white/5"
+                                            :class="{
+                                                'border-blue-500/50': activity.type === 'info',
+                                                'border-green-500/50': activity.type === 'success' || activity.type === 'chapter_completed',
+                                                'border-red-500/50': activity.type === 'error',
+                                                'border-purple-500/50': activity.type === 'stage',
+                                                'border-transparent': !['info', 'success', 'chapter_completed', 'error', 'stage'].includes(activity.type)
+                                            }">
+                                            <span class="shrink-0 text-gray-600 select-none text-[10px] mt-[3px]">
                                                 {{ formatTimestamp(activity.timestamp) }}
                                             </span>
-                                            <span
-                                                :class="{
-                                                    'text-blue-600 dark:text-blue-400': activity.type === 'info',
-                                                    'text-green-600 dark:text-green-400 font-medium':
-                                                        activity.type === 'success' || activity.type === 'chapter_completed',
-                                                    'text-red-600 dark:text-red-400 font-medium': activity.type === 'error',
-                                                    'text-purple-600 dark:text-purple-400 font-bold': activity.type === 'stage',
-                                                    'text-cyan-600 dark:text-cyan-400': activity.type === 'chapter_progress',
-                                                    'text-amber-600 dark:text-amber-400': activity.type === 'mining',
-                                                    'text-pink-600 dark:text-pink-400': activity.type === 'conversion',
-                                                }"
-                                            >
+                                            <span class="break-words leading-tight" :class="{
+                                                'text-blue-400': activity.type === 'info',
+                                                'text-green-400 font-medium':
+                                                    activity.type === 'success' || activity.type === 'chapter_completed',
+                                                'text-red-400 font-bold bg-red-900/10 px-1 rounded': activity.type === 'error',
+                                                'text-purple-400 font-bold': activity.type === 'stage',
+                                                'text-cyan-400': activity.type === 'chapter_progress',
+                                                'text-amber-400': activity.type === 'mining',
+                                                'text-pink-400': activity.type === 'conversion',
+                                                'text-gray-300': !activity.type
+                                            }">
+                                                <span v-if="activity.type === 'stage'"
+                                                    class="text-gray-500 mr-2">$</span>
                                                 {{ activity.message }}
                                             </span>
                                         </div>
-                                    </div>
+
+                                        <!-- Blinking cursor at the end -->
+                                        <div key="cursor" class="h-4 w-2 bg-gray-500 animate-pulse mt-2 inline-block">
+                                        </div>
+                                    </transition-group>
                                 </div>
                             </Card>
                         </div>
@@ -526,6 +673,10 @@ onMounted(async () => {
                 </div>
             </div>
         </div>
+
+        <PurchaseModal :open="showPurchaseModal" :current-balance="0" :required-words="requiredWordsForModal"
+            :action-description="actionDescriptionForModal" @update:open="(v) => (showPurchaseModal = v)"
+            @close="closePurchaseModal" />
     </AppLayout>
 </template>
 
@@ -545,5 +696,44 @@ onMounted(async () => {
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: rgba(156, 163, 175, 0.5);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* List Transitions */
+.list-enter-active,
+.list-leave-active {
+    transition: all 0.3s ease;
+}
+
+.list-enter-from,
+.list-leave-to {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-150%) skewX(-12deg);
+    }
+
+    100% {
+        transform: translateX(150%) skewX(-12deg);
+    }
+}
+
+.animate-shimmer {
+    animation: shimmer 2s infinite linear;
+}
+
+.animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 </style>
