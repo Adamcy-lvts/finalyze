@@ -21,6 +21,9 @@ class ProjectController extends Controller
             ->latest()
             ->get();
 
+        // Ensure projects auto-complete when all chapters are done
+        $projects->each->syncCompletionStatusIfNeeded();
+
         return Inertia::render('projects/Index', [
             'projects' => $projects->map(function ($project) {
                 $totalChapters = $project->chapters->count();
@@ -601,6 +604,18 @@ class ProjectController extends Controller
             'targetWordCount' => $project->category?->target_word_count ?? 15000,
             'estimatedChapters' => $this->getEstimatedChapters($project),
         ]);
+    }
+
+    /**
+     * Manually mark a project as completed (visible action on dashboard)
+     */
+    public function complete(Project $project)
+    {
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $project->markAsCompleted();
+
+        return back()->with('message', 'Project marked as completed.');
     }
 
     public function show(Project $project)

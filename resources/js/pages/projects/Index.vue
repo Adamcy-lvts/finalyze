@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
+import { route } from 'ziggy-js';
 import { ref, computed, watchEffect, watch } from 'vue';
 import {
     CheckCircle,
@@ -167,6 +168,10 @@ const selectAllState = computed({
 
 const selectedProjectsCount = computed(() => selectedProjects.value.length);
 const hasSelectedProjects = computed(() => selectedProjectsCount.value > 0);
+
+const completeProject = (projectSlug: string) => {
+    router.post(route('projects.complete', projectSlug), {}, { preserveScroll: true });
+};
 
 // Watch for changes in filtered projects to clean up selection
 watch(filteredProjects, (newFiltered) => {
@@ -548,6 +553,17 @@ const bulkDeleteProjects = async () => {
                                         <span class="font-medium text-foreground">{{ project.progress }}%</span>
                                     </div>
                                     <Progress :model-value="project.progress" class="h-1.5" />
+                                </div>
+
+                                <div class="mt-3">
+                                    <Button v-if="project.status !== 'completed'" size="xs" variant="outline"
+                                        class="h-7 px-2" @click.stop="completeProject(project.slug)">
+                                        Mark as Completed
+                                    </Button>
+                                    <Badge v-else variant="outline"
+                                        class="border-green-200 bg-green-500/10 text-green-700 capitalize">
+                                        Completed
+                                    </Badge>
                                 </div>
 
                                 <div

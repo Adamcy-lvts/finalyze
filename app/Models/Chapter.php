@@ -147,5 +147,13 @@ class Chapter extends Model
                 $chapter->slug = $chapter->generateSlug();
             }
         });
+
+        static::saved(function ($chapter) {
+            $chapter->project?->syncCompletionStatusIfNeeded();
+        });
+
+        static::deleted(function ($chapter) {
+            $chapter->project?->syncCompletionStatusIfNeeded();
+        });
     }
 }

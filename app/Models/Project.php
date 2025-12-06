@@ -222,6 +222,60 @@ class Project extends Model
     }
 
     /**
+     * Determine if every chapter is marked complete/approved.
+     */
+    public function chaptersAreComplete(): bool
+    {
+        $chapters = $this->relationLoaded('chapters')
+            ? $this->chapters
+            : $this->chapters()->select('id', 'status')->get();
+
+        if ($chapters->isEmpty()) {
+            return false;
+        }
+
+        return $chapters->every(function ($chapter) {
+            if ($chapter->status instanceof ChapterStatus) {
+                return in_array($chapter->status, [ChapterStatus::Completed, ChapterStatus::Approved], true);
+            }
+
+            return in_array($chapter->status, ['completed', 'approved'], true);
+        });
+    }
+
+    /**
+     * Automatically mark the project as completed when all chapters are done.
+     * Skips if already completed/archived/on hold.
+     */
+    public function syncCompletionStatusIfNeeded(): void
+    {
+        $status = $this->status instanceof ProjectStatus
+            ? $this->status
+            : ProjectStatus::tryFrom((string) $this->status);
+
+        if (in_array($status, [ProjectStatus::Completed, ProjectStatus::Archived, ProjectStatus::OnHold], true)) {
+            return;
+        }
+
+        if (! $this->chaptersAreComplete()) {
+            return;
+        }
+
+        $this->markAsCompleted();
+    }
+
+    /**
+     * Explicitly mark a project as completed.
+     */
+    public function markAsCompleted(): void
+    {
+        $this->update([
+            'status' => ProjectStatus::Completed,
+            'last_activity_at' => now(),
+        ]);
+    }
+
+    /**
      * Calculate progress based on structured outlines
      */
     public function getStructuredProgressPercentage(): float

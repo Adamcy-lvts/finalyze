@@ -219,6 +219,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/projects/{project}/topic-approval', [ProjectController::class, 'topicApproval'])->name('projects.topic-approval');
         Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
         Route::post('/projects/{project}/set-active', [ProjectController::class, 'setActive'])->name('projects.set-active');
+        Route::post('/projects/{project}/complete', [ProjectController::class, 'complete'])->name('projects.complete');
 
         // Topic management routes - also need state checking
         Route::post('/projects/{project}/topics/generate', [TopicController::class, 'generate'])->name('topics.generate');
