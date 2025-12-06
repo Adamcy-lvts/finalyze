@@ -36,6 +36,7 @@ class ProjectController extends Controller
                     'slug' => $project->slug,
                     'title' => $project->title,
                     'type' => $project->type,
+                    'mode' => $project->mode,
                     'status' => $project->status,
                     'topic_status' => $project->topic_status,
                     'progress' => $project->getProgressPercentage(),

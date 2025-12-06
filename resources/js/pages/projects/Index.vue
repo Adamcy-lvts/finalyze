@@ -48,6 +48,7 @@ interface Project {
     slug: string;
     title: string | null;
     type: string;
+    mode?: 'auto' | 'manual';
     status: string;
     topic_status: string;
     progress: number;
@@ -572,6 +573,9 @@ const bulkDeleteProjects = async () => {
                                 <div class="flex items-center gap-2 mb-4">
                                     <Badge variant="secondary" class="capitalize font-normal">
                                         {{ project.type }}
+                                    </Badge>
+                                    <Badge variant="outline" class="border-0 bg-muted/50 text-xs">
+                                        {{ project.mode === 'manual' ? 'AI Assisted' : 'AI Generated' }}
                                     </Badge>
                                     <Badge :class="getStatusColor(project.status)"
                                         class="capitalize border-0 font-normal">
