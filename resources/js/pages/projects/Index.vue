@@ -84,6 +84,12 @@ const showIndividualDeleteConfirmation = ref(false);
 const projectToDelete = ref<Project | null>(null);
 const individualDeleting = ref(false);
 
+// Complete project dialog state
+const showCompleteDialog = ref(false);
+const projectToComplete = ref<Project | null>(null);
+const completingProject = ref(false);
+const completeError = ref<string | null>(null);
+
 // Computed filtered and sorted projects
 const filteredProjects = computed(() => {
     let filtered = [...props.projects];
@@ -170,15 +176,31 @@ const selectAllState = computed({
 const selectedProjectsCount = computed(() => selectedProjects.value.length);
 const hasSelectedProjects = computed(() => selectedProjectsCount.value > 0);
 
-const completeProject = (projectSlug: string) => {
-    router.post(route('projects.complete', projectSlug), {}, {
+const completeProject = (project: Project) => {
+    projectToComplete.value = project;
+    completeError.value = null;
+    showCompleteDialog.value = true;
+};
+
+const confirmCompleteProject = () => {
+    if (!projectToComplete.value) return;
+    completingProject.value = true;
+    completeError.value = null;
+
+    router.post(route('projects.complete', projectToComplete.value.slug), {}, {
         preserveScroll: true,
         onSuccess: (page) => {
             const message = (page.props as any)?.flash?.message || 'Project marked as completed.';
             toast.success(message);
+            showCompleteDialog.value = false;
+            projectToComplete.value = null;
         },
-        onError: () => {
-            toast.error('Could not complete project. Please try again.');
+        onError: (errors) => {
+            const message = (errors as any)?.message || 'Could not complete project. Please try again.';
+            completeError.value = message;
+        },
+        onFinish: () => {
+            completingProject.value = false;
         },
     });
 };
@@ -567,7 +589,7 @@ const bulkDeleteProjects = async () => {
 
                                 <div class="mt-3">
                                     <Button v-if="project.status !== 'completed'" size="xs" variant="outline"
-                                        class="h-7 px-2" @click.stop="completeProject(project.slug)">
+                                        class="h-7 px-2" @click.stop="completeProject(project)">
                                         Mark as Completed
                                     </Button>
                                     <Badge v-else variant="outline"
@@ -755,6 +777,41 @@ const bulkDeleteProjects = async () => {
                             class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent">
                         </div>
                         {{ individualDeleting ? 'Deleting...' : 'Delete' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Mark as Completed Dialog -->
+        <Dialog v-model:open="showCompleteDialog">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Mark Project as Completed</DialogTitle>
+                    <DialogDescription>
+                        All required chapters must be completed/approved before finishing. You can still edit later if
+                        needed.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-3">
+                    <p class="text-sm font-medium text-foreground">
+                        {{ projectToComplete?.title || 'Selected project' }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        Progress will be locked as completed, but content remains editable.
+                    </p>
+                    <p v-if="completeError" class="text-sm text-destructive">
+                        {{ completeError }}
+                    </p>
+                </div>
+
+                <DialogFooter class="flex-col gap-2 sm:flex-row">
+                    <Button variant="outline" class="w-full sm:w-auto" @click="showCompleteDialog = false"
+                        :disabled="completingProject">
+                        Cancel
+                    </Button>
+                    <Button class="w-full sm:w-auto" @click="confirmCompleteProject" :disabled="completingProject">
+                        {{ completingProject ? 'Marking...' : 'Mark as Completed' }}
                     </Button>
                 </DialogFooter>
             </DialogContent>
