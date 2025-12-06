@@ -22,6 +22,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import { route } from 'ziggy-js';
 import { ref, computed, watchEffect, watch } from 'vue';
+import { toast } from 'vue-sonner';
 import {
     CheckCircle,
     Eye,
@@ -170,7 +171,16 @@ const selectedProjectsCount = computed(() => selectedProjects.value.length);
 const hasSelectedProjects = computed(() => selectedProjectsCount.value > 0);
 
 const completeProject = (projectSlug: string) => {
-    router.post(route('projects.complete', projectSlug), {}, { preserveScroll: true });
+    router.post(route('projects.complete', projectSlug), {}, {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            const message = (page.props as any)?.flash?.message || 'Project marked as completed.';
+            toast.success(message);
+        },
+        onError: () => {
+            toast.error('Could not complete project. Please try again.');
+        },
+    });
 };
 
 // Watch for changes in filtered projects to clean up selection
