@@ -98,6 +98,10 @@ const pendingNewMode = ref<'auto' | 'manual'>('auto');
 const showBulkGenerationDialog = ref(false);
 const showTopicApprovalDialog = ref(false);
 
+const goToBulkAnalysis = () => {
+    router.visit(route('projects.analysis', { project: props.project.slug }));
+};
+
 // Word balance guard for AI actions
 const {
     wordBalance,
@@ -599,10 +603,16 @@ const toggleWritingMode = async () => {
                         Back to Topic Approval
                     </Button> -->
                 </div>
-                <Button @click="router.visit(route('projects.edit', project.slug))" variant="outline" size="sm">
-                    <Edit class="mr-2 h-4 w-4" />
-                    Edit Project Details
-                </Button>
+                <div class="flex items-center gap-2">
+                    <Button @click="goToBulkAnalysis" variant="ghost" size="sm" class="gap-2">
+                        <Brain class="h-4 w-4" />
+                        Analyze Chapters
+                    </Button>
+                    <Button @click="router.visit(route('projects.edit', project.slug))" variant="outline" size="sm">
+                        <Edit class="mr-2 h-4 w-4" />
+                        Edit Project Details
+                    </Button>
+                </div>
             </div>
 
             <!-- Hero Header -->

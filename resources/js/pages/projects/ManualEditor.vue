@@ -3,7 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { Head, router, usePage } from '@inertiajs/vue3'
 import { route } from 'ziggy-js'
 import { toast } from 'vue-sonner'
-import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle } from 'lucide-vue-next'
+import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle, Brain } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
@@ -190,6 +190,10 @@ const toggleNativeFullscreen = async () => {
 const handleFullscreenChange = () => {
   const fullscreenElement = document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).msFullscreenElement
   isNativeFullscreen.value = !!fullscreenElement
+}
+
+const goToBulkAnalysis = () => {
+  router.visit(route('projects.analysis', { project: props.project.slug }))
 }
 
 onMounted(() => {
@@ -568,6 +572,12 @@ const markAsComplete = async () => {
         <!-- Export Menu -->
         <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
           variant="outline" class="h-9 hidden md:flex" />
+
+        <Button variant="ghost" size="sm" class="hidden md:flex h-9 gap-2" @click="goToBulkAnalysis"
+          title="Open bulk analysis">
+          <Brain class="w-4 h-4" />
+          <span class="text-xs font-medium">Analyze</span>
+        </Button>
 
         <Separator orientation="vertical" class="h-6 mx-1 opacity-50" />
 

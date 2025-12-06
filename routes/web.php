@@ -14,6 +14,7 @@ use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\ManualEditorController;
+use App\Http\Controllers\ProjectAnalysisController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
 use App\Http\Controllers\TopicController;
@@ -289,6 +290,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/projects/{project}/guidance/chapter/{chapterNumber}', [ProjectGuidanceController::class, 'chapterGuidance'])->name('projects.guidance-chapter');
         Route::get('/projects/{project}/guidance/writing-guidelines', [ProjectGuidanceController::class, 'writingGuidelines'])->name('projects.writing-guidelines');
         Route::post('/projects/{project}/guidance/proceed-to-writing', [ProjectGuidanceController::class, 'proceedToWriting'])->name('projects.proceed-to-writing');
+
+        // Bulk chapter analysis page
+        Route::get('/projects/{project:slug}/analysis', [ProjectAnalysisController::class, 'index'])
+            ->name('projects.analysis');
     });
 
     // Simple test route to debug API routing

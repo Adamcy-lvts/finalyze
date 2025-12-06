@@ -39,7 +39,8 @@ class ProjectStateMiddleware
             $request->is('api/chapters/*/analysis/*') ||
             $request->is('api/chapters/*/analysis/latest') ||
             $request->is('api/chapters/*/analysis/history') ||
-            $request->is('api/projects/analysis/overview')) {
+            $request->is('api/projects/analysis/overview') ||
+            $request->is('api/projects/*/analysis/*')) {
             return $next($request);
         }
 
@@ -176,6 +177,7 @@ class ProjectStateMiddleware
             'projects.guidance', 'projects.guidance-chapter', 'projects.writing-guidelines',
             'projects.bulk-generate', 'api.projects.bulk-generate.stream',
             'api.projects.bulk-generate.start', 'api.projects.bulk-generate.status', 'api.projects.bulk-generate.cancel',
+            'projects.analysis',
 
         ];
 

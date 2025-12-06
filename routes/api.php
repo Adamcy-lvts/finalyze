@@ -88,6 +88,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/projects/analysis/overview', [ChapterAnalysisController::class, 'overview'])
         ->name('api.projects.analysis.overview');
 
+    // Bulk Chapter Analysis
+    Route::prefix('projects/{project}')->group(function () {
+        Route::post('/analysis/start', [\App\Http\Controllers\ChapterAnalysisBatchController::class, 'start'])
+            ->name('api.projects.analysis.start');
+        Route::get('/analysis/batches/{batch}', [\App\Http\Controllers\ChapterAnalysisBatchController::class, 'show'])
+            ->name('api.projects.analysis.batch');
+        Route::get('/analysis/results', [\App\Http\Controllers\ChapterAnalysisBatchController::class, 'results'])
+            ->name('api.projects.analysis.results');
+    });
+
     // Data Collection Placeholder API
     Route::prefix('chapters')->name('api.chapters.data-collection.')->group(function () {
         Route::get('{chapter}/detect', [DataCollectionController::class, 'detect'])

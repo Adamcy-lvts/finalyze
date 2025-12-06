@@ -1510,6 +1510,10 @@ const togglePresentationMode = () => {
     showPresentationMode.value = !showPresentationMode.value;
 };
 
+const goToBulkAnalysis = () => {
+    router.visit(route('projects.analysis', { project: props.project.slug }));
+};
+
 // Event handlers
 const handleContentChange = () => {
     addToHistory(chapterContent.value);
@@ -2130,35 +2134,9 @@ onMounted(async () => {
 
 });
 
-// Initialize chapter analysis on mount
+// Initialize chapter analysis on mount (only to fetch latest stored result)
 onMounted(async () => {
-    // Load latest analysis if available
     await getLatestAnalysis();
-
-    // Auto-analyze if chapter has substantial content
-    const wordCount = currentWordCount.value;
-    if (wordCount >= 800) {
-        await analyzeChapter();
-    }
-});
-
-// Watch for significant content changes to trigger auto-analysis
-let analysisTimeout: ReturnType<typeof setTimeout> | null = null;
-watch(currentWordCount, (newCount, oldCount) => {
-    // Clear existing timeout
-    if (analysisTimeout) {
-        clearTimeout(analysisTimeout);
-    }
-
-    // Only auto-analyze if:
-    // 1. Chapter has substantial content (800+ words)
-    // 2. Word count increased significantly (100+ words)
-    // 3. User stopped typing for 5 seconds (debounce)
-    if (newCount >= 800 && Math.abs(newCount - oldCount) >= 100) {
-        analysisTimeout = setTimeout(async () => {
-            await analyzeChapter();
-        }, 5000);
-    }
 });
 
 </script>
@@ -2513,12 +2491,12 @@ watch(currentWordCount, (newCount, oldCount) => {
                                             Save Draft
                                         </Button>
 
-                                        <Button @click="analyzeChapter"
-                                            :disabled="isAnalyzing || currentWordCount < 100" variant="outline"
+                                        <Button @click="goToBulkAnalysis"
+                                            variant="outline"
                                             size="sm" class="h-8 rounded-full">
                                             <BookCheck
-                                                :class="['mr-2 h-3.5 w-3.5', { 'animate-pulse': isAnalyzing }]" />
-                                            Analyze
+                                                class="mr-2 h-3.5 w-3.5" />
+                                            Run Bulk Analysis
                                         </Button>
 
                                         <Button @click="save(false)"
@@ -2972,19 +2950,16 @@ watch(currentWordCount, (newCount, oldCount) => {
 
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button @click="analyzeChapter"
-                                                    :disabled="isAnalyzing || currentWordCount < 100" variant="outline"
+                                                <Button @click="goToBulkAnalysis"
+                                                    variant="outline"
                                                     size="sm" class="flex-1 sm:flex-none">
-                                                    <BookCheck
-                                                        :class="['mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4', { 'animate-pulse': isAnalyzing }]" />
-                                                    <span class="hidden sm:inline">{{ isAnalyzing ? 'Analyzing...' : 'Analyze Quality' }}</span>
-                                                    <span class="sm:hidden">{{ isAnalyzing ? 'Analyzing...' : 'Analyze'
-                                                        }}</span>
+                                                    <BookCheck class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
+                                                    <span class="hidden sm:inline">Bulk Analysis</span>
+                                                    <span class="sm:hidden">Analyze</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>
-                                                <p>Run academic quality analysis ({{ currentWordCount }}/100 words min)
-                                                </p>
+                                                <p>Open bulk chapter analysis to score this project.</p>
                                             </TooltipContent>
                                         </Tooltip>
 
