@@ -1136,7 +1136,7 @@ class ProjectController extends Controller
         abort_if($project->user_id !== auth()->id(), 403);
 
         // Ensure project topic is approved before bulk generation
-        $allowedStatuses = ['topic_approved', 'writing', 'review'];
+        $allowedStatuses = ['topic_approved', 'writing', 'review','completed'];
         abort_if(! in_array($project->status->value, $allowedStatuses), 400, 'Project topic must be approved before bulk generation');
 
         // Get project with necessary relationships

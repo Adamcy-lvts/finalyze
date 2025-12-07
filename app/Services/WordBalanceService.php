@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\WordBalanceUpdated;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\WordTransaction;
@@ -139,6 +140,10 @@ class WordBalanceService
 
             return $transaction;
         });
+
+        // Broadcast balance update for real-time UI updates
+        $user->refresh(); // Ensure we have fresh data
+        WordBalanceUpdated::dispatch($user, 'usage');
 
         // Check for low balance after transaction completes
         $this->checkAndNotifyLowBalance($user);

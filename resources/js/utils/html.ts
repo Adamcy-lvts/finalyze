@@ -2,7 +2,10 @@ import createDOMPurify from 'dompurify';
 
 let purifier: ReturnType<typeof createDOMPurify> | null = null;
 
-const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'u', 'span', 'p', 'br', 'sub', 'sup', 'mark'];
+const ALLOWED_TAGS = [
+    'b', 'strong', 'i', 'em', 'u', 'span', 'p', 'br', 'sub', 'sup', 'mark',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'div', 'blockquote', 'pre', 'code'
+];
 
 const stripDangerousContent = (value: string) =>
     value

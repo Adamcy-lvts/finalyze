@@ -5,9 +5,13 @@ namespace App\Http\Controllers;
 use App\Jobs\GenerateProjectOutline;
 use App\Models\Project;
 use App\Models\ProjectTopic;
+use App\Models\WordTransaction;
 use App\Services\AIContentGenerator;
 use App\Services\ProjectOutlineService;
+use App\Services\WordBalanceService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Inertia\Inertia;
 
 // Add request logging
 \Illuminate\Support\Facades\Log::info('TopicController loaded', [
@@ -32,6 +36,93 @@ class TopicController extends Controller
         private ProjectOutlineService $outlineService
     ) {
         //
+    }
+
+    /**
+     * Topic library for the authenticated user - shows ALL generated topics.
+     */
+    public function topicsIndex(Request $request)
+    {
+        $user = $request->user();
+
+        $projects = Project::where('user_id', $user->id)
+            ->orderByDesc('updated_at')
+            ->get();
+
+        // Get ALL topics in the database - no filtering
+        $allTopics = ProjectTopic::orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($topic) {
+                return [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                    'description' => $this->cleanTopicDescription(
+                        $this->convertMarkdownToHtml(
+                            $topic->description ?? 'Research topic in '.$topic->field_of_study
+                        )
+                    ),
+                    'difficulty' => $topic->difficulty ?? 'Intermediate',
+                    'timeline' => $topic->timeline ?? '6-9 months',
+                    'resource_level' => $topic->resource_level ?? 'Medium',
+                    'feasibility_score' => $topic->feasibility_score ?? 75,
+                    'keywords' => $topic->keywords ?? [],
+                    'research_type' => $topic->research_type ?? 'Applied Research',
+                    'field_of_study' => $topic->field_of_study ?? 'General',
+                    'faculty' => $topic->faculty,
+                    'course' => $topic->course ?? '',
+                    'academic_level' => $topic->academic_level ?? 'undergraduate',
+                ];
+            })
+            ->toArray();
+
+        // Build projectTopics structure for UI compatibility
+        $projectTopics = $projects->map(function (Project $project) use ($allTopics) {
+            return [
+                'project' => [
+                    'id' => $project->id,
+                    'slug' => $project->slug,
+                    'title' => $project->title ?? 'Untitled Project',
+                    'topic' => $project->topic,
+                    'topic_status' => $project->topic_status,
+                    'status' => $project->status,
+                    'type' => $project->type,
+                    'course' => $project->course,
+                    'field_of_study' => $project->field_of_study,
+                    'created_at' => optional($project->created_at)->toIso8601String(),
+                ],
+                'topics' => $allTopics, // All topics shown under each project
+            ];
+        });
+
+        // Only keep first project with all topics to avoid duplication in UI
+        // or return all topics flat if preferred
+        $firstProject = $projectTopics->first();
+        
+        // Fetch active faculties for filter tabs
+        $facultyQuery = \App\Models\Faculty::query()->orderBy('name');
+
+        // Only apply the active scope when the column exists to avoid hidden tabs in environments missing the field
+        if (Schema::hasColumn('faculties', 'is_active')) {
+            $facultyQuery->active();
+        }
+
+        $faculties = $facultyQuery->get()->map(function ($faculty) {
+            return [
+                'id' => $faculty->id,
+                'name' => $faculty->name,
+                'slug' => $faculty->slug,
+            ];
+        });
+
+        return Inertia::render('projects/TopicsIndex', [
+            'projectTopics' => $firstProject ? [$firstProject] : [],
+            'allTopics' => $allTopics, // Pass all topics separately for the library
+            'faculties' => $faculties,
+            'meta' => [
+                'totalProjects' => $projects->count(),
+                'totalTopics' => count($allTopics),
+            ],
+        ]);
     }
 
     public function generate(Request $request, Project $project)
@@ -361,8 +452,397 @@ class TopicController extends Controller
     }
 
     /**
-     * Send Server-Sent Event message
+     * Topic Lab - Interactive chat interface for topic refinement
      */
+    public function lab(Request $request, Project $project)
+    {
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+        
+        $project->load('category');
+        $topics = $this->getProjectGeneratedTopics($project);
+        
+        // Fetch ALL existing chat sessions for this project (for history sidebar)
+        // Include both topic_refinement and null task_type for backward compatibility
+        $allSessions = \App\Models\ChatConversation::where('project_id', $project->id)
+            ->where('user_id', auth()->id())
+            ->whereNull('chapter_number') // Topic Lab chats don't have chapter numbers
+            ->select('session_id', 'session_name', 'created_at', 'context_data')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->groupBy('session_id');
+        
+        // Check if session_id is provided in request, otherwise use the most recent session or create new
+        $sessionId = $request->input('session_id');
+        $forceNew = $request->boolean('new');
+        
+        if ($forceNew) {
+            // User explicitly wants a new session
+            $sessionId = Str::uuid()->toString();
+        } elseif (!$sessionId) {
+            // No session_id provided - check for existing sessions
+            if ($allSessions->isNotEmpty()) {
+                // Use the most recent session
+                $sessionId = $allSessions->keys()->first();
+            } else {
+                // No existing sessions - generate a new one
+                $sessionId = Str::uuid()->toString();
+            }
+        }
+        
+        $initialMessages = [];
+        $initialTopic = null;
+
+        // Load messages for the active session
+        $chatMessages = \App\Models\ChatConversation::where('session_id', $sessionId)
+            ->orderBy('message_order')
+            ->get();
+        
+        if ($chatMessages->isNotEmpty()) {
+            $initialMessages = $chatMessages->map(function ($msg) {
+                return [
+                    'id' => (string) $msg->id,
+                    'role' => $msg->message_type === 'ai' ? 'assistant' : 'user',
+                    'content' => $msg->content,
+                ];
+            })->toArray();
+
+            // Try to find the topic from the first user message
+            $firstUserMsg = $chatMessages->firstWhere('message_type', 'user');
+            if ($firstUserMsg && !empty($firstUserMsg->context_data['topic_title'])) {
+                 $initialTopic = [
+                     'id' => $firstUserMsg->context_data['topic_id'] ?? 0,
+                     'title' => $firstUserMsg->context_data['topic_title'],
+                     'description' => '',
+                     'difficulty' => 'Intermediate',
+                 ];
+                 
+                 // Try to match with generated topics to get full details
+                 $matchedTopic = collect($topics)->firstWhere('title', $initialTopic['title']);
+                 if ($matchedTopic) {
+                     $initialTopic = $matchedTopic;
+                 }
+            }
+        }
+
+        // Format history sessions for sidebar
+        $historySessions = $allSessions
+            ->map(function ($messages, $sid) {
+                // Get the first message for date/count info
+                $firstMsg = $messages->first();
+                $contextData = $firstMsg->context_data ?? [];
+                
+                // Find session_name from any message in this session (prefer one that has it set)
+                $messageWithName = $messages->first(fn($m) => !empty($m->session_name));
+                $sessionName = $messageWithName?->session_name 
+                    ?? $contextData['topic_title'] 
+                    ?? 'Untitled Discussion';
+                
+                return [
+                    'id' => $sid,
+                    'title' => $sessionName,
+                    'date' => $firstMsg->created_at->diffForHumans(),
+                    'timestamp' => $firstMsg->created_at->timestamp,
+                    'message_count' => $messages->count(),
+                ];
+            })
+            ->values()
+            ->sortByDesc('timestamp')
+            ->values()
+            ->toArray();
+
+        return Inertia::render('projects/TopicsLab', [
+            'project' => [
+                'id' => $project->id,
+                'slug' => $project->slug,
+                'title' => $project->title,
+                'topic' => $project->topic,
+                'status' => $project->status,
+                'type' => $project->type,
+                'field_of_study' => $project->field_of_study,
+                'course' => $project->course,
+                'university' => $project->universityRelation?->name ?? $project->university,
+            ],
+            'topics' => $topics,
+            'sessionId' => $sessionId,
+            'historySessions' => $historySessions,
+            'initialMessages' => $initialMessages,
+            'initialTopic' => $initialTopic,
+        ]);
+    }
+
+    /**
+     * Chat about a specific topic (Streamed)
+     */
+    public function chat(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'messages' => 'required|array',
+            'messages.*.role' => 'required|string|in:user,assistant',
+            'messages.*.content' => 'required|string',
+            'topic_context' => 'required|array', // The topic object being discussed
+            'session_id' => 'required|uuid',
+        ]);
+
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        // Check if user has enough words (estimate ~500 words for chat response)
+        $user = auth()->user();
+        $estimatedWords = 500; // Estimated average chat response length
+        
+        if (!$user->hasEnoughWords($estimatedWords)) {
+            return response()->json([
+                'error' => 'Insufficient word balance',
+                'message' => "You need at least {$estimatedWords} words in your balance to use the chat. Your current balance is {$user->word_balance} words.",
+                'balance' => $user->word_balance,
+                'required' => $estimatedWords,
+            ], 402); // Payment Required status code
+        }
+
+        $messages = $validated['messages'];
+        $topic = $validated['topic_context'];
+        $sessionId = $validated['session_id'];
+        
+        // Get the latest user message
+        $lastUserMessage = end($messages);
+        
+        // Get or generate session name
+        $existingSession = \App\Models\ChatConversation::where('session_id', $sessionId)
+            ->whereNotNull('session_name')
+            ->first();
+        
+        $sessionName = $existingSession?->session_name 
+            ?? Str::limit(strip_tags($topic['title'] ?? 'New Discussion'), 60);
+        
+        // 1. Store User Message
+        try {
+            $messageData = [
+                'user_id' => auth()->id(),
+                'project_id' => $project->id,
+                'chapter_number' => null, // No chapter yet
+                'session_id' => $sessionId,
+                'session_name' => $sessionName, // Always set session name
+                'message_order' => count($messages) - 1, // approximate order
+                'message_type' => 'user',
+                'task_type' => 'topic_refinement',
+                'content' => $lastUserMessage['content'],
+                'context_data' => ['topic_id' => $topic['id'] ?? null, 'topic_title' => $topic['title'] ?? ''],
+            ];
+            
+            \App\Models\ChatConversation::create($messageData);
+        } catch (\Exception $e) {
+            Log::error('Failed to log user chat message', ['error' => $e->getMessage()]);
+        }
+
+        // Build the system prompt
+        $systemPrompt = "You are an expert academic research advisor helping a student refine their research topic.
+        
+Current Topic Context:
+Title: {$topic['title']}
+Description: " . strip_tags($topic['description'] ?? '') . "
+Field of Study: {$project->field_of_study}
+Academic Level: {$project->type}
+
+Your goal is to help the student refine this topic, clarify the scope, suggest methodologies, or answer questions about feasibility.
+Keep your responses helpful, encouraging, and academically rigorous but accessible.
+Avoid lengthy lectures; be conversational and interactive.
+If the student asks to change the topic significantly, guide them on how it aligns with their field.";
+
+        // Construct the full prompt for the AI
+        $fullPrompt = $systemPrompt . "\n\nChat History:\n";
+        foreach ($messages as $msg) {
+            $role = ucfirst($msg['role']);
+            $fullPrompt .= "{$role}: {$msg['content']}\n";
+        }
+        $fullPrompt .= "Assistant:";
+
+        // Stream the response
+        $headers = [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ];
+
+        return response()->stream(function () use ($fullPrompt, $project, $sessionId, $topic, $messages) {
+            $aiContentAccumulated = "";
+            $startTime = microtime(true);
+            
+            try {
+                $options = [
+                    'model' => 'gpt-4o-mini',
+                    'temperature' => 0.7,
+                    'max_tokens' => 1000,
+                ];
+
+                foreach ($this->aiGenerator->streamGenerate($fullPrompt, $options) as $chunk) {
+                    $aiContentAccumulated .= $chunk;
+                    echo "data: " . json_encode(['content' => $chunk]) . "\n\n";
+                    
+                    if (ob_get_level() > 0) ob_flush();
+                    flush();
+                }
+                
+                // 2. Store AI Message (after generation)
+                $duration = microtime(true) - $startTime;
+                
+                // Count words in AI response for billing
+                $wordsUsed = str_word_count(strip_tags($aiContentAccumulated));
+                
+                try {
+                    \App\Models\ChatConversation::create([
+                        'user_id' => auth()->id(),
+                        'project_id' => $project->id,
+                        'chapter_number' => null,
+                        'session_id' => $sessionId,
+                        'message_order' => count($messages), 
+                        'message_type' => 'ai',
+                        'task_type' => 'topic_refinement',
+                        'content' => $aiContentAccumulated,
+                        'context_data' => ['topic_id' => $topic['id'] ?? null],
+                        'ai_model' => $options['model'],
+                        'tokens_used' => $wordsUsed,
+                        'response_time' => $duration,
+                    ]);
+                } catch (\Exception $e) {
+                     Log::error('Failed to log AI chat message', ['error' => $e->getMessage()]);
+                }
+                
+                // 3. Deduct words from user balance
+                if ($wordsUsed > 0) {
+                    try {
+                        $wordBalanceService = app(WordBalanceService::class);
+                        $user = auth()->user();
+                        
+                        $wordBalanceService->deductForGeneration(
+                            $user,
+                            $wordsUsed,
+                            sprintf('Topic Lab chat: %s', Str::limit(strip_tags($topic['title'] ?? 'Topic Discussion'), 50)),
+                            'topic_chat',
+                            $project->id,
+                            [
+                                'session_id' => $sessionId,
+                                'topic_id' => $topic['id'] ?? null,
+                                'model' => $options['model'],
+                                'response_time' => $duration,
+                            ]
+                        );
+                        
+                        Log::info('Words deducted for topic chat', [
+                            'user_id' => $user->id,
+                            'project_id' => $project->id,
+                            'words' => $wordsUsed,
+                            'new_balance' => $user->word_balance,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to deduct words for topic chat', [
+                            'user_id' => auth()->id(),
+                            'words' => $wordsUsed,
+                            'error' => $e->getMessage(),
+                        ]);
+                        // Don't fail the request if word deduction fails
+                    }
+                }
+                
+                echo "data: " . json_encode(['done' => true, 'words_used' => $wordsUsed]) . "\n\n";
+                flush();
+                
+            } catch (\Exception $e) {
+                echo "data: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
+                flush();
+            }
+        }, 200, $headers);
+    }
+
+    /**
+     * Rename a chat session
+     */
+    public function renameSession(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|uuid',
+            'name' => 'required|string|max:100',
+        ]);
+
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        // Update all messages in this session with the new name
+        $updated = \App\Models\ChatConversation::where('session_id', $validated['session_id'])
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->update(['session_name' => $validated['name']]);
+
+        if ($updated > 0) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Session renamed successfully',
+                'name' => $validated['name'],
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Session not found',
+        ], 404);
+    }
+
+    /**
+     * Save a refined topic from chat to the project_topics table
+     */
+    public function saveRefinedTopic(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:500',
+            'description' => 'nullable|string|max:5000',
+            'session_id' => 'nullable|uuid',
+        ]);
+
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        // Get project context details
+        $faculty = $project->settings['faculty'] ?? $project->field_of_study;
+        $department = $project->settings['department'] ?? '';
+        
+        // Create topic with full project context
+        $topic = ProjectTopic::create([
+            'user_id' => auth()->id(),
+            'project_id' => $project->id,
+            'field_of_study' => $project->field_of_study ?? '',
+            'faculty' => $faculty,
+            'department' => $department,
+            'course' => $project->course ?? '',
+            'university' => $project->university ?? '',
+            'academic_level' => $project->type ?? 'undergraduate',
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? '',
+            'difficulty' => 'Intermediate',
+            'timeline' => '3-6 months',
+            'resource_level' => 'Medium',
+            'feasibility_score' => 75,
+            'keywords' => [],
+            'research_type' => 'qualitative',
+        ]);
+
+        Log::info('Refined topic saved from chat', [
+            'project_id' => $project->id,
+            'topic_id' => $topic->id,
+            'title' => $validated['title'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Topic saved successfully',
+            'topic' => [
+                'id' => $topic->id,
+                'title' => $topic->title,
+                'description' => $topic->description,
+            ],
+        ]);
+    }
+
     private function sendSSEMessage(string $type, array $data = []): void
     {
         $message = [
@@ -1741,54 +2221,40 @@ The description should help a student understand what this topic involves and wh
     }
 
     /**
-     * Get previously generated topics for this specific project's academic context
-     * Returns enriched topics with full metadata for display
+     * Get previously generated topics for this project
+     * Returns ALL topics without any filtering
      */
     private function getProjectGeneratedTopics(Project $project): array
     {
-        $context = $this->getProjectAcademicContext($project);
-        $faculty = $context['faculty'];
-        $department = $context['department'];
+        // Get ALL topics in the database, ordered by most recent
+        $savedTopics = ProjectTopic::orderBy('created_at', 'desc')
+            ->get();
 
-        // Look for topics with exact academic context match
-        $savedTopics = ProjectTopic::where('course', $context['course'])
-            ->where('academic_level', $context['academic_level'])
-            ->where('university', $context['university'])
-            ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
-            ->when($department, fn ($q) => $q->where('department', $department))
-            ->when($context['field_of_study'], fn ($q) => $q->where('field_of_study', $context['field_of_study']))
-            ->orderBy('created_at', 'desc')
-            ->limit(10)
-            ->get()
-            ->map(function ($topic, $index) {
-                return [
-                    'id' => $index + 1,
-                    'title' => $topic->title,
-                    'description' => $this->cleanTopicDescription(
-                        $this->convertMarkdownToHtml(
-                            $topic->description ?? 'Research topic in '.$topic->field_of_study
-                        )
-                    ),
-                    'difficulty' => $topic->difficulty ?? 'Intermediate',
-                    'timeline' => $topic->timeline ?? '6-9 months',
-                    'resource_level' => $topic->resource_level ?? 'Medium',
-                    'feasibility_score' => $topic->feasibility_score ?? 75,
-                    'keywords' => $topic->keywords ?? [],
-                    'research_type' => $topic->research_type ?? 'Applied Research',
-                ];
-            })
-            ->toArray();
+        $enrichedTopics = $savedTopics->map(function ($topic) {
+            return [
+                'id' => $topic->id,
+                'title' => $topic->title,
+                'description' => $this->cleanTopicDescription(
+                    $this->convertMarkdownToHtml(
+                        $topic->description ?? 'Research topic in '.$topic->field_of_study
+                    )
+                ),
+                'difficulty' => $topic->difficulty ?? 'Intermediate',
+                'timeline' => $topic->timeline ?? '6-9 months',
+                'resource_level' => $topic->resource_level ?? 'Medium',
+                'feasibility_score' => $topic->feasibility_score ?? 75,
+                'keywords' => $topic->keywords ?? [],
+                'research_type' => $topic->research_type ?? 'Applied Research',
+            ];
+        })->toArray();
 
-        Log::info('Retrieved saved project topics', [
+        Log::info('Retrieved all user topics for library', [
             'project_id' => $project->id,
-            'course' => $context['course'],
-            'university' => $context['university'],
-            'faculty' => $faculty,
-            'department' => $department,
-            'saved_topics_count' => count($savedTopics),
+            'user_id' => $project->user_id,
+            'total_topics' => count($enrichedTopics),
         ]);
 
-        return $savedTopics;
+        return $enrichedTopics;
     }
 
     /**
@@ -1904,6 +2370,8 @@ The description should help a student understand what this topic involves and wh
                     $descriptionHtml = $this->convertMarkdownToHtml($description);
 
                     ProjectTopic::create([
+                        'user_id' => $project->user_id,
+                        'project_id' => $project->id,
                         'field_of_study' => $context['field_of_study'],
                         'faculty' => $context['faculty'],
                         'department' => $context['department'],
@@ -1969,6 +2437,28 @@ The description should help a student understand what this topic involves and wh
 
             return nl2br(e($content));
         }
+    }
+
+    /**
+     * Lightly sanitize topic descriptions while preserving basic formatting.
+     */
+    private function cleanTopicDescription(?string $description): string
+    {
+        if (! $description) {
+            return '';
+        }
+
+        // Remove script/style tags and keep basic text formatting
+        $description = preg_replace('#<(script|style)[^>]*>.*?</\1>#is', '', $description) ?? $description;
+
+        // Allow basic tags only
+        $allowedTags = '<p><br><strong><em><ul><ol><li><b><i>';
+        $sanitized = strip_tags($description, $allowedTags);
+
+        // Collapse excess whitespace
+        $sanitized = preg_replace('/\s+/', ' ', $sanitized) ?? $sanitized;
+
+        return trim($sanitized);
     }
 
     /**

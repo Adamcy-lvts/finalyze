@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import WordBalanceDisplay from '@/components/WordBalanceDisplay.vue';
+import ThemeToggle from '@/components/ThemeToggle.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItemType } from '@/types';
 import { useWordBalance } from '@/composables/useWordBalance';
@@ -20,8 +21,7 @@ const { wordBalance } = useWordBalance();
 
 <template>
     <header
-        class="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/70 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4"
-    >
+        class="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/70 px-6 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 md:px-4">
         <div class="flex items-center gap-2">
             <SidebarTrigger class="-ml-1" />
             <template v-if="breadcrumbs && breadcrumbs.length > 0">
@@ -29,9 +29,10 @@ const { wordBalance } = useWordBalance();
             </template>
         </div>
 
-        <!-- Credit Balance Display -->
-        <div v-if="wordBalance" class="ml-auto">
-            <WordBalanceDisplay :balance="wordBalance" compact />
+        <!-- Right Side Actions -->
+        <div class="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <WordBalanceDisplay v-if="wordBalance" :balance="wordBalance" compact />
         </div>
     </header>
 </template>

@@ -5,7 +5,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Coins, Folder, FolderOpen, Home, Plus } from 'lucide-vue-next';
+import { BookOpen, Coins, Folder, FolderOpen, Home, Plus, Library } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
@@ -18,6 +18,11 @@ const mainNavItems: NavItem[] = [
         title: 'My Projects',
         href: '/projects',
         icon: FolderOpen,
+    },
+    {
+        title: 'Topic Library',
+        href: '/projects/topics',
+        icon: Library,
     },
     {
         title: 'New Project',

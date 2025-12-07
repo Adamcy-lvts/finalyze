@@ -10,6 +10,8 @@ class ProjectTopic extends Model
     use HasFactory;
 
     protected $fillable = [
+        'user_id',
+        'project_id',
         'field_of_study',
         'faculty',
         'department',
@@ -34,6 +36,16 @@ class ProjectTopic extends Model
         'selection_count' => 'integer',
         'feasibility_score' => 'integer',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class);
+    }
 
     /**
      * Scope to find topics that match project criteria (exact academic context match)

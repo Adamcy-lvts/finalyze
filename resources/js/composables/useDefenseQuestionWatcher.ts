@@ -192,6 +192,7 @@ export function useDefenseQuestionWatcher(
         stopWatching,
         forceCheck,
         resetGenerationTrigger,
+        markGenerationTriggered,
         getStatusMessage,
         countWords,
 

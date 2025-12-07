@@ -40,12 +40,14 @@ class DefenseController extends Controller
             'limit' => 'nullable|integer|min:1|max:20',
             'force_refresh' => 'nullable|boolean',
             'difficulty' => 'nullable|string', // Changed from specific enum
+            'skip_generation' => 'nullable|boolean',
         ]);
 
         // Provide defaults
         $chapterNumber = isset($validated['chapter_number']) ? (int) $validated['chapter_number'] : null;
         $limit = isset($validated['limit']) ? (int) $validated['limit'] : 5;
         $forceRefresh = isset($validated['force_refresh']) ? (bool) $validated['force_refresh'] : false;
+        $skipGeneration = isset($validated['skip_generation']) ? (bool) $validated['skip_generation'] : false;
 
         // Log the request for debugging
         Log::info('Defense questions requested', [
@@ -53,6 +55,7 @@ class DefenseController extends Controller
             'chapter_number' => $chapterNumber,
             'limit' => $limit,
             'force_refresh' => $forceRefresh,
+            'skip_generation' => $skipGeneration,
         ]);
 
         // Cache key
@@ -87,7 +90,7 @@ class DefenseController extends Controller
             ->get();
 
         // Check if we need to generate more
-        if ($existingQuestions->count() < 3) {
+        if (! $skipGeneration && $existingQuestions->count() < 3) {
             // For now, generate synchronously if no questions exist
             if ($existingQuestions->isEmpty()) {
                 $existingQuestions = $this->generateQuestionsSynchronously($project, $chapterNumber, 3);

@@ -81,6 +81,14 @@ class ProjectStateMiddleware
             return $next($request);
         }
 
+        // Skip topic lab and chat routes entirely
+        if ($request->route()->getName() === 'topics.lab' || 
+            $request->route()->getName() === 'topics.chat' ||
+            $request->route()->getName() === 'topics.chat.rename' ||
+            $request->route()->getName() === 'topics.chat.save-topic') {
+            return $next($request);
+        }
+
         // Skip guidance streaming routes entirely
         if ($request->is('api/projects/*/guidance/stream-bulk-generation')) {
             if (config('app.debug')) {
@@ -113,6 +121,11 @@ class ProjectStateMiddleware
 
         // Skip middleware for project mode updates
         if ($request->is('projects/*/update-mode')) {
+            return $next($request);
+        }
+
+        // Skip manual complete action
+        if ($request->is('projects/*/complete') || $request->route()->getName() === 'projects.complete') {
             return $next($request);
         }
 

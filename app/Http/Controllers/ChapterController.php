@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ChapterStatus;
 use App\Jobs\CollectPapersForProject;
 use App\Models\Chapter;
 use App\Models\ChatConversation;
@@ -672,6 +673,31 @@ class ChapterController extends Controller
             'chapter' => $chapter,
             'word_count' => $chapter->word_count,
         ]);
+    }
+
+    /**
+     * Mark a chapter as complete once minimum word count is met.
+     */
+    public function markComplete(Request $request, Project $project, int $chapterNumber)
+    {
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+
+        $targetWordCount = $chapter->target_word_count ?? $this->getChapterWordCount($project, $chapterNumber);
+        $minimumWords = max(500, (int) round($targetWordCount * 0.8));
+
+        if ($chapter->word_count < $minimumWords) {
+            return redirect()->back()->with('error', "Chapter must have at least {$minimumWords} words to be marked as complete. Current: {$chapter->word_count} words");
+        }
+
+        $chapter->update([
+            'status' => ChapterStatus::Completed->value,
+        ]);
+
+        return redirect()->back()->with('success', 'Chapter marked as complete successfully!');
     }
 
     /**

@@ -168,6 +168,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
     Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+    Route::get('/projects/topics', [TopicController::class, 'topicsIndex'])->name('projects.topics.index');
 
     // Wizard progress saving - AJAX endpoint to save progress as user fills form
     Route::post('/projects/wizard/save-progress', [ProjectController::class, 'saveWizardProgress'])->name('projects.save-wizard-progress');
@@ -224,6 +225,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Topic management routes - also need state checking
         Route::post('/projects/{project}/topics/generate', [TopicController::class, 'generate'])->name('topics.generate');
         Route::get('/projects/{project}/topics/stream', [TopicController::class, 'stream'])->name('topics.stream');
+        Route::get('/projects/{project}/topics/lab', [TopicController::class, 'lab'])->name('topics.lab');
+        Route::post('/projects/{project}/topics/chat', [TopicController::class, 'chat'])->name('topics.chat');
+        Route::post('/projects/{project}/topics/chat/rename', [TopicController::class, 'renameSession'])->name('topics.chat.rename');
+        Route::post('/projects/{project}/topics/chat/save-topic', [TopicController::class, 'saveRefinedTopic'])->name('topics.chat.save-topic');
         Route::post('/projects/{project}/topics/select', [TopicController::class, 'select'])->name('topics.select');
         Route::post('/projects/{project}/topics/approve', [TopicController::class, 'approve'])->name('topics.approve');
         Route::post('/projects/{project}/go-back-to-wizard', [ProjectController::class, 'goBackToWizard'])->name('projects.go-back-to-wizard');
@@ -245,6 +250,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/projects/{project}/chapters/{chapter}/stream', [ChapterController::class, 'stream'])
             ->middleware(['prevent.duplicate:30', 'check.words'])
             ->name('chapters.stream');
+        Route::post('/projects/{project}/chapters/{chapter}/mark-complete', [ChapterController::class, 'markComplete'])
+            ->name('chapters.mark-complete');
         Route::post('/projects/{project}/chapters/save', [ChapterController::class, 'save'])->name('chapters.save');
         Route::post('/projects/{project}/chapters/{chapter}/chat', [ChapterController::class, 'chat'])
             ->middleware(['prevent.duplicate:10', 'check.words'])

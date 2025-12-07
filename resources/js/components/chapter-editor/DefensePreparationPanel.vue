@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import {
     AlertCircle,
     ChevronDown,
@@ -56,10 +57,12 @@ interface Props {
         word_count: number;
     };
     defenseWatcher?: DefenseWatcher;
+    autoGenerateEnabled?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    showDefensePrep: true
+    showDefensePrep: true,
+    autoGenerateEnabled: false
 });
 
 const emit = defineEmits<{
@@ -68,6 +71,7 @@ const emit = defineEmits<{
     'refresh': [];
     'mark-helpful': [questionId: number, helpful: boolean];
     'hide-question': [questionId: number];
+    'toggle-auto-generate': [enabled: boolean];
 }>();
 
 // Local state
@@ -169,6 +173,18 @@ watch(() => props.questions, () => {
                         <!-- Additional Info -->
                         <div class="text-center">
                             <p class="text-xs text-blue-700 dark:text-blue-300">💡 Click "Generate Questions" below to create personalized defense questions</p>
+                        </div>
+                    </div>
+
+                    <!-- Auto/Manual Toggle -->
+                    <div class="flex items-center justify-between rounded-md border border-dashed border-border/60 px-3 py-2 bg-muted/30">
+                        <div class="flex flex-col text-xs text-muted-foreground">
+                            <span class="font-semibold text-foreground">Generation Mode</span>
+                            <span>{{ autoGenerateEnabled ? 'Auto generate when ready' : 'Manual - click to generate' }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] text-muted-foreground">{{ autoGenerateEnabled ? 'Auto' : 'Manual' }}</span>
+                            <Switch :checked="autoGenerateEnabled" @update:checked="emit('toggle-auto-generate', $event)" />
                         </div>
                     </div>
 

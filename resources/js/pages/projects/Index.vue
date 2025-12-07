@@ -339,65 +339,87 @@ const bulkDeleteProjects = async () => {
                 <!-- Header -->
                 <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
                     <div>
-                        <h1 class="text-3xl font-bold tracking-tight text-foreground">Projects</h1>
+                        <h1
+                            class="text-3xl font-bold tracking-tight text-foreground bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                            Projects</h1>
                         <p class="text-muted-foreground mt-1">Manage and track your research progress.</p>
                     </div>
-                    <Button @click="() => router.visit(route('projects.create'))" size="lg" class="shadow-sm">
-                        <Plus class="mr-2 h-4 w-4" />
-                        New Project
-                    </Button>
+                    <div class="flex flex-wrap gap-2">
+                        <Button variant="outline" @click="() => router.visit(route('projects.topics.index'))"
+                            class="border-primary/20 hover:bg-primary/5 hover:text-primary transition-colors">
+                            <BookOpen class="mr-2 h-4 w-4" />
+                            Topic Library
+                        </Button>
+                        <Button @click="() => router.visit(route('projects.create'))" size="lg"
+                            class="shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
+                            <Plus class="mr-2 h-4 w-4" />
+                            New Project
+                        </Button>
+                    </div>
                 </div>
 
                 <!-- Stats -->
                 <div v-if="totalProjects > 0" class="grid gap-4 md:grid-cols-4 mb-8">
-                    <Card class="shadow-sm">
+                    <Card
+                        class="shadow-sm border-border/50 bg-card/50 backdrop-blur-sm relative overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
+                        <div
+                            class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500/0 via-blue-500/50 to-blue-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                         <CardContent class="p-6 flex items-center gap-4">
                             <div
-                                class="p-3 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+                                class="p-3 rounded-xl bg-blue-500/10 text-blue-500 ring-1 ring-blue-500/20 shadow-[0_0_15px_-3px_rgba(59,130,246,0.3)] group-hover:scale-110 transition-transform duration-300">
                                 <FileText class="h-6 w-6" />
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-muted-foreground">Total Projects</p>
-                                <h3 class="text-2xl font-bold">{{ totalProjects }}</h3>
+                                <h3 class="text-2xl font-bold tracking-tight">{{ totalProjects }}</h3>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card class="shadow-sm">
+                    <Card
+                        class="shadow-sm border-border/50 bg-card/50 backdrop-blur-sm relative overflow-hidden group hover:border-green-500/30 transition-all duration-300">
+                        <div
+                            class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-green-500/0 via-green-500/50 to-green-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                         <CardContent class="p-6 flex items-center gap-4">
                             <div
-                                class="p-3 rounded-full bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400">
+                                class="p-3 rounded-xl bg-green-500/10 text-green-500 ring-1 ring-green-500/20 shadow-[0_0_15px_-3px_rgba(34,197,94,0.3)] group-hover:scale-110 transition-transform duration-300">
                                 <Star class="h-6 w-6" />
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-muted-foreground">Active</p>
-                                <h3 class="text-2xl font-bold">{{ activeProjects }}</h3>
+                                <h3 class="text-2xl font-bold tracking-tight">{{ activeProjects }}</h3>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card class="shadow-sm">
+                    <Card
+                        class="shadow-sm border-border/50 bg-card/50 backdrop-blur-sm relative overflow-hidden group hover:border-purple-500/30 transition-all duration-300">
+                        <div
+                            class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-purple-500/0 via-purple-500/50 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                         <CardContent class="p-6 flex items-center gap-4">
                             <div
-                                class="p-3 rounded-full bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
+                                class="p-3 rounded-xl bg-purple-500/10 text-purple-500 ring-1 ring-purple-500/20 shadow-[0_0_15px_-3px_rgba(168,85,247,0.3)] group-hover:scale-110 transition-transform duration-300">
                                 <CheckCircle class="h-6 w-6" />
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-muted-foreground">Completed</p>
-                                <h3 class="text-2xl font-bold">{{ completedProjects }}</h3>
+                                <h3 class="text-2xl font-bold tracking-tight">{{ completedProjects }}</h3>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card class="shadow-sm">
+                    <Card
+                        class="shadow-sm border-border/50 bg-card/50 backdrop-blur-sm relative overflow-hidden group hover:border-orange-500/30 transition-all duration-300">
+                        <div
+                            class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orange-500/0 via-orange-500/50 to-orange-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                         <CardContent class="p-6 flex items-center gap-4">
                             <div
-                                class="p-3 rounded-full bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400">
+                                class="p-3 rounded-xl bg-orange-500/10 text-orange-500 ring-1 ring-orange-500/20 shadow-[0_0_15px_-3px_rgba(249,115,22,0.3)] group-hover:scale-110 transition-transform duration-300">
                                 <TrendingUp class="h-6 w-6" />
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-muted-foreground">Avg Progress</p>
-                                <h3 class="text-2xl font-bold">{{ averageProgress }}%</h3>
+                                <h3 class="text-2xl font-bold tracking-tight">{{ averageProgress }}%</h3>
                             </div>
                         </CardContent>
                     </Card>
@@ -405,10 +427,12 @@ const bulkDeleteProjects = async () => {
 
                 <!-- Filters & Toolbar -->
                 <div v-if="totalProjects > 0" class="space-y-4 mb-6">
-                    <div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                    <div
+                        class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-1 rounded-xl">
                         <!-- Left: Search & Select All -->
                         <div class="flex items-center gap-4 w-full md:w-auto">
-                            <div class="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md border">
+                            <div
+                                class="flex items-center gap-2 px-3 py-2 bg-card/50 border border-border/50 rounded-lg hover:border-primary/20 transition-colors">
                                 <Checkbox :checked="selectAllState"
                                     @update:checked="(val: boolean | 'indeterminate') => selectAllState = val"
                                     id="select-all" />
@@ -416,18 +440,19 @@ const bulkDeleteProjects = async () => {
                                     Select All
                                 </label>
                             </div>
-                            <div class="relative flex-1 md:w-64">
-                                <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <div class="relative flex-1 md:w-72 group">
+                                <Search
+                                    class="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                                 <Input v-model="searchQuery" placeholder="Search projects..."
-                                    class="pl-9 bg-background" />
+                                    class="pl-9 bg-card/50 border-border/50 focus:border-primary/50 focus:ring-primary/20 focus:bg-background transition-all" />
                             </div>
                         </div>
 
                         <!-- Right: Filters & View -->
-                        <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
                             <Select v-model="statusFilter">
-                                <SelectTrigger class="w-[140px]">
-                                    <Filter class="mr-2 h-4 w-4 text-muted-foreground" />
+                                <SelectTrigger class="w-[140px] bg-card/50 border-border/50 focus:ring-primary/20">
+                                    <Filter class="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -444,7 +469,7 @@ const bulkDeleteProjects = async () => {
                             </Select>
 
                             <Select v-model="typeFilter">
-                                <SelectTrigger class="w-[140px]">
+                                <SelectTrigger class="w-[140px] bg-card/50 border-border/50 focus:ring-primary/20">
                                     <SelectValue placeholder="Type" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -455,10 +480,10 @@ const bulkDeleteProjects = async () => {
                                 </SelectContent>
                             </Select>
 
-                            <div class="h-8 w-px bg-border mx-1 hidden md:block"></div>
+                            <div class="h-8 w-px bg-border/50 mx-1 hidden md:block"></div>
 
                             <Select v-model="sortBy">
-                                <SelectTrigger class="w-[140px]">
+                                <SelectTrigger class="w-[140px] bg-card/50 border-border/50 focus:ring-primary/20">
                                     <SelectValue placeholder="Sort by" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -469,13 +494,15 @@ const bulkDeleteProjects = async () => {
                                 </SelectContent>
                             </Select>
 
-                            <div class="flex items-center border rounded-md bg-background p-1">
-                                <Button variant="ghost" size="sm" class="h-7 px-2"
-                                    :class="{ 'bg-muted shadow-sm': viewMode === 'grid' }" @click="viewMode = 'grid'">
+                            <div class="flex items-center border border-border/50 rounded-lg bg-card/50 p-1">
+                                <Button variant="ghost" size="sm" class="h-8 px-2.5 rounded-md"
+                                    :class="{ 'bg-primary/10 text-primary shadow-sm': viewMode === 'grid' }"
+                                    @click="viewMode = 'grid'">
                                     <Grid3x3 class="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm" class="h-7 px-2"
-                                    :class="{ 'bg-muted shadow-sm': viewMode === 'list' }" @click="viewMode = 'list'">
+                                <Button variant="ghost" size="sm" class="h-8 px-2.5 rounded-md"
+                                    :class="{ 'bg-primary/10 text-primary shadow-sm': viewMode === 'list' }"
+                                    @click="viewMode = 'list'">
                                     <List class="h-4 w-4" />
                                 </Button>
                             </div>
@@ -484,7 +511,7 @@ const bulkDeleteProjects = async () => {
 
                     <!-- Bulk Actions (Floating) -->
                     <div v-if="hasSelectedProjects"
-                        class="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded-lg text-primary animate-in fade-in slide-in-from-top-2">
+                        class="flex items-center justify-between p-3 bg-primary/10 border border-primary/20 rounded-lg text-primary animate-in fade-in slide-in-from-top-2 shadow-lg shadow-primary/5">
                         <span class="text-sm font-medium flex items-center gap-2">
                             <CheckCircle class="h-4 w-4" />
                             {{ selectedProjectsCount }} project{{ selectedProjectsCount === 1 ? '' : 's' }} selected
@@ -494,7 +521,8 @@ const bulkDeleteProjects = async () => {
                                 class="hover:bg-primary/10 hover:text-primary">
                                 Cancel
                             </Button>
-                            <Button variant="destructive" size="sm" @click="showBulkDeleteConfirmation = true">
+                            <Button variant="destructive" size="sm" @click="showBulkDeleteConfirmation = true"
+                                class="shadow-sm">
                                 <Trash2 class="mr-2 h-4 w-4" />
                                 Delete Selected
                             </Button>
@@ -510,29 +538,34 @@ const bulkDeleteProjects = async () => {
                 <!-- Projects Display -->
                 <div v-if="filteredProjects.length > 0">
                     <!-- Grid View -->
-                    <div v-if="viewMode === 'grid'" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <div v-if="viewMode === 'grid'" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 pb-12">
                         <Card v-for="project in filteredProjects" :key="project.id" :class="[
-                            'group relative cursor-pointer transition-all duration-300 hover:shadow-md border-muted/60',
+                            'group relative cursor-pointer transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 border-border/50 bg-gradient-to-b from-card/80 to-card/40 backdrop-blur-sm hover:border-primary/50 overflow-hidden',
                             {
-                                'ring-2 ring-primary ring-offset-2': selectedProjects.includes(project.id)
+                                'ring-2 ring-primary ring-offset-2 ring-offset-background': selectedProjects.includes(project.id)
                             },
                         ]" @click.stop="() => router.visit(route('projects.show', project.slug))">
+
+                            <!-- Hover Gradient Overlay -->
+                            <div
+                                class="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
                             <!-- Selection Overlay (Mobile/Hover) -->
-                            <div class="absolute top-3 left-3 z-10">
+                            <div class="absolute top-3 left-3 z-10" @click.stop>
                                 <Checkbox :checked="selectedProjects.includes(project.id)"
-                                    @update:checked="() => toggleProjectSelection(project.id)" @click.stop
-                                    class="bg-background/80 backdrop-blur-sm transition-opacity"
+                                    @update:checked="() => toggleProjectSelection(project.id)"
+                                    class="bg-background/80 backdrop-blur-sm transition-opacity border-muted-foreground/30 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                                     :class="{ 'opacity-0 group-hover:opacity-100': !selectedProjects.includes(project.id) }" />
                             </div>
 
-                            <CardHeader class="pb-3 pt-12">
-                                <div class="absolute top-3 right-3">
+                            <CardHeader class="pb-3 pt-10 relative">
+                                <div class="absolute top-3 right-3 z-10">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger as-child>
                                             <Button variant="ghost" size="icon"
-                                                class="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                class="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background/80"
                                                 @click.stop>
-                                                <MoreVertical class="h-4 w-4" />
+                                                <MoreVertical class="h-4 w-4 text-muted-foreground" />
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" class="w-48">
@@ -555,125 +588,136 @@ const bulkDeleteProjects = async () => {
                                     </DropdownMenu>
                                 </div>
 
-                                <div class="mb-2">
-                                    <component :is="getProjectIcon(project.type)"
-                                        class="h-8 w-8 text-primary/80 mb-3" />
+                                <div class="mb-4">
+                                    <div
+                                        class="inline-flex p-2.5 rounded-lg bg-primary/5 text-primary mb-3 ring-1 ring-primary/10 group-hover:bg-primary/10 group-hover:ring-primary/20 transition-all">
+                                        <component :is="getProjectIcon(project.type)" class="h-6 w-6" />
+                                    </div>
                                     <CardTitle
-                                        class="text-lg font-semibold line-clamp-2 group-hover:text-primary transition-colors leading-tight">
-                                        <SafeHtmlText
-                                            as="span"
-                                            class="block"
-                                            :content="project.title || 'Untitled Project'"
-                                        />
+                                        class="text-lg font-bold text-foreground group-hover:text-primary transition-colors leading-tight">
+                                        <SafeHtmlText as="span" class="block"
+                                            :content="project.title || 'Untitled Project'" />
                                     </CardTitle>
                                 </div>
                             </CardHeader>
 
-                            <CardContent>
-                                <div class="flex items-center gap-2 mb-4">
-                                    <Badge variant="secondary" class="capitalize font-normal">
+                            <CardContent class="relative z-0">
+                                <div class="flex flex-wrap items-center gap-2 mb-5">
+                                    <Badge variant="outline"
+                                        class="border-border bg-background/50 backdrop-blur-sm text-xs py-0.5">
+                                        <component :is="getProjectIcon(project.type)" class="h-3 w-3 mr-1 opacity-70" />
                                         {{ project.type }}
                                     </Badge>
-                                    <Badge variant="outline" class="border-0 bg-muted/50 text-xs">
-                                        {{ project.mode === 'manual' ? 'AI Assisted' : 'AI Generated' }}
-                                    </Badge>
+
                                     <Badge :class="getStatusColor(project.status)"
-                                        class="capitalize border-0 font-normal">
+                                        class="capitalize border-0 font-medium px-2 py-0.5 shadow-sm">
                                         {{ project.status.replace('_', ' ') }}
                                     </Badge>
                                 </div>
 
-                                <div class="space-y-2">
-                                    <div class="flex justify-between text-xs text-muted-foreground">
-                                        <span>Progress</span>
-                                        <span class="font-medium text-foreground">{{ project.progress }}%</span>
+                                <div class="space-y-3">
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-muted-foreground font-medium">Progress</span>
+                                        <span class="font-bold text-foreground">{{ project.progress }}%</span>
                                     </div>
-                                    <Progress :model-value="project.progress" class="h-1.5" />
+                                    <div class="relative h-2 w-full overflow-hidden rounded-full bg-secondary/50">
+                                        <div class="h-full bg-gradient-to-r from-primary to-primary/80 transition-all duration-500 ease-out"
+                                            :style="{ width: `${project.progress}%` }"></div>
+                                    </div>
                                 </div>
 
-                                <div class="mt-3">
-                                    <Button v-if="project.status !== 'completed'" size="xs" variant="outline"
-                                        class="h-7 px-2" @click.stop="completeProject(project)">
-                                        Mark as Completed
+                                <div class="mt-4 flex items-center justify-between">
+                                    <Button v-if="project.status !== 'completed'" size="sm" variant="outline"
+                                        class="h-8 text-xs border-primary/20 text-primary/80 hover:text-primary hover:bg-primary/5 hover:border-primary/40 transition-colors w-full"
+                                        @click.stop="completeProject(project)">
+                                        Mark Completed
                                     </Button>
-                                    <Badge v-else variant="outline"
-                                        class="border-green-200 bg-green-500/10 text-green-700 capitalize">
+                                    <div v-else
+                                        class="w-full flex items-center justify-center h-8 bg-green-500/10 border border-green-500/20 rounded-md text-green-600 text-xs font-medium">
+                                        <CheckCircle class="h-3.5 w-3.5 mr-1.5" />
                                         Completed
-                                    </Badge>
+                                    </div>
                                 </div>
 
                                 <div
-                                    class="mt-4 pt-4 border-t flex items-center justify-between text-xs text-muted-foreground">
-                                    <div class="flex items-center gap-1">
-                                        <BookOpen class="h-3 w-3" />
+                                    class="mt-4 pt-4 border-t border-border/50 flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                                    <div class="flex items-center gap-1.5">
+                                        <BookOpen class="h-3.5 w-3.5 opacity-70" />
                                         <span v-if="project.total_chapters > 0">
-                                            {{ project.completed_chapters }} / {{ project.total_chapters }} Chapters
+                                            {{ project.completed_chapters }}/{{ project.total_chapters }} Chapters
                                         </span>
-                                        <span v-else>No chapters yet</span>
+                                        <span v-else>No chapters</span>
                                     </div>
-                                    <span>{{ formatDate(project.created_at) }}</span>
+                                    <span class="opacity-70">{{ formatDate(project.created_at) }}</span>
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
 
                     <!-- List View -->
-                    <div v-else class="space-y-3">
+                    <div v-else class="space-y-3 pb-12">
                         <div v-for="project in filteredProjects" :key="project.id" :class="[
-                            'group flex items-center gap-4 p-4 bg-card rounded-lg border transition-all duration-200 hover:shadow-md cursor-pointer',
+                            'group flex items-center gap-4 p-4 bg-card/60 backdrop-blur-sm rounded-xl border border-border/50 transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 cursor-pointer',
                             {
-                                'ring-2 ring-primary ring-offset-1': selectedProjects.includes(project.id)
+                                'ring-2 ring-primary ring-offset-1 ring-offset-background': selectedProjects.includes(project.id)
                             }
                         ]" @click.stop="() => router.visit(route('projects.show', project.slug))">
-                            <div class="flex items-center h-full" @click.stop>
+                            <div class="flex items-center h-full pl-2" @click.stop>
                                 <Checkbox :checked="selectedProjects.includes(project.id)"
+                                    class="border-muted-foreground/30 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                                     @update:checked="() => toggleProjectSelection(project.id)" />
                             </div>
 
-                            <div class="p-2 rounded-md bg-muted/50 text-muted-foreground">
+                            <div class="p-2.5 rounded-lg bg-primary/5 text-primary ring-1 ring-primary/10">
                                 <component :is="getProjectIcon(project.type)" class="h-5 w-5" />
                             </div>
 
-                            <div class="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                            <div class="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
                                 <div class="md:col-span-4">
-                                    <SafeHtmlText
-                                        as="h3"
-                                        class="font-semibold truncate group-hover:text-primary transition-colors"
-                                        :content="project.title || 'Untitled Project'"
-                                    />
-                                    <p class="text-xs text-muted-foreground flex items-center gap-2 mt-1">
-                                        <span class="capitalize">{{ project.type }}</span>
-                                        <span>•</span>
-                                        <span>Created {{ formatDate(project.created_at) }}</span>
-                                    </p>
+                                    <SafeHtmlText as="h3"
+                                        class="font-bold text-base group-hover:text-primary transition-colors"
+                                        :content="project.title || 'Untitled Project'" />
+                                    <div class="flex items-center gap-2 mt-1.5">
+                                        <Badge variant="outline"
+                                            class="text-[10px] h-5 px-1.5 border-border bg-background/50">
+                                            {{ project.type }}
+                                        </Badge>
+                                        <span class="text-xs text-muted-foreground">•</span>
+                                        <span class="text-xs text-muted-foreground">{{ formatDate(project.created_at)
+                                        }}</span>
+                                    </div>
                                 </div>
 
                                 <div class="md:col-span-3 flex items-center gap-2">
                                     <Badge :class="getStatusColor(project.status)"
-                                        class="capitalize border-0 font-normal">
+                                        class="capitalize border-0 font-medium shadow-sm">
                                         {{ project.status.replace('_', ' ') }}
                                     </Badge>
                                     <Badge v-if="project.is_active" variant="outline"
-                                        class="border-primary/30 text-primary bg-primary/5">
+                                        class="border-primary/30 text-primary bg-primary/5 shadow-[0_0_10px_-3px_rgba(59,130,246,0.3)]">
                                         Active
                                     </Badge>
                                 </div>
 
                                 <div class="md:col-span-4">
                                     <div class="flex items-center gap-3">
-                                        <Progress :model-value="project.progress" class="h-2 flex-1" />
-                                        <span class="text-xs font-medium w-10">{{ project.progress }}%</span>
+                                        <div class="flex-1 h-2 bg-secondary/50 rounded-full overflow-hidden">
+                                            <div class="h-full bg-gradient-to-r from-primary to-primary/80"
+                                                :style="{ width: `${project.progress}%` }"></div>
+                                        </div>
+                                        <span class="text-xs font-bold w-10 text-right">{{ project.progress }}%</span>
                                     </div>
                                 </div>
 
-                                <div class="md:col-span-1 flex justify-end">
+                                <div class="md:col-span-1 flex justify-end pr-2">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger as-child>
-                                            <Button variant="ghost" size="icon" class="h-8 w-8" @click.stop>
-                                                <MoreVertical class="h-4 w-4" />
+                                            <Button variant="ghost" size="icon" class="h-8 w-8 hover:bg-background/80"
+                                                @click.stop>
+                                                <MoreVertical class="h-4 w-4 text-muted-foreground" />
                                             </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
+                                        <DropdownMenuContent align="end" class="w-48">
                                             <DropdownMenuItem
                                                 @click.stop="() => router.visit(route('projects.show', project.slug))">
                                                 <Eye class="mr-2 h-4 w-4" />
@@ -698,17 +742,19 @@ const bulkDeleteProjects = async () => {
                 </div>
 
                 <!-- Empty State -->
-                <Card v-else-if="totalProjects === 0" class="border-dashed shadow-none bg-muted/30">
+                <Card v-else-if="totalProjects === 0"
+                    class="border-dashed border-border/50 shadow-none bg-card/30 backdrop-blur-sm">
                     <CardContent class="py-16 text-center">
                         <div
-                            class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-background shadow-sm">
-                            <GraduationCap class="h-10 w-10 text-muted-foreground/50" />
+                            class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/5 text-primary ring-1 ring-primary/10 shadow-lg shadow-primary/5">
+                            <GraduationCap class="h-10 w-10 opacity-80" />
                         </div>
-                        <h3 class="mb-2 text-xl font-semibold">No projects yet</h3>
+                        <h3 class="mb-2 text-xl font-bold tracking-tight">No projects yet</h3>
                         <p class="mb-6 text-muted-foreground max-w-sm mx-auto">
                             Start your academic journey by creating your first project.
                         </p>
-                        <Button size="lg" @click="() => router.visit(route('projects.create'))">
+                        <Button size="lg" @click="() => router.visit(route('projects.create'))"
+                            class="shadow-lg shadow-primary/20">
                             <Plus class="mr-2 h-5 w-5" />
                             Create Project
                         </Button>
@@ -716,10 +762,11 @@ const bulkDeleteProjects = async () => {
                 </Card>
 
                 <!-- No Search Results -->
-                <Card v-else class="border-dashed shadow-none bg-muted/30">
+                <Card v-else class="border-dashed border-border/50 shadow-none bg-card/30 backdrop-blur-sm">
                     <CardContent class="py-12 text-center">
-                        <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-background">
-                            <Search class="h-6 w-6 text-muted-foreground" />
+                        <div
+                            class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50 text-muted-foreground">
+                            <Search class="h-6 w-6 opacity-70" />
                         </div>
                         <h3 class="mb-1 text-lg font-semibold">No matches found</h3>
                         <p class="text-muted-foreground mb-4 text-sm">
@@ -741,7 +788,7 @@ const bulkDeleteProjects = async () => {
                     <DialogTitle>Delete Selected Projects</DialogTitle>
                     <DialogDescription>
                         Are you sure you want to delete {{ selectedProjectsCount }} project{{ selectedProjectsCount ===
-                        1 ? '' : 's' }}?
+                            1 ? '' : 's' }}?
                         This action cannot be undone.
                     </DialogDescription>
                 </DialogHeader>
