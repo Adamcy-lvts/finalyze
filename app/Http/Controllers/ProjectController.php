@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Projects\CreateProjectRequest;
+use App\Http\Requests\Projects\SaveWizardProgressRequest;
+use App\Http\Requests\Projects\TopicSelectionRequest;
 use App\Models\Chapter;
 use App\Models\Project;
 use App\Models\ProjectCategory;
 use App\Models\ProjectTopic;
-use App\Http\Requests\Projects\TopicSelectionRequest;
 use App\Services\Projects\ProjectReadService;
 use App\Services\Projects\ProjectTopicService;
 use App\Services\PreliminaryPageTemplateService;
@@ -148,22 +150,9 @@ class ProjectController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(CreateProjectRequest $request)
     {
-        $validated = $request->validate([
-            'project_category_id' => 'required|exists:project_categories,id',
-            'type' => 'required|in:undergraduate,postgraduate,hnd,nd',
-            'university_id' => 'required|exists:universities,id',
-            'faculty_id' => 'required|exists:faculties,id',
-            'department_id' => 'required|exists:departments,id',
-            'course' => 'required|string',
-            'field_of_study' => 'nullable|string',
-            'supervisor_name' => 'nullable|string',
-            'matric_number' => 'nullable|string',
-            'academic_session' => 'required|string',
-            'mode' => 'required|in:auto,manual',
-            'ai_assistance_level' => 'nullable|in:minimal,moderate,maximum',
-        ]);
+        $validated = $request->validated();
 
         // Get the selected project category
         $category = ProjectCategory::findOrFail($validated['project_category_id']);
@@ -267,21 +256,10 @@ class ProjectController extends Controller
      * Enhanced Save Wizard Progress with Deep Merge
      * Ensures no data is lost between saves
      */
-    public function saveWizardProgress(Request $request)
+    public function saveWizardProgress(SaveWizardProgressRequest $request)
     {
         try {
-            // Log incoming request for debugging
-            Log::info('Wizard progress request received', [
-                'user_id' => auth()->id(),
-                'request_data' => $request->all(),
-                'headers' => $request->headers->all(),
-            ]);
-
-            $validated = $request->validate([
-                'project_id' => 'nullable|exists:projects,id',
-                'step' => 'required|integer|min:1|max:3',
-                'data' => 'required|array',
-            ]);
+            $validated = $request->validated();
 
             // If data is empty array, convert to empty object for consistency
             if (empty($validated['data'])) {
