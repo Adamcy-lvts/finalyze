@@ -58,6 +58,7 @@ return [
     |
     */
     'minimum_balance' => [
+        'topic_generation' => 300,
         'chapter_generation' => 500,
         'ai_suggestion' => 100,
         'chat' => 200,

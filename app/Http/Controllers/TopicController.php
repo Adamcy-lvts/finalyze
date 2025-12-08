@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\GenerateProjectOutline;
 use App\Models\Project;
 use App\Models\ProjectTopic;
-use App\Models\WordTransaction;
+use App\Models\User;
 use App\Services\AIContentGenerator;
 use App\Services\ProjectOutlineService;
 use App\Services\Topics\TopicLibraryService;
@@ -41,7 +41,8 @@ class TopicController extends Controller
     public function __construct(
         private AIContentGenerator $aiGenerator,
         private ProjectOutlineService $outlineService,
-        private TopicLibraryService $topicLibraryService
+        private TopicLibraryService $topicLibraryService,
+        private WordBalanceService $wordBalanceService,
     ) {
         //
     }
@@ -144,6 +145,22 @@ class TopicController extends Controller
         // Load the category relationship
         $project->load('category');
 
+        $user = $request->user();
+        if (! $user) {
+            return response()->json([
+                'error' => 'Authentication required',
+            ], 401);
+        }
+        if ($user->word_balance < $this->getMinimumTopicBalance()) {
+            return response()->json([
+                'error' => 'Insufficient word balance',
+                'message' => "You need at least {$this->getMinimumTopicBalance()} words to generate topics.",
+                'balance' => $user->word_balance,
+                'required' => $this->getMinimumTopicBalance(),
+                'shortage' => max(0, $this->getMinimumTopicBalance() - $user->word_balance),
+            ], 402);
+        }
+
         // Short-circuit when AI is offline to avoid futile generation attempts
         if (! $this->aiGenerator->isAvailable()) {
             $savedTopics = $this->getProjectGeneratedTopics($project);
@@ -166,13 +183,27 @@ class TopicController extends Controller
         set_time_limit(300); // 5 minutes
 
         try {
-            $topics = $this->generateTopicsWithAI($project);
+            $result = $this->generateTopicsWithAI($project);
+            $topics = $result['topics'] ?? [];
 
             // Add metadata to topics
             $enrichedTopics = $this->enrichTopicsWithMetadata($topics, $project);
 
+            // Deduct word balance when we actually generated fresh topics
+            if (empty($result['from_cache']) && count($enrichedTopics) > 0) {
+                $this->deductTopicGenerationWords(
+                    $user,
+                    $project,
+                    $result['word_count'] ?? $this->calculateTopicWordCount($topics),
+                    count($enrichedTopics),
+                    'sync'
+                );
+            }
+
             return response()->json([
                 'topics' => $enrichedTopics,
+                'from_cache' => $result['from_cache'] ?? false,
+                'word_count' => $result['word_count'] ?? 0,
             ]);
 
         } catch (\Exception $e) {
@@ -191,6 +222,42 @@ class TopicController extends Controller
 
     public function stream(StreamTopicsRequest $request, Project $project)
     {
+        $headers = [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no', // Disable nginx buffering
+        ];
+
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->stream(function () {
+                echo 'data: '.json_encode([
+                    'type' => 'error',
+                    'message' => 'Authentication required',
+                    'error_code' => 'UNAUTHENTICATED',
+                ])."\n\n";
+                echo 'data: '.json_encode(['type' => 'end'])."\n\n";
+                flush();
+            }, 401, $headers);
+        }
+
+        if ($user->word_balance < $this->getMinimumTopicBalance()) {
+            return response()->stream(function () use ($user) {
+                echo 'data: '.json_encode([
+                    'type' => 'error',
+                    'message' => 'Insufficient word balance to generate topics.',
+                    'balance' => $user->word_balance,
+                    'required' => $this->getMinimumTopicBalance(),
+                    'shortage' => max(0, $this->getMinimumTopicBalance() - $user->word_balance),
+                    'error_code' => 'INSUFFICIENT_BALANCE',
+                ])."\n\n";
+                echo 'data: '.json_encode(['type' => 'end'])."\n\n";
+                flush();
+            }, 402, $headers);
+        }
+
         try {
             // Load the category relationship
             $project->load('category');
@@ -202,14 +269,6 @@ class TopicController extends Controller
             ]);
             throw $e;
         }
-
-        // Set up Server-Sent Events headers
-        $headers = [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no', // Disable nginx buffering
-        ];
 
         try {
             // Increase execution time limit for AI generation
@@ -396,6 +455,16 @@ class TopicController extends Controller
                     // Cache the generated topics
                     $this->storeTopicsInDatabase($topics, $project);
                     $this->trackTopicRequest($project);
+
+                    if ($wordCount > 0) {
+                        $this->deductTopicGenerationWords(
+                            $request->user(),
+                            $project,
+                            $wordCount,
+                            count($enrichedTopics),
+                            'stream'
+                        );
+                    }
 
                     // Send final result
                     $this->sendSSEMessage('complete', [
@@ -1480,7 +1549,11 @@ If the student asks to change the topic significantly, guide them on how it alig
             // Track this topic generation request for future smart decisions
             $this->trackTopicRequest($project);
 
-            return collect($cachedTopics)->pluck('topic')->toArray();
+            return [
+                'topics' => collect($cachedTopics)->pluck('topic')->toArray(),
+                'from_cache' => true,
+                'word_count' => 0,
+            ];
         }
 
         $academicContext = $this->getProjectAcademicContext($project);
@@ -1493,11 +1566,15 @@ If the student asks to change the topic significantly, guide them on how it alig
             ]);
 
             if (count($cachedTopics) > 0) {
-                return collect($cachedTopics)
-                    ->map(fn ($topic) => $topic['topic'] ?? $topic['title'] ?? $topic)
-                    ->filter()
-                    ->values()
-                    ->toArray();
+                return [
+                    'topics' => collect($cachedTopics)
+                        ->map(fn ($topic) => $topic['topic'] ?? $topic['title'] ?? $topic)
+                        ->filter()
+                        ->values()
+                        ->toArray(),
+                    'from_cache' => true,
+                    'word_count' => 0,
+                ];
             }
 
             throw new \Exception('AI services are currently unavailable. Please try again when back online.');
@@ -1566,6 +1643,8 @@ If the student asks to change the topic significantly, guide them on how it alig
             $parseEndTime = microtime(true);
             $parseDuration = ($parseEndTime - $parseStartTime) * 1000;
 
+            $wordCount = str_word_count(strip_tags($generatedContent));
+
             // Store new topics in database for future use
             $dbStartTime = microtime(true);
             $this->storeTopicsInDatabase($newTopics, $project);
@@ -1583,9 +1662,14 @@ If the student asks to change the topic significantly, guide them on how it alig
                 'topics_generated' => count($newTopics),
                 'ai_percentage' => round(($aiDuration / $totalDuration) * 100, 1).'%',
                 'timestamp' => now()->toDateTimeString(),
+                'word_count' => $wordCount,
             ]);
 
-            return $newTopics;
+            return [
+                'topics' => $newTopics,
+                'from_cache' => false,
+                'word_count' => $wordCount,
+            ];
 
         } catch (\Exception $e) {
             Log::error('AI Topic Generation Failed', [
@@ -1595,12 +1679,62 @@ If the student asks to change the topic significantly, guide them on how it alig
 
             // Fallback to cached topics if available, otherwise enhanced mock topics
             if (count($cachedTopics) > 0) {
-                return collect($cachedTopics)->map(function ($topic) {
-                    return $topic->title;
-                })->toArray();
+                return [
+                    'topics' => collect($cachedTopics)->map(function ($topic) {
+                        return $topic->title;
+                    })->toArray(),
+                    'from_cache' => true,
+                    'word_count' => 0,
+                ];
             }
 
-            return $this->generateEnhancedMockTopics($project);
+            return [
+                'topics' => $this->generateEnhancedMockTopics($project),
+                'from_cache' => true,
+                'word_count' => 0,
+            ];
+        }
+    }
+
+    private function getMinimumTopicBalance(): int
+    {
+        return (int) config('pricing.minimum_balance.topic_generation', 300);
+    }
+
+    private function calculateTopicWordCount(array $topics): int
+    {
+        return array_sum(array_map(function ($topic) {
+            $value = is_array($topic) ? ($topic['title'] ?? ($topic['topic'] ?? '')) : (string) $topic;
+
+            return $value ? str_word_count(strip_tags($value)) : 0;
+        }, $topics));
+    }
+
+    private function deductTopicGenerationWords(?User $user, Project $project, int $wordCount, int $topicCount, string $source): void
+    {
+        if (! $user || $wordCount <= 0) {
+            return;
+        }
+
+        try {
+            $this->wordBalanceService->deductForGeneration(
+                $user,
+                $wordCount,
+                sprintf('Topic generation for %s', $project->title ?? 'project'),
+                'topic_generation',
+                $project->id,
+                [
+                    'topic_count' => $topicCount,
+                    'source' => $source,
+                ]
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to deduct words for topic generation', [
+                'project_id' => $project->id,
+                'user_id' => $user->id ?? null,
+                'words' => $wordCount,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

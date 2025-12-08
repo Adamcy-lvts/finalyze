@@ -10,9 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
+import { ArrowLeft, ArrowRight, BookOpen, CheckCircle, FileText, GraduationCap, Lightbulb, Loader2, MessageSquare, RefreshCw, School } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue';
+import PurchaseModal from '@/components/PurchaseModal.vue';
+import { useWordBalance } from '@/composables/useWordBalance';
 
 interface Project {
     id: number;
@@ -59,6 +62,16 @@ const customTitle = ref('');
 const difficultyFilter = ref('all');
 const timelineFilter = ref('all');
 const expandedTopics = ref<Set<number>>(new Set());
+
+const {
+    balance,
+    showPurchaseModal,
+    requiredWordsForModal,
+    actionDescriptionForModal,
+    closePurchaseModal,
+} = useWordBalance();
+
+const minimumTopicBalance = 300;
 
 onMounted(() => {
     // Debug: Log what data we received from the backend
@@ -133,6 +146,18 @@ const getProgressPercentage = () => {
 
 const generateTopics = async () => {
     console.log('🚀 TOPIC GENERATION - Starting streaming topic generation');
+
+    if (balance.value < minimumTopicBalance) {
+        requiredWordsForModal.value = minimumTopicBalance;
+        actionDescriptionForModal.value = 'generate research topics';
+        showPurchaseModal.value = true;
+        console.warn('❌ TOPIC GENERATION - Insufficient word balance', {
+            current_balance: balance.value,
+            required: minimumTopicBalance
+        });
+        return;
+    }
+
     isGenerating.value = true;
     generatedTopics.value = [];
 
@@ -311,6 +336,19 @@ const generateTopicsWithFallback = async () => {
 
         clearTimeout(timeoutId);
 
+        if (response.status === 402) {
+            const errorData = await response.json().catch(() => null);
+            requiredWordsForModal.value = errorData?.required ?? minimumTopicBalance;
+            actionDescriptionForModal.value = 'generate research topics';
+            showPurchaseModal.value = true;
+            generationProgress.value = errorData?.message || 'Insufficient word balance to generate topics.';
+            toast('Error', {
+                description: generationProgress.value,
+            });
+            isGenerating.value = false;
+            return;
+        }
+
         if (!response.ok) {
             let errorMessage = `HTTP error! status: ${response.status}`;
             try {
@@ -380,9 +418,10 @@ const generateTitleFromTopic = (topic: string): string => {
     // Strip HTML if present
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = topic;
-    const plainText = tempDiv.textContent || tempDiv.innerText || topic;
-    
-    return plainText.length > 100 ? plainText.substring(0, 100) + '...' : plainText;
+    const plainText = (tempDiv.textContent || tempDiv.innerText || topic).trim();
+    const maxLength = 255; // Align with database column length to avoid backend errors
+
+    return plainText.length > maxLength ? plainText.slice(0, maxLength) : plainText;
 };
 
 const filteredTopics = computed(() => {
@@ -755,6 +794,7 @@ const goBackToWizard = async () => {
                                             <Label for="custom-title" class="text-sm font-medium text-foreground/80">Project Title</Label>
                                             <Input id="custom-title" v-model="customTitle"
                                                 placeholder="A concise title..."
+                                                :maxlength="255"
                                                 class="h-12 bg-muted/30 border-border/50 focus:bg-background transition-all" />
                                         </div>
 
@@ -1052,6 +1092,15 @@ const goBackToWizard = async () => {
                 </div>
             </div>
         </div>
+
+        <PurchaseModal
+            :open="showPurchaseModal"
+            :current-balance="balance"
+            :required-words="requiredWordsForModal"
+            :action="actionDescriptionForModal || 'generate research topics'"
+            @update:open="(v) => (showPurchaseModal = v)"
+            @close="closePurchaseModal"
+        />
     </AppLayout>
 </template>
 ```
