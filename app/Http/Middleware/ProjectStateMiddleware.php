@@ -64,12 +64,12 @@ class ProjectStateMiddleware
         // Skip manual editor routes entirely
         if ($request->is('projects/*/manual-editor/*') ||
             $request->is('projects/*/manual-editor/*/mark-complete') ||
-            str_starts_with($request->route()->getName() ?? '', 'projects.manual-editor.')) {
+            str_starts_with($request->route()?->getName() ?? '', 'projects.manual-editor.')) {
             return $next($request);
         }
 
         // Skip topic streaming routes entirely
-        if ($request->is('projects/*/topics/stream') || $request->route()->getName() === 'topics.stream') {
+        if ($request->is('projects/*/topics/stream') || $request->route()?->getName() === 'topics.stream') {
             if (config('app.debug')) {
                 \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for topics.stream route', [
                     'url' => $request->url(),
@@ -82,10 +82,10 @@ class ProjectStateMiddleware
         }
 
         // Skip topic lab and chat routes entirely
-        if ($request->route()->getName() === 'topics.lab' || 
-            $request->route()->getName() === 'topics.chat' ||
-            $request->route()->getName() === 'topics.chat.rename' ||
-            $request->route()->getName() === 'topics.chat.save-topic') {
+        if ($request->route()?->getName() === 'topics.lab' || 
+            $request->route()?->getName() === 'topics.chat' ||
+            $request->route()?->getName() === 'topics.chat.rename' ||
+            $request->route()?->getName() === 'topics.chat.save-topic') {
             return $next($request);
         }
 
@@ -105,8 +105,8 @@ class ProjectStateMiddleware
         // Skip bulk generation routes entirely (including API endpoints)
         if ($request->is('projects/*/bulk-generate') ||
             $request->is('api/projects/*/bulk-generate/*') ||
-            $request->route()->getName() === 'projects.bulk-generate' ||
-            str_starts_with($request->route()->getName() ?? '', 'api.projects.bulk-generate.')) {
+            $request->route()?->getName() === 'projects.bulk-generate' ||
+            str_starts_with($request->route()?->getName() ?? '', 'api.projects.bulk-generate.')) {
             if (config('app.debug')) {
                 \Illuminate\Support\Facades\Log::info('🛡️ MIDDLEWARE - Skipping for bulk generation routes', [
                     'url' => $request->url(),
@@ -125,7 +125,7 @@ class ProjectStateMiddleware
         }
 
         // Skip manual complete action
-        if ($request->is('projects/*/complete') || $request->route()->getName() === 'projects.complete') {
+        if ($request->is('projects/*/complete') || $request->route()?->getName() === 'projects.complete') {
             return $next($request);
         }
 
@@ -159,7 +159,7 @@ class ProjectStateMiddleware
             return $next($request);
         }
 
-        $currentRoute = $request->route()->getName();
+        $currentRoute = $request->route()?->getName();
         $requiredStep = $project->getNextRequiredStep();
         $projectSlug = $project->slug;
 
