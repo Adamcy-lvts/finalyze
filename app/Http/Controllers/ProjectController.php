@@ -321,12 +321,13 @@ class ProjectController extends Controller
             // Save using new step-based method
             $project->saveStepData($validated['step'], $filteredStepData);
 
-            Log::info('Updated existing project with step-based data', [
-                'project_id' => $project->id,
-                'step' => $validated['step'],
-                'step_data' => $filteredStepData,
-                'step_based_structure' => $project->getStepBasedSetupData(),
-            ]);
+            if (! app()->isProduction()) {
+                Log::info('Updated existing project with step-based data', [
+                    'project_id' => $project->id,
+                    'step' => $validated['step'],
+                    'step_data_keys' => array_keys($filteredStepData),
+                ]);
+            }
         } else {
             // CLEANUP: Ensure only one active setup project per user
             $this->cleanupSetupProjects();
@@ -353,13 +354,15 @@ class ProjectController extends Controller
 
             if ($existingSetupProject) {
                 // REUSE: Update the existing setup project instead of creating new
-                Log::info('PROJECT WIZARD - Reusing Existing Setup Project', [
-                    'user_id' => auth()->id(),
-                    'step' => $validated['step'],
-                    'reused_project_id' => $existingSetupProject->id,
-                    'existing_projects_total' => $existingProjectsCount,
-                    'reason' => 'Found existing setup project to reuse',
-                ]);
+                if (! app()->isProduction()) {
+                    Log::info('PROJECT WIZARD - Reusing Existing Setup Project', [
+                        'user_id' => auth()->id(),
+                        'step' => $validated['step'],
+                        'reused_project_id' => $existingSetupProject->id,
+                        'existing_projects_total' => $existingProjectsCount,
+                        'reason' => 'Found existing setup project to reuse',
+                    ]);
+                }
 
                 $project = $existingSetupProject;
 
@@ -372,14 +375,16 @@ class ProjectController extends Controller
                 $project->update(['is_active' => true]);
             } else {
                 // ONLY CREATE if no setup project exists at all
-                Log::info('PROJECT WIZARD - Creating New Setup Project (No Existing Found)', [
-                    'user_id' => auth()->id(),
-                    'step' => $validated['step'],
-                    'existing_projects_total' => $existingProjectsCount,
-                    'existing_setup_projects' => $setupProjectsCount,
-                    'project_type' => $projectType,
-                    'incoming_data' => $filteredStepData,
-                ]);
+                if (! app()->isProduction()) {
+                    Log::info('PROJECT WIZARD - Creating New Setup Project (No Existing Found)', [
+                        'user_id' => auth()->id(),
+                        'step' => $validated['step'],
+                        'existing_projects_total' => $existingProjectsCount,
+                        'existing_setup_projects' => $setupProjectsCount,
+                        'project_type' => $projectType,
+                        'incoming_data_keys' => array_keys($filteredStepData),
+                    ]);
+                }
 
                 // Deactivate other setup projects for this user
                 auth()->user()->projects()
@@ -407,28 +412,32 @@ class ProjectController extends Controller
                     'title' => 'Project Setup in Progress',
                 ]);
 
-                Log::info('PROJECT WIZARD - Created New Setup Project', [
-                    'project_id' => $project->id,
-                    'step' => $validated['step'],
-                    'step_data' => $filteredStepData,
-                    'status' => $project->status,
-                    'is_active' => $project->is_active,
-                    'slug' => $project->slug,
-                    'total_projects_after' => auth()->user()->projects()->count(),
-                    'step_based_structure' => $project->getStepBasedSetupData(),
-                ]);
+                if (! app()->isProduction()) {
+                    Log::info('PROJECT WIZARD - Created New Setup Project', [
+                        'project_id' => $project->id,
+                        'step' => $validated['step'],
+                        'step_data_keys' => array_keys($filteredStepData),
+                        'status' => $project->status,
+                        'is_active' => $project->is_active,
+                        'slug' => $project->slug,
+                        'total_projects_after' => auth()->user()->projects()->count(),
+                    ]);
+                }
             }
 
             // Save step data regardless of whether we reused or created
             $project->saveStepData($validated['step'], $filteredStepData);
 
-            Log::info('PROJECT WIZARD - Final Result', [
-                'project_id' => $project->id,
-                'step' => $validated['step'],
-                'final_status' => $project->fresh()->status,
-                'final_is_active' => $project->fresh()->is_active,
-                'action_taken' => $existingSetupProject ? 'reused_existing' : 'created_new',
-            ]);
+            if (! app()->isProduction()) {
+                $fresh = $project->fresh(['status', 'is_active']);
+                Log::info('PROJECT WIZARD - Final Result', [
+                    'project_id' => $project->id,
+                    'step' => $validated['step'],
+                    'final_status' => $fresh->status,
+                    'final_is_active' => $fresh->is_active,
+                    'action_taken' => $existingSetupProject ? 'reused_existing' : 'created_new',
+                ]);
+            }
         }
 
         return response()->json([
