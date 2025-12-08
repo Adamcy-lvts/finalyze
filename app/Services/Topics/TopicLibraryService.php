@@ -33,25 +33,8 @@ class TopicLibraryService
                 'faculty',
                 'course',
                 'academic_level',
-            ])
-            ->where('course', $course)
-            ->where('academic_level', $academicLevel);
+            ]);
 
-        if ($university) {
-            $query->where('university', $university);
-        }
-
-        if ($faculty) {
-            $query->where('faculty', $faculty);
-        }
-
-        if ($department) {
-            $query->where('department', $department);
-        }
-
-        if ($fieldOfStudy) {
-            $query->where('field_of_study', $fieldOfStudy);
-        }
 
         return $query
             ->latest()
