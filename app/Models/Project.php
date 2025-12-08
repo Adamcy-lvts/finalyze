@@ -555,7 +555,7 @@ class Project extends Model
         ]);
 
         if (! app()->isProduction()) {
-            $fresh = $this->fresh(['status', 'slug', 'title']);
+            $fresh = $this->fresh(); // reload all attributes without treating columns as relations
             Log::info('PROJECT SETUP COMPLETION - Project Updated Successfully', [
                 'project_id' => $this->id,
                 'after_status' => $fresh->status,
