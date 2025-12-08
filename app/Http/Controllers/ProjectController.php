@@ -11,6 +11,7 @@ use App\Models\ProjectCategory;
 use App\Models\ProjectTopic;
 use App\Services\Projects\ProjectReadService;
 use App\Services\Projects\ProjectTopicService;
+use App\Services\Projects\ProjectWizardService;
 use App\Services\PreliminaryPageTemplateService;
 use App\Enums\ChapterStatus;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ class ProjectController extends Controller
     public function __construct(
         private ProjectReadService $projectReadService,
         private ProjectTopicService $projectTopicService,
+        private ProjectWizardService $projectWizardService,
     ) {
     }
 
@@ -267,7 +269,9 @@ class ProjectController extends Controller
 
                 // Don't save if we don't have a project ID and no data
                 if (! $validated['project_id']) {
-                    Log::info('Skipping save - no project ID and no data to save');
+                    if (! app()->isProduction()) {
+                        Log::info('Skipping save - no project ID and no data to save');
+                    }
 
                     return response()->json([
                         'success' => true,
@@ -278,11 +282,13 @@ class ProjectController extends Controller
                 }
             }
 
-            Log::info('Saving wizard progress', [
-                'project_id' => $validated['project_id'],
-                'step' => $validated['step'],
-                'data' => $validated['data'],
-            ]);
+            if (! app()->isProduction()) {
+                Log::info('Saving wizard progress', [
+                    'project_id' => $validated['project_id'],
+                    'step' => $validated['step'],
+                    'data_keys' => array_keys($validated['data']),
+                ]);
+            }
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('Validation failed for wizard progress', [
                 'errors' => $e->errors(),
@@ -306,139 +312,7 @@ class ProjectController extends Controller
             ], 500);
         }
 
-        if ($validated['project_id']) {
-            // Update existing project progress using step-based approach
-            $project = Project::where('id', $validated['project_id'])
-                ->where('user_id', auth()->id())
-                ->where('status', 'setup')
-                ->firstOrFail();
-
-            // Filter incoming data to remove null/undefined values
-            $filteredStepData = array_filter($validated['data'], function ($value) {
-                return $value !== null && $value !== '';
-            });
-
-            // Save using new step-based method
-            $project->saveStepData($validated['step'], $filteredStepData);
-
-            if (! app()->isProduction()) {
-                Log::info('Updated existing project with step-based data', [
-                    'project_id' => $project->id,
-                    'step' => $validated['step'],
-                    'step_data_keys' => array_keys($filteredStepData),
-                ]);
-            }
-        } else {
-            // CLEANUP: Ensure only one active setup project per user
-            $this->cleanupSetupProjects();
-
-            // BULLETPROOF: Try to find ANY existing setup project before creating new
-            // Filter incoming data to remove null/undefined values
-            $filteredStepData = array_filter($validated['data'], function ($value) {
-                return $value !== null && $value !== '';
-            });
-
-            // Extract key fields for required project fields
-            $projectType = $filteredStepData['projectType'] ?? 'undergraduate';
-            $projectCategoryId = $filteredStepData['projectCategoryId'] ?? null;
-
-            // Count existing projects before any action
-            $existingProjectsCount = auth()->user()->projects()->count();
-            $setupProjectsCount = auth()->user()->projects()->where('status', 'setup')->count();
-
-            // SMART RESOLUTION: Try to find an existing setup project to reuse
-            $existingSetupProject = auth()->user()->projects()
-                ->where('status', 'setup')
-                ->latest('updated_at') // Get the most recent
-                ->first();
-
-            if ($existingSetupProject) {
-                // REUSE: Update the existing setup project instead of creating new
-                if (! app()->isProduction()) {
-                    Log::info('PROJECT WIZARD - Reusing Existing Setup Project', [
-                        'user_id' => auth()->id(),
-                        'step' => $validated['step'],
-                        'reused_project_id' => $existingSetupProject->id,
-                        'existing_projects_total' => $existingProjectsCount,
-                        'reason' => 'Found existing setup project to reuse',
-                    ]);
-                }
-
-                $project = $existingSetupProject;
-
-                // Make sure this is the active setup project
-                auth()->user()->projects()
-                    ->where('status', 'setup')
-                    ->where('id', '!=', $project->id)
-                    ->update(['is_active' => false]);
-
-                $project->update(['is_active' => true]);
-            } else {
-                // ONLY CREATE if no setup project exists at all
-                if (! app()->isProduction()) {
-                    Log::info('PROJECT WIZARD - Creating New Setup Project (No Existing Found)', [
-                        'user_id' => auth()->id(),
-                        'step' => $validated['step'],
-                        'existing_projects_total' => $existingProjectsCount,
-                        'existing_setup_projects' => $setupProjectsCount,
-                        'project_type' => $projectType,
-                        'incoming_data_keys' => array_keys($filteredStepData),
-                    ]);
-                }
-
-                // Deactivate other setup projects for this user
-                auth()->user()->projects()
-                    ->where('status', 'setup')
-                    ->update(['is_active' => false]);
-
-                // Create project with initial empty step-based data
-                $project = auth()->user()->projects()->create([
-                    'status' => 'setup',
-                    'setup_step' => 1,
-                    'setup_data' => [
-                        'format_version' => '2.0',
-                        'steps' => [],
-                        'current_step' => 1,
-                        'furthest_completed_step' => 0,
-                    ],
-                    'current_chapter' => 0,
-                    'is_active' => true, // Make this the active setup project
-                    'type' => $projectType,
-                    'project_category_id' => $projectCategoryId,
-                    // Use placeholder values that will be updated when setup completes
-                    'field_of_study' => null,
-                    'university' => 'TBD',
-                    'course' => 'TBD',
-                    'title' => 'Project Setup in Progress',
-                ]);
-
-                if (! app()->isProduction()) {
-                    Log::info('PROJECT WIZARD - Created New Setup Project', [
-                        'project_id' => $project->id,
-                        'step' => $validated['step'],
-                        'step_data_keys' => array_keys($filteredStepData),
-                        'status' => $project->status,
-                        'is_active' => $project->is_active,
-                        'slug' => $project->slug,
-                        'total_projects_after' => auth()->user()->projects()->count(),
-                    ]);
-                }
-            }
-
-            // Save step data regardless of whether we reused or created
-            $project->saveStepData($validated['step'], $filteredStepData);
-
-            if (! app()->isProduction()) {
-                $fresh = $project->fresh(['status', 'is_active']);
-                Log::info('PROJECT WIZARD - Final Result', [
-                    'project_id' => $project->id,
-                    'step' => $validated['step'],
-                    'final_status' => $fresh->status,
-                    'final_is_active' => $fresh->is_active,
-                    'action_taken' => $existingSetupProject ? 'reused_existing' : 'created_new',
-                ]);
-            }
-        }
+        $project = $this->projectWizardService->saveProgress($request->user(), $validated);
 
         return response()->json([
             'success' => true,
@@ -987,43 +861,6 @@ class ProjectController extends Controller
             'phd' => 8,
             default => 5
         };
-    }
-
-    /**
-     * CLEANUP: Ensure user has only one active setup project
-     * This prevents duplicates at the application level
-     */
-    private function cleanupSetupProjects(): void
-    {
-        $setupProjects = auth()->user()->projects()
-            ->where('status', 'setup')
-            ->orderBy('updated_at', 'desc')
-            ->get();
-
-        if ($setupProjects->count() > 1) {
-            Log::info('CLEANUP - Multiple setup projects found', [
-                'user_id' => auth()->id(),
-                'setup_projects_count' => $setupProjects->count(),
-                'project_ids' => $setupProjects->pluck('id')->toArray(),
-            ]);
-
-            // Keep the most recent one active, deactivate the rest
-            $keepProject = $setupProjects->first();
-            $duplicateProjects = $setupProjects->skip(1);
-
-            // Deactivate duplicates
-            foreach ($duplicateProjects as $duplicate) {
-                $duplicate->update(['is_active' => false]);
-            }
-
-            // Ensure the kept project is active
-            $keepProject->update(['is_active' => true]);
-
-            Log::info('CLEANUP - Cleaned up duplicate setup projects', [
-                'kept_project_id' => $keepProject->id,
-                'deactivated_count' => $duplicateProjects->count(),
-            ]);
-        }
     }
 
     /**
