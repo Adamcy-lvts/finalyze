@@ -8,18 +8,24 @@ use App\Models\ProjectTopic;
 use App\Models\WordTransaction;
 use App\Services\AIContentGenerator;
 use App\Services\ProjectOutlineService;
+use App\Services\Topics\TopicLibraryService;
 use App\Services\WordBalanceService;
+use App\Transformers\TopicTransformer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 // Add request logging
-\Illuminate\Support\Facades\Log::info('TopicController loaded', [
-    'time' => now()->toDateTimeString(),
-    'url' => request()->fullUrl(),
-    'method' => request()->method(),
-    'route' => request()->route()?->getName(),
-]);
+if (! app()->isProduction()) {
+    \Illuminate\Support\Facades\Log::info('TopicController loaded', [
+        'time' => now()->toDateTimeString(),
+        'url' => request()->fullUrl(),
+        'method' => request()->method(),
+        'route' => request()->route()?->getName(),
+    ]);
+}
+use App\Http\Requests\Topics\GenerateTopicsRequest;
+use App\Http\Requests\Topics\StreamTopicsRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -33,7 +39,8 @@ class TopicController extends Controller
 {
     public function __construct(
         private AIContentGenerator $aiGenerator,
-        private ProjectOutlineService $outlineService
+        private ProjectOutlineService $outlineService,
+        private TopicLibraryService $topicLibraryService
     ) {
         //
     }
@@ -41,37 +48,38 @@ class TopicController extends Controller
     /**
      * Topic library for the authenticated user - shows ALL generated topics.
      */
-    public function topicsIndex(Request $request)
+    public function topicsIndex(\App\Http\Requests\Topics\TopicIndexRequest $request)
     {
         $user = $request->user();
+        $limit = $request->integer('limit') ?: 300;
 
         $projects = Project::where('user_id', $user->id)
+            ->select([
+                'id',
+                'slug',
+                'title',
+                'topic',
+                'topic_status',
+                'status',
+                'type',
+                'course',
+                'field_of_study',
+                'created_at',
+            ])
             ->orderByDesc('updated_at')
             ->get();
 
-        // Get ALL topics in the database - no filtering
-        $allTopics = ProjectTopic::orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($topic) {
-                return [
-                    'id' => $topic->id,
-                    'title' => $topic->title,
-                    'description' => $this->cleanTopicDescription(
-                        $this->convertMarkdownToHtml(
-                            $topic->description ?? 'Research topic in '.$topic->field_of_study
-                        )
-                    ),
-                    'difficulty' => $topic->difficulty ?? 'Intermediate',
-                    'timeline' => $topic->timeline ?? '6-9 months',
-                    'resource_level' => $topic->resource_level ?? 'Medium',
-                    'feasibility_score' => $topic->feasibility_score ?? 75,
-                    'keywords' => $topic->keywords ?? [],
-                    'research_type' => $topic->research_type ?? 'Applied Research',
-                    'field_of_study' => $topic->field_of_study ?? 'General',
-                    'faculty' => $topic->faculty,
-                    'course' => $topic->course ?? '',
-                    'academic_level' => $topic->academic_level ?? 'undergraduate',
-                ];
+        $allTopics = $this->topicLibraryService
+            ->getAllTopics($limit) // cap to keep payload reasonable
+            ->map(function (ProjectTopic $topic) {
+                $payload = TopicTransformer::toArray($topic);
+                $payload['description'] = $this->cleanTopicDescription(
+                    $this->convertMarkdownToHtml(
+                        $payload['description'] ?? 'Research topic in '.$payload['field_of_study']
+                    )
+                );
+
+                return $payload;
             })
             ->toArray();
 
@@ -125,17 +133,10 @@ class TopicController extends Controller
         ]);
     }
 
-    public function generate(Request $request, Project $project)
+    public function generate(GenerateTopicsRequest $request, Project $project)
     {
-        $validated = $request->validate([
-            'regenerate' => 'boolean',
-        ]);
-
         // Load the category relationship
         $project->load('category');
-
-        // Ensure user owns the project
-        abort_if($project->user_id !== auth()->id(), 403);
 
         // Short-circuit when AI is offline to avoid futile generation attempts
         if (! $this->aiGenerator->isAvailable()) {
@@ -182,19 +183,11 @@ class TopicController extends Controller
         }
     }
 
-    public function stream(Request $request, Project $project)
+    public function stream(StreamTopicsRequest $request, Project $project)
     {
         try {
-            $validated = $request->validate([
-                'regenerate' => 'nullable|in:true,false,1,0',
-            ]);
-
             // Load the category relationship
             $project->load('category');
-
-            // Ensure user owns the project
-            abort_if($project->user_id !== auth()->id(), 403);
-
         } catch (\Exception $e) {
             Log::error('💥 TOPIC STREAM - Early validation failed', [
                 'error' => $e->getMessage(),
@@ -2226,35 +2219,35 @@ The description should help a student understand what this topic involves and wh
      */
     private function getProjectGeneratedTopics(Project $project): array
     {
-        // Get ALL topics in the database, ordered by most recent
-        $savedTopics = ProjectTopic::orderBy('created_at', 'desc')
-            ->get();
-
-        $enrichedTopics = $savedTopics->map(function ($topic) {
-            return [
-                'id' => $topic->id,
-                'title' => $topic->title,
-                'description' => $this->cleanTopicDescription(
-                    $this->convertMarkdownToHtml(
-                        $topic->description ?? 'Research topic in '.$topic->field_of_study
-                    )
-                ),
-                'difficulty' => $topic->difficulty ?? 'Intermediate',
-                'timeline' => $topic->timeline ?? '6-9 months',
-                'resource_level' => $topic->resource_level ?? 'Medium',
-                'feasibility_score' => $topic->feasibility_score ?? 75,
-                'keywords' => $topic->keywords ?? [],
-                'research_type' => $topic->research_type ?? 'Applied Research',
-            ];
-        })->toArray();
-
-        Log::info('Retrieved all user topics for library', [
-            'project_id' => $project->id,
-            'user_id' => $project->user_id,
-            'total_topics' => count($enrichedTopics),
+        $project->loadMissing([
+            'universityRelation:id,name',
+            'facultyRelation:id,name',
+            'departmentRelation:id,name',
         ]);
 
-        return $enrichedTopics;
+        $savedTopics = $this->topicLibraryService
+            ->getSavedTopicsForProject($project, 50)
+            ->map(function (ProjectTopic $topic) {
+                $payload = TopicTransformer::toArray($topic);
+                $payload['description'] = $this->cleanTopicDescription(
+                    $this->convertMarkdownToHtml(
+                        $payload['description'] ?? 'Research topic in '.$payload['field_of_study']
+                    )
+                );
+
+                return $payload;
+            })
+            ->toArray();
+
+        if (! app()->isProduction()) {
+            Log::info('Retrieved saved project topics', [
+                'project_id' => $project->id,
+                'user_id' => $project->user_id,
+                'total_topics' => count($savedTopics),
+            ]);
+        }
+
+        return $savedTopics;
     }
 
     /**

@@ -6,6 +6,9 @@ use App\Models\Chapter;
 use App\Models\Project;
 use App\Models\ProjectCategory;
 use App\Models\ProjectTopic;
+use App\Http\Requests\Projects\TopicSelectionRequest;
+use App\Services\Projects\ProjectReadService;
+use App\Services\Projects\ProjectTopicService;
 use App\Services\PreliminaryPageTemplateService;
 use App\Enums\ChapterStatus;
 use Illuminate\Http\Request;
@@ -14,6 +17,12 @@ use Inertia\Inertia;
 
 class ProjectController extends Controller
 {
+    public function __construct(
+        private ProjectReadService $projectReadService,
+        private ProjectTopicService $projectTopicService,
+    ) {
+    }
+
     public function index()
     {
         $projects = auth()->user()->projects()
@@ -487,41 +496,11 @@ class ProjectController extends Controller
     //         'savedTopics' => $savedTopics,
     //     ]);
     // }
-    public function topicSelection(Project $project)
+    public function topicSelection(TopicSelectionRequest $request, Project $project)
     {
-        // Ensure user owns the project
-        abort_if($project->user_id !== auth()->id(), 403);
+        $payload = $this->projectTopicService->topicSelectionPayload($project, $request);
 
-        // Load ONLY the relationships needed (no nested loops)
-        $project->loadMissing([
-            'universityRelation:id,name',
-            'facultyRelation:id,name',
-            'departmentRelation:id,name',
-        ]);
-
-        // Load previously generated topics strictly by DB queries (no model recursion)
-        $savedTopics = $this->getProjectGeneratedTopics($project);
-
-        return Inertia::render('projects/TopicSelection', [
-            'project' => [
-                'id' => $project->id,
-                'slug' => $project->slug,
-                'title' => $project->title,
-                'topic' => $project->topic,
-                'description' => $project->description,
-                'type' => $project->type,
-                'status' => $project->status,
-                'field_of_study' => $project->field_of_study,
-                'course' => $project->course,
-
-                // DO NOT use computed accessors, they cause recursive loading
-                'university' => $project->universityRelation?->name,
-                'faculty' => $project->facultyRelation?->name,
-                'department' => $project->departmentRelation?->name,
-            ],
-
-            'savedTopics' => $savedTopics,
-        ]);
+        return Inertia::render('projects/TopicSelection', $payload);
     }
 
 
@@ -1059,108 +1038,6 @@ class ProjectController extends Controller
             ]);
         }
     }
-
-    /**
-     * Get previously generated topics for this specific project's academic context
-     * Returns enriched topics with full metadata for display
-     */
-    // private function getProjectGeneratedTopics(Project $project): array
-    // {
-    //     // Load relationships if not already loaded
-    //     $project->loadMissing(['universityRelation', 'facultyRelation', 'departmentRelation']);
-
-    //     // Get faculty and department from project relationships
-    //     $faculty = $project->facultyRelation?->name ?? null;
-    //     $department = $project->departmentRelation?->name ?? null;
-    //     $university = $project->universityRelation?->name ?? null;
-
-    //     // Look for topics with exact academic context match
-    //     $savedTopics = ProjectTopic::where('course', $project->course)
-    //         ->where('academic_level', $project->type)
-    //         ->when($university, fn($q) => $q->where('university', $university))
-    //         ->when($faculty, fn($q) => $q->where('faculty', $faculty))
-    //         ->when($department, fn($q) => $q->where('department', $department))
-    //         ->when($project->field_of_study, fn($q) => $q->where('field_of_study', $project->field_of_study))
-    //         ->orderBy('created_at', 'desc')
-    //         ->limit(10)
-    //         ->get()
-    //         ->map(function ($topic, $index) {
-    //             return [
-    //                 'id' => $index + 1,
-    //                 'title' => $topic->title,
-    //                 'description' => $topic->description ?? 'Research topic in ' . $topic->field_of_study,
-    //                 'difficulty' => $topic->difficulty ?? 'Intermediate',
-    //                 'timeline' => $topic->timeline ?? '6-9 months',
-    //                 'resource_level' => $topic->resource_level ?? 'Medium',
-    //                 'feasibility_score' => $topic->feasibility_score ?? 75,
-    //                 'keywords' => $topic->keywords ?? [],
-    //                 'research_type' => $topic->research_type ?? 'Applied Research',
-    //             ];
-    //         })
-    //         ->toArray();
-
-    //     Log::info('Retrieved saved project topics', [
-    //         'project_id' => $project->id,
-    //         'course' => $project->course,
-    //         'university' => $project->university,
-    //         'faculty' => $faculty,
-    //         'department' => $department,
-    //         'saved_topics_count' => count($savedTopics),
-    //     ]);
-
-    //     return $savedTopics;
-    // }
-    private function getProjectGeneratedTopics(Project $project): array
-    {
-        // Extract context WITHOUT calling any accessors
-        $course = $project->course;
-        $academicLevel = $project->type;
-        $university = $project->universityRelation?->name;
-        $faculty = $project->facultyRelation?->name;
-        $department = $project->departmentRelation?->name;
-        $fieldOfStudy = $project->field_of_study;
-
-        // Build query cleanly – NO RELATION LOADING INSIDE THIS METHOD
-        $query = ProjectTopic::query()
-            ->where('course', $course)
-            ->where('academic_level', $academicLevel);
-
-        if ($university) $query->where('university', $university);
-        if ($faculty) $query->where('faculty', $faculty);
-        if ($department) $query->where('department', $department);
-        if ($fieldOfStudy) $query->where('field_of_study', $fieldOfStudy);
-
-        // Safe: fetch only required columns
-        $topics = $query->select([
-            'title',
-            'description',
-            'difficulty',
-            'timeline',
-            'resource_level',
-            'feasibility_score',
-            'keywords',
-            'research_type',
-        ])
-            ->latest()
-            ->limit(10)
-            ->get();
-
-        // Transform cleanly
-        return $topics->map(function ($topic, $index) {
-            return [
-                'id' => $index + 1,
-                'title' => $topic->title,
-                'description' => $topic->description ?? 'Research topic suggestion',
-                'difficulty' => $topic->difficulty ?? 'Intermediate',
-                'timeline' => $topic->timeline ?? '6–9 months',
-                'resource_level' => $topic->resource_level ?? 'Medium',
-                'feasibility_score' => $topic->feasibility_score ?? 75,
-                'keywords' => $topic->keywords ?: [],
-                'research_type' => $topic->research_type ?? 'Applied Research',
-            ];
-        })->toArray();
-    }
-
 
     /**
      * UPDATE PROJECT WRITING MODE

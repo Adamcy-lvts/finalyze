@@ -1,0 +1,88 @@
+<?php
+
+namespace App\Services\Topics;
+
+use App\Models\Project;
+use App\Models\ProjectTopic;
+use Illuminate\Support\Collection;
+
+class TopicLibraryService
+{
+    public function getSavedTopicsForProject(Project $project, int $limit = 10): Collection
+    {
+        $course = $project->course;
+        $academicLevel = (string) $project->type;
+        $university = $project->universityRelation?->name;
+        $faculty = $project->facultyRelation?->name;
+        $department = $project->departmentRelation?->name;
+        $fieldOfStudy = $project->field_of_study;
+
+        $query = ProjectTopic::query()
+            ->select([
+                'id',
+                'title',
+                'description',
+                'difficulty',
+                'timeline',
+                'resource_level',
+                'feasibility_score',
+                'keywords',
+                'research_type',
+                'field_of_study',
+                'faculty',
+                'course',
+                'academic_level',
+            ])
+            ->where('course', $course)
+            ->where('academic_level', $academicLevel);
+
+        if ($university) {
+            $query->where('university', $university);
+        }
+
+        if ($faculty) {
+            $query->where('faculty', $faculty);
+        }
+
+        if ($department) {
+            $query->where('department', $department);
+        }
+
+        if ($fieldOfStudy) {
+            $query->where('field_of_study', $fieldOfStudy);
+        }
+
+        return $query
+            ->latest()
+            ->limit($limit)
+            ->get();
+    }
+
+    public function getAllTopics(?int $limit = null): Collection
+    {
+        $builder = ProjectTopic::query()
+            ->select([
+                'id',
+                'title',
+                'description',
+                'difficulty',
+                'timeline',
+                'resource_level',
+                'feasibility_score',
+                'keywords',
+                'research_type',
+                'field_of_study',
+                'faculty',
+                'course',
+                'academic_level',
+                'created_at',
+            ])
+            ->orderByDesc('created_at');
+
+        if ($limit !== null) {
+            $builder->limit($limit);
+        }
+
+        return $builder->get();
+    }
+}
