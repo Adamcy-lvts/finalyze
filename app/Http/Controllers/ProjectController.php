@@ -12,6 +12,7 @@ use App\Models\ProjectTopic;
 use App\Services\Projects\ProjectReadService;
 use App\Services\Projects\ProjectTopicService;
 use App\Services\Projects\ProjectWizardService;
+use App\Services\Projects\ProjectWritingService;
 use App\Services\PreliminaryPageTemplateService;
 use App\Enums\ChapterStatus;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ class ProjectController extends Controller
         private ProjectReadService $projectReadService,
         private ProjectTopicService $projectTopicService,
         private ProjectWizardService $projectWizardService,
+        private ProjectWritingService $projectWritingService,
     ) {
     }
 
@@ -408,76 +410,9 @@ class ProjectController extends Controller
         // Ensure user owns the project
         abort_if($project->user_id !== auth()->id(), 403);
 
-        // Load project with chapters, category, and outlines for word count calculations
-        $project->load([
-            'chapters',
-            'category',
-            'outlines.sections',
-            'universityRelation',
-            'facultyRelation.structure.chapters',
-            'departmentRelation',
-        ]);
+        $payload = $this->projectWritingService->writingPayload($project);
 
-        return Inertia::render('projects/Writing', [
-            'project' => [
-                'id' => $project->id,
-                'slug' => $project->slug,
-                'title' => $project->title,
-                'topic' => $project->topic,
-                'type' => $project->type,
-                'status' => $project->status,
-                'mode' => $project->mode,
-                'field_of_study' => $project->field_of_study,
-                'university' => $project->universityRelation?->name,
-                'faculty' => $project->faculty_name,
-                'facultyStructureChapters' => $project->facultyRelation?->structure?->chapters?->map(function ($chapter) {
-                    return [
-                        'chapter_number' => $chapter->chapter_number,
-                        'chapter_title' => $chapter->chapter_title,
-                        'target_word_count' => $chapter->target_word_count,
-                        'completion_threshold' => $chapter->completion_threshold,
-                        'is_required' => $chapter->is_required,
-                    ];
-                })->values(),
-                'department' => $project->department_name,
-                'course' => $project->course,
-                'progress' => $project->getProgressPercentage(),
-                'chapters' => $project->chapters->map(function ($chapter) {
-                    return [
-                        'id' => $chapter->id,
-                        'chapter_number' => $chapter->chapter_number,
-                        'title' => $chapter->title,
-                        'content' => $chapter->content,
-                        'target_word_count' => $chapter->target_word_count,
-                        'word_count' => $chapter->word_count,
-                        'status' => $chapter->status,
-                        'updated_at' => $chapter->updated_at->toISOString(),
-                    ];
-                }),
-                'outlines' => $project->outlines->map(function ($outline) {
-                    return [
-                        'id' => $outline->id,
-                        'chapter_number' => $outline->chapter_number,
-                        'chapter_title' => $outline->chapter_title,
-                        'target_word_count' => $outline->target_word_count,
-                        'completion_threshold' => $outline->completion_threshold,
-                        'description' => $outline->description,
-                        'sections' => $outline->sections->map(function ($section) {
-                            return [
-                                'id' => $section->id,
-                                'section_number' => $section->section_number,
-                                'section_title' => $section->section_title,
-                                'section_description' => $section->section_description,
-                                'target_word_count' => $section->target_word_count,
-                                'current_word_count' => $section->current_word_count,
-                                'is_completed' => $section->is_completed,
-                                'is_required' => $section->is_required,
-                            ];
-                        }),
-                    ];
-                }),
-            ],
-            'targetWordCount' => $project->category?->target_word_count ?? 15000,
+        return Inertia::render('projects/Writing', $payload + [
             'estimatedChapters' => $this->getEstimatedChapters($project),
         ]);
     }
