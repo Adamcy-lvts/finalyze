@@ -18,15 +18,48 @@ class Project extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'student_id', 'project_category_id',
-        'university_id', 'faculty_id', 'department_id', // New foreign keys
-        'title', 'slug', 'topic', 'description', 'type', 'degree', 'degree_abbreviation', 'status', 'topic_status',
-        'mode', 'field_of_study', 'university', 'faculty', 'course', // Keep old string fields for backwards compatibility
-        'supervisor_name', 'certification_signatories', 'current_chapter', 'is_active', 'settings',
-        'setup_step', 'setup_data', 'last_activity_at',
-        'paper_collection_status', 'paper_collection_message', 'paper_collection_count',
-        'paper_collection_completed_at', 'citation_guaranteed',
-        'dedication', 'acknowledgements', 'abstract', 'declaration', 'certification', 'references', 'appendices', 'tables', 'abbreviations',
+        'user_id',
+        'student_id',
+        'project_category_id',
+        'university_id',
+        'faculty_id',
+        'department_id', // New foreign keys
+        'title',
+        'slug',
+        'topic',
+        'description',
+        'type',
+        'degree',
+        'degree_abbreviation',
+        'status',
+        'topic_status',
+        'mode',
+        'field_of_study',
+        'university',
+        'faculty',
+        'course', // Keep old string fields for backwards compatibility
+        'supervisor_name',
+        'certification_signatories',
+        'current_chapter',
+        'is_active',
+        'settings',
+        'setup_step',
+        'setup_data',
+        'last_activity_at',
+        'paper_collection_status',
+        'paper_collection_message',
+        'paper_collection_count',
+        'paper_collection_completed_at',
+        'citation_guaranteed',
+        'dedication',
+        'acknowledgements',
+        'abstract',
+        'declaration',
+        'certification',
+        'references',
+        'appendices',
+        'tables',
+        'abbreviations',
     ];
 
     protected $casts = [
@@ -145,16 +178,17 @@ class Project extends Model
 
     public function getProgressPercentage(): float
     {
-        $chapters = $this->relationLoaded('chapters')
-            ? $this->chapters
-            : $this->chapters()->get();
+        // Keep this light: only compute when chapters are already eager-loaded
+        if (! $this->relationLoaded('chapters')) {
+            return 0.0;
+        }
+
+        $chapters = $this->chapters;
 
         if ($chapters->isEmpty()) {
             return 0.0;
         }
 
-        // 1. Check if all chapters are marked as completed/approved
-        $totalChapters = $chapters->count();
         $isChapterComplete = function ($chapter): bool {
             if ($chapter->status instanceof ChapterStatus) {
                 return in_array($chapter->status, [ChapterStatus::Completed, ChapterStatus::Approved], true);
@@ -163,62 +197,10 @@ class Project extends Model
             return in_array($chapter->status, ['completed', 'approved'], true);
         };
 
+        $totalChapters = $chapters->count();
         $completedChapters = $chapters->filter($isChapterComplete)->count();
 
-        if ($completedChapters === $totalChapters) {
-            return 100.0;
-        }
-
-        // 2. Calculate Target Word Count
-        // Prefer sum of chapter targets if they exist and are significant
-        $chapterTargetSum = (int) $chapters->sum('target_word_count');
-
-        $outlines = $this->relationLoaded('outlines')
-            ? $this->outlines
-            : $this->outlines()->get();
-
-        $outlineTargetSum = (int) $outlines
-            ->where('is_required', true)
-            ->sum('target_word_count');
-
-        // Fallback to category default if outline target is 0
-        if ($outlineTargetSum <= 0) {
-            $category = $this->relationLoaded('category')
-                ? $this->category
-                : $this->category()->select('id', 'target_word_count')->first();
-            $outlineTargetSum = (int) ($category?->target_word_count ?? 0);
-        }
-
-        // Use the larger of the two targets to avoid underestimation
-        // But if chapter targets are 0 (not set), we rely on outline
-        $targetWordCount = max($chapterTargetSum, $outlineTargetSum);
-
-        // Final fallback
-        if ($targetWordCount <= 0) {
-            $targetWordCount = max($totalChapters, 1) * 2500;
-        }
-
-        // 3. Calculate Effective Words
-        $effectiveWords = 0;
-        $avgTargetPerChapter = $targetWordCount / max($totalChapters, 1);
-
-        foreach ($chapters as $chapter) {
-            if ($isChapterComplete($chapter)) {
-                // If chapter has a specific target, use it.
-                // If not, use the average share of the TOTAL target.
-                $contribution = $chapter->target_word_count > 0
-                    ? $chapter->target_word_count
-                    : $avgTargetPerChapter;
-
-                $effectiveWords += $contribution;
-            } else {
-                $effectiveWords += $chapter->word_count;
-            }
-        }
-
-        $progress = ($effectiveWords / $targetWordCount) * 100;
-
-        return round(min($progress, 100), 2);
+        return round(($completedChapters / $totalChapters) * 100, 2);
     }
 
     /**
@@ -226,9 +208,11 @@ class Project extends Model
      */
     public function chaptersAreComplete(): bool
     {
-        $chapters = $this->relationLoaded('chapters')
-            ? $this->chapters
-            : $this->chapters()->select('id', 'status')->get();
+        if (! $this->relationLoaded('chapters')) {
+            return false; // avoid extra queries during tight loops
+        }
+
+        $chapters = $this->chapters;
 
         if ($chapters->isEmpty()) {
             return false;
@@ -248,15 +232,21 @@ class Project extends Model
      */
     public function getRequiredChapterCount(): int
     {
+        if (! $this->relationLoaded('facultyRelation')) {
+            return 0;
+        }
+
         $structure = $this->facultyRelation?->structure;
 
         if (! $structure) {
             return 0;
         }
 
-        $chapters = $structure->relationLoaded('chapters')
-            ? $structure->chapters
-            : $structure->chapters()->select('id', 'is_required')->get();
+        if (! $structure->relationLoaded('chapters')) {
+            return 0;
+        }
+
+        $chapters = $structure->chapters;
 
         return $chapters->where('is_required', true)->count();
     }
@@ -305,16 +295,19 @@ class Project extends Model
      */
     public function getStructuredProgressPercentage(): float
     {
-        $totalOutlines = $this->outlines()->where('is_required', true)->count();
+        if (! $this->relationLoaded('outlines')) {
+            return 0.0; // only compute when preloaded to avoid extra queries
+        }
+
+        $requiredOutlines = $this->outlines->where('is_required', true);
+        $totalOutlines = $requiredOutlines->count();
 
         if ($totalOutlines === 0) {
             return 0;
         }
 
-        $completedOutlines = $this->outlines()
-            ->where('is_required', true)
-            ->get()
-            ->filter(fn ($outline) => $outline->is_complete)
+        $completedOutlines = $requiredOutlines
+            ->filter(fn($outline) => $outline->is_complete)
             ->count();
 
         return round(($completedOutlines / $totalOutlines) * 100, 2);
@@ -361,7 +354,7 @@ class Project extends Model
         $counter = 1;
 
         while (static::where('slug', $slug)->where('id', '!=', $this->id)->exists()) {
-            $slug = $baseSlug.'-'.$counter;
+            $slug = $baseSlug . '-' . $counter;
             $counter++;
         }
 
@@ -378,7 +371,7 @@ class Project extends Model
         $counter = 1;
 
         while (static::where('slug', $slug)->where('id', '!=', $this->id)->exists()) {
-            $slug = $baseSlug.'-'.$counter;
+            $slug = $baseSlug . '-' . $counter;
             $counter++;
         }
 
@@ -418,7 +411,8 @@ class Project extends Model
         // If setup complete but no topic selected, go to topic selection
         if (($status === 'setup' || $status === 'topic_selection') &&
             ($topicStatus === 'not_started' || $topicStatus === 'topic_selection') &&
-            empty($this->topic)) {
+            empty($this->topic)
+        ) {
             return 'topic-selection';
         }
 
@@ -433,8 +427,10 @@ class Project extends Model
         }
 
         // If topic approved and project is in writing phase, go to writing dashboard
-        if ($topicStatus === 'topic_approved' &&
-            in_array($status, ['writing', 'completed'])) {
+        if (
+            $topicStatus === 'topic_approved' &&
+            in_array($status, ['writing', 'completed'])
+        ) {
             return 'writing';
         }
 
@@ -466,11 +462,13 @@ class Project extends Model
             'last_activity_at' => now(),
         ]);
 
-        Log::info('Project setup progress saved', [
-            'project_id' => $this->id,
-            'step' => $step,
-            'merged_data' => $mergedData,
-        ]);
+        if (! app()->isProduction()) {
+            Log::info('Project setup progress saved', [
+                'project_id' => $this->id,
+                'step' => $step,
+                'merged_data_keys' => array_keys($mergedData),
+            ]);
+        }
     }
 
     /**
@@ -478,21 +476,25 @@ class Project extends Model
      */
     public function completeSetup(array $finalData): void
     {
-        Log::info('PROJECT SETUP COMPLETION - Starting completeSetup', [
-            'project_id' => $this->id,
-            'before_status' => $this->status,
-            'before_slug' => $this->slug,
-            'before_title' => $this->title,
-            'final_data' => $finalData,
-        ]);
+        if (! app()->isProduction()) {
+            Log::info('PROJECT SETUP COMPLETION - Starting completeSetup', [
+                'project_id' => $this->id,
+                'before_status' => $this->status,
+                'before_slug' => $this->slug,
+                'before_title' => $this->title,
+                'final_data_keys' => array_keys($finalData),
+            ]);
+        }
 
         // Get all setup data from step-based structure
         $setupData = $this->getCleanSetupData();
 
-        Log::info('PROJECT SETUP COMPLETION - Retrieved Setup Data', [
-            'project_id' => $this->id,
-            'setup_data' => $setupData,
-        ]);
+        if (! app()->isProduction()) {
+            Log::info('PROJECT SETUP COMPLETION - Retrieved Setup Data', [
+                'project_id' => $this->id,
+                'setup_data_keys' => array_keys($setupData),
+            ]);
+        }
 
         // Map the incoming store format to our internal format
         $mappedData = [
@@ -514,9 +516,14 @@ class Project extends Model
 
         // Validate that all required data is present
         $requiredFields = [
-            'projectType', 'projectCategoryId', 'universityId',
-            'facultyId', 'departmentId', 'course',
-            'academicSession', 'workingMode',
+            'projectType',
+            'projectCategoryId',
+            'universityId',
+            'facultyId',
+            'departmentId',
+            'course',
+            'academicSession',
+            'workingMode',
         ];
 
         foreach ($requiredFields as $field) {
@@ -547,17 +554,20 @@ class Project extends Model
             'last_activity_at' => now(),
         ]);
 
-        Log::info('PROJECT SETUP COMPLETION - Project Updated Successfully', [
-            'project_id' => $this->id,
-            'after_status' => $this->fresh()->status,
-            'after_slug' => $this->fresh()->slug,
-            'after_title' => $this->fresh()->title,
-            'final_type' => $allData['projectType'],
-            'university_id' => $allData['universityId'],
-            'faculty_id' => $allData['facultyId'],
-            'department_id' => $allData['departmentId'],
-            'setup_data_cleared' => $this->fresh()->setup_data === null,
-        ]);
+        if (! app()->isProduction()) {
+            $fresh = $this->fresh(['status', 'slug', 'title']);
+            Log::info('PROJECT SETUP COMPLETION - Project Updated Successfully', [
+                'project_id' => $this->id,
+                'after_status' => $fresh->status,
+                'after_slug' => $fresh->slug,
+                'after_title' => $fresh->title,
+                'final_type' => $allData['projectType'],
+                'university_id' => $allData['universityId'],
+                'faculty_id' => $allData['facultyId'],
+                'department_id' => $allData['departmentId'],
+                'setup_data_cleared' => $fresh->setup_data === null,
+            ]);
+        }
     }
 
     /**
@@ -581,8 +591,10 @@ class Project extends Model
 
         foreach ($requiredFields[$step] as $field) {
             // Special handling for university field when it's "other"
-            if ($field === 'university' && isset($this->setup_data['university']) &&
-                $this->setup_data['university'] === 'other') {
+            if (
+                $field === 'university' && isset($this->setup_data['university']) &&
+                $this->setup_data['university'] === 'other'
+            ) {
                 if (empty($this->setup_data['otherUniversity'])) {
                     return false;
                 }
@@ -771,29 +783,54 @@ class Project extends Model
         return $flatData;
     }
 
-    /**
-     * Get the full university name (without abbreviations)
-     */
-    public function getFullUniversityNameAttribute(): string
+    // /**
+    //  * Get the full university name (without abbreviations)
+    //  */
+    // public function getFullUniversityNameAttribute(): string
+    // {
+    //     return $this->universityRelation?->name ?? 'TBD';
+    // }
+
+    // /**
+    //  * Get the faculty name
+    //  */
+    // public function getFacultyNameAttribute(): string
+    // {
+    //     return $this->facultyRelation?->name ?? 'TBD';
+    // }
+
+    // /**
+    //  * Get the department name
+    //  */
+    // public function getDepartmentNameAttribute(): string
+    // {
+    //     return $this->departmentRelation?->name ?? 'TBD';
+    // }
+
+    public function getFacultyNameAttribute()
     {
-        return $this->universityRelation?->name ?? 'TBD';
+        if (! $this->relationLoaded('facultyRelation')) {
+            return null; // DO NOT load it automatically
+        }
+        return $this->facultyRelation->name ?? null;
     }
 
-    /**
-     * Get the faculty name
-     */
-    public function getFacultyNameAttribute(): string
+    public function getDepartmentNameAttribute()
     {
-        return $this->facultyRelation?->name ?? 'TBD';
+        if (! $this->relationLoaded('departmentRelation')) {
+            return null;
+        }
+        return $this->departmentRelation->name ?? null;
     }
 
-    /**
-     * Get the department name
-     */
-    public function getDepartmentNameAttribute(): string
+    public function getFullUniversityNameAttribute()
     {
-        return $this->departmentRelation?->name ?? 'TBD';
+        if (! $this->relationLoaded('universityRelation')) {
+            return null;
+        }
+        return $this->universityRelation->name ?? null;
     }
+
 
     /**
      * Boot the model and set up event listeners
