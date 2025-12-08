@@ -15,6 +15,7 @@ class TopicIndexRequest extends FormRequest
     {
         return [
             'limit' => 'nullable|integer|min:1|max:500',
+            'page' => 'nullable|integer|min:1',
         ];
     }
 }

@@ -26,6 +26,7 @@ if (! app()->isProduction()) {
 }
 use App\Http\Requests\Topics\GenerateTopicsRequest;
 use App\Http\Requests\Topics\StreamTopicsRequest;
+use App\Http\Requests\Topics\TopicIndexRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -48,10 +49,11 @@ class TopicController extends Controller
     /**
      * Topic library for the authenticated user - shows ALL generated topics.
      */
-    public function topicsIndex(\App\Http\Requests\Topics\TopicIndexRequest $request)
+    public function topicsIndex(TopicIndexRequest $request)
     {
         $user = $request->user();
-        $limit = $request->integer('limit') ?: 300;
+        $limit = $request->integer('limit') ?: 100;
+        $page = $request->integer('page') ?: 1;
 
         $projects = Project::where('user_id', $user->id)
             ->select([
@@ -70,7 +72,7 @@ class TopicController extends Controller
             ->get();
 
         $allTopics = $this->topicLibraryService
-            ->getAllTopics($limit) // cap to keep payload reasonable
+            ->getAllTopics($limit, $page) // cap to keep payload reasonable
             ->map(function (ProjectTopic $topic) {
                 $payload = TopicTransformer::toArray($topic);
                 $payload['description'] = $this->cleanTopicDescription(
@@ -82,6 +84,8 @@ class TopicController extends Controller
                 return $payload;
             })
             ->toArray();
+
+        $totalTopics = $this->topicLibraryService->countAllTopics();
 
         // Build projectTopics structure for UI compatibility
         $projectTopics = $projects->map(function (Project $project) use ($allTopics) {
@@ -128,7 +132,9 @@ class TopicController extends Controller
             'faculties' => $faculties,
             'meta' => [
                 'totalProjects' => $projects->count(),
-                'totalTopics' => count($allTopics),
+                'totalTopics' => $totalTopics,
+                'page' => $page,
+                'limit' => $limit,
             ],
         ]);
     }
