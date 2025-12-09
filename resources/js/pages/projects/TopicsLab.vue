@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
 import { route } from 'ziggy-js';
@@ -34,7 +35,8 @@ import {
     BookmarkPlus,
     Trash2,
     Copy,
-    RefreshCw
+    RefreshCw,
+    Square
 } from 'lucide-vue-next';
 
 interface Topic {
@@ -145,16 +147,23 @@ const saveSessionName = async (sessionId: string) => {
 // Delete session state and method
 const isDeletingSession = ref(false);
 const sessionToDelete = ref<string | null>(null);
+const showDeleteDialog = ref(false);
 
-const deleteSession = async (sessionId: string) => {
-    if (isDeletingSession.value) return;
-
-    if (!confirm('Are you sure you want to delete this conversation? This cannot be undone.')) {
-        return;
-    }
-
-    isDeletingSession.value = true;
+const openDeleteDialog = (sessionId: string) => {
     sessionToDelete.value = sessionId;
+    showDeleteDialog.value = true;
+};
+
+const closeDeleteDialog = () => {
+    showDeleteDialog.value = false;
+    sessionToDelete.value = null;
+};
+
+const confirmDeleteSession = async () => {
+    if (isDeletingSession.value || !sessionToDelete.value) return;
+
+    const sessionId = sessionToDelete.value;
+    isDeletingSession.value = true;
 
     try {
         const response = await fetch(route('topics.chat.delete-session', props.project.slug), {
@@ -168,6 +177,7 @@ const deleteSession = async (sessionId: string) => {
 
         if (response.ok) {
             toast.success('Conversation deleted');
+            closeDeleteDialog();
             // If we deleted the current session, start a new one
             if (sessionId === props.sessionId) {
                 startNewChat();
@@ -181,7 +191,6 @@ const deleteSession = async (sessionId: string) => {
         toast.error('Failed to delete conversation');
     } finally {
         isDeletingSession.value = false;
-        sessionToDelete.value = null;
     }
 };
 
@@ -413,6 +422,18 @@ const scrollToBottom = async () => {
     }
 };
 
+// Abort controller for stopping generation
+let abortController: AbortController | null = null;
+
+const stopGeneration = () => {
+    if (abortController) {
+        abortController.abort();
+        abortController = null;
+        isSending.value = false;
+        toast.info('Generation stopped');
+    }
+};
+
 const sendMessage = async () => {
     if (!userInput.value.trim() || !currentTopic.value || isSending.value) return;
 
@@ -436,6 +457,9 @@ const sendMessage = async () => {
         isTyping: true
     });
 
+    // Create abort controller for this request
+    abortController = new AbortController();
+
     try {
         const response = await fetch(route('topics.chat', props.project.slug), {
             method: 'POST',
@@ -448,6 +472,7 @@ const sendMessage = async () => {
                 topic_context: currentTopic.value,
                 session_id: props.sessionId,
             }),
+            signal: abortController.signal,
         });
 
         // Handle insufficient balance error
@@ -500,11 +525,24 @@ const sendMessage = async () => {
                 }
             }
         }
-    } catch (error) {
-        console.error('Chat error:', error);
-        toast.error('Failed to get response');
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            // User cancelled - keep partial content if any
+            const idx = messages.value.findIndex(m => m.id === aiMsgId);
+            if (idx !== -1) {
+                if (!messages.value[idx].content) {
+                    messages.value.splice(idx, 1);
+                } else {
+                    messages.value[idx].isTyping = false;
+                }
+            }
+        } else {
+            console.error('Chat error:', error);
+            toast.error('Failed to get response');
+        }
     } finally {
         isSending.value = false;
+        abortController = null;
         // Ensure typing indicator is gone
         const idx = messages.value.findIndex(m => m.id === aiMsgId);
         if (idx !== -1) {
@@ -693,7 +731,7 @@ watch(sidebarMode, (newMode) => {
                                             title="Rename">
                                             <Pencil class="h-3 w-3 text-muted-foreground" />
                                         </button>
-                                        <button @click.stop="deleteSession(session.id)"
+                                        <button @click.stop="openDeleteDialog(session.id)"
                                             :disabled="isDeletingSession && sessionToDelete === session.id"
                                             class="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-opacity"
                                             title="Delete">
@@ -857,9 +895,19 @@ watch(sidebarMode, (newMode) => {
                         <Textarea v-model="userInput"
                             placeholder="Ask the AI to refine this topic, explain methodologies, or suggest improvements..."
                             class="min-h-[3rem] max-h-32 pr-12 py-3 bg-muted/30 focus:bg-background resize-none rounded-xl"
-                            @keydown.enter.prevent="sendMessage" />
-                        <Button class="absolute right-2 bottom-2 h-8 w-8 rounded-lg" size="icon"
-                            :disabled="!userInput.trim() || isSending || !currentTopic" @click="sendMessage">
+                            @keydown.enter.exact.prevent="sendMessage"
+                            @keydown.shift.enter.prevent="userInput += '\n'" />
+
+                        <!-- Stop button during generation -->
+                        <Button v-if="isSending"
+                            class="absolute right-2 bottom-2 h-8 w-8 rounded-lg bg-red-500 hover:bg-red-600" size="icon"
+                            @click="stopGeneration" title="Stop generation">
+                            <Square class="h-4 w-4 fill-current" />
+                        </Button>
+
+                        <!-- Send button when not generating -->
+                        <Button v-else class="absolute right-2 bottom-2 h-8 w-8 rounded-lg" size="icon"
+                            :disabled="!userInput.trim() || !currentTopic" @click="sendMessage">
                             <Send class="h-4 w-4" />
                         </Button>
                     </div>
@@ -909,6 +957,30 @@ watch(sidebarMode, (newMode) => {
             </DialogFooter>
         </DialogContent>
     </Dialog>
+
+    <!-- Delete Session Confirmation Dialog -->
+    <AlertDialog :open="showDeleteDialog" @update:open="(val) => { if (!val) closeDeleteDialog() }">
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle class="flex items-center gap-2">
+                    <Trash2 class="h-5 w-5 text-red-500" />
+                    Delete Conversation
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                    Are you sure you want to delete this conversation? This action cannot be undone.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel @click="closeDeleteDialog" :disabled="isDeletingSession">
+                    Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction @click="confirmDeleteSession" :disabled="isDeletingSession"
+                    class="bg-red-500 hover:bg-red-600 text-white">
+                    {{ isDeletingSession ? 'Deleting...' : 'Delete' }}
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
 </template>
 
 <style scoped>
