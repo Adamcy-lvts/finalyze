@@ -87,7 +87,7 @@ class ProjectStateMiddleware
         }
 
         // Skip topic lab and chat routes entirely
-        if ($request->route()?->getName() === 'topics.lab' || 
+        if ($request->route()?->getName() === 'topics.lab' ||
             $request->route()?->getName() === 'topics.chat' ||
             $request->route()?->getName() === 'topics.chat.rename' ||
             $request->route()?->getName() === 'topics.chat.save-topic' ||
@@ -192,7 +192,7 @@ class ProjectStateMiddleware
             'chapters.chat', 'chapters.chat-history', 'chapters.chat-stream',
             'chapters.chat-upload', 'chapters.chat-files', 'chapters.chat-file-delete',
             'chapters.chat-search', 'chapters.chat-sessions', 'chapters.chat-session-delete',
-            'chapters.chat-message-delete', 'chapters.chat-clear',
+            'chapters.chat-message-delete', 'chapters.chat-clear', 'chapters.mark-complete',
             'projects.guidance', 'projects.guidance-chapter', 'projects.writing-guidelines',
             'projects.bulk-generate', 'api.projects.bulk-generate.stream',
             'api.projects.bulk-generate.start', 'api.projects.bulk-generate.status', 'api.projects.bulk-generate.cancel',

@@ -295,8 +295,8 @@ class PdfExportService
             ->format('A4')
             ->margins(25.4, 25.4, 25.4, 25.4) // 1 inch margins in mm
             ->showBackground()
-            ->waitUntilNetworkIdle()
-            ->timeout(120)
+            ->setDelay(3000) // Wait 3 seconds for Mermaid diagrams to render
+            ->timeout(180)
             ->noSandbox()
             ->hideHeader()
             ->hideFooter()
@@ -388,9 +388,9 @@ class PdfExportService
      */
     private function convertTiptapToHtml(string $content): string
     {
-        // If content is already HTML, return it
+        // If content is already HTML, process it for mermaid blocks and return
         if (str_starts_with(trim($content), '<')) {
-            return $content;
+            return $this->processMermaidInHtml($content);
         }
 
         // Try to decode as JSON (Tiptap format)
@@ -400,6 +400,37 @@ class PdfExportService
         }
 
         return $this->tiptapNodeToHtml($json);
+    }
+
+    /**
+     * Process HTML content to convert mermaid data attributes to proper mermaid divs
+     */
+    private function processMermaidInHtml(string $html): string
+    {
+        // Convert data-mermaid divs to proper mermaid class divs for Mermaid.js
+        $html = preg_replace_callback(
+            '/<div[^>]*data-mermaid[^>]*data-mermaid-code="([^"]*)"[^>]*>.*?<\/div>/s',
+            function ($matches) {
+                $code = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+
+                return '<div class="mermaid">'."\n".$code."\n".'</div>';
+            },
+            $html
+        );
+
+        // Also handle pre/code blocks with language-mermaid class
+        $html = preg_replace_callback(
+            '/<pre[^>]*>\s*<code[^>]*class="[^"]*language-mermaid[^"]*"[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/s',
+            function ($matches) {
+                $code = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+                $code = strip_tags($code); // Remove any nested HTML tags
+
+                return '<div class="mermaid">'."\n".trim($code)."\n".'</div>';
+            },
+            $html
+        );
+
+        return $html;
     }
 
     /**
@@ -451,6 +482,11 @@ class PdfExportService
             'codeBlock' => "<pre><code>{$childrenHtml}</code></pre>",
             'hardBreak' => '<br>',
             'horizontalRule' => '<hr>',
+            'mermaid' => '<div class="mermaid">'."\n".($attrs['code'] ?? $childrenHtml)."\n".'</div>',
+            'table' => "<table>{$childrenHtml}</table>",
+            'tableRow' => "<tr>{$childrenHtml}</tr>",
+            'tableHeader' => "<th>{$childrenHtml}</th>",
+            'tableCell' => "<td>{$childrenHtml}</td>",
             default => $childrenHtml,
         };
     }

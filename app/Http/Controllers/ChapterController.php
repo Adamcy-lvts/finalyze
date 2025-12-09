@@ -236,10 +236,10 @@ class ChapterController extends Controller
 
                 // Generate unique generation ID for tracking
                 $generationId = \Illuminate\Support\Str::uuid()->toString();
-                
+
                 // Check if resuming from previous generation
                 $resumeFrom = $request->input('resume_from', 0);
-                $isResuming = $resumeFrom > 0 && !empty($chapter->content);
+                $isResuming = $resumeFrom > 0 && ! empty($chapter->content);
 
                 // Initialize content appropriately
                 if ($isResuming) {
@@ -338,7 +338,7 @@ class ChapterController extends Controller
 
                         // PERIODIC AUTO-SAVE: Save every 500 words or 30 seconds
                         $currentTime = time();
-                        $shouldSave = ($wordCount - $lastSaveWordCount >= $saveInterval) || 
+                        $shouldSave = ($wordCount - $lastSaveWordCount >= $saveInterval) ||
                                       ($currentTime - $lastSaveTime >= $saveTimeInterval);
 
                         if ($shouldSave && $shouldTrackGeneration) {
@@ -480,8 +480,8 @@ class ChapterController extends Controller
             } catch (\Exception $e) {
                 // RESILIENCE: Try to save any partial content that was generated
                 $savedWords = 0;
-                $hasPartialContent = isset($fullContent) && !empty($fullContent) && str_word_count($fullContent) > 100;
-                
+                $hasPartialContent = isset($fullContent) && ! empty($fullContent) && str_word_count($fullContent) > 100;
+
                 if ($hasPartialContent && isset($shouldTrackGeneration) && $shouldTrackGeneration) {
                     try {
                         $savedWords = str_word_count($fullContent);
@@ -492,7 +492,7 @@ class ChapterController extends Controller
                             'generation_in_progress' => false, // Mark as not in progress
                             'generation_last_saved_words' => $savedWords,
                         ]);
-                        
+
                         Log::info('💾 RECOVERY - Saved partial content on error', [
                             'chapter_id' => $chapter->id,
                             'saved_words' => $savedWords,
@@ -801,23 +801,50 @@ class ChapterController extends Controller
     /**
      * Mark a chapter as complete once minimum word count is met.
      */
-    public function markComplete(Request $request, Project $project, int $chapterNumber)
+    public function markComplete(Request $request, Project $project, int $chapter)
     {
+        Log::info('🟢 [MARK COMPLETE] Method called', [
+            'project_id' => $project->id,
+            'project_slug' => $project->slug,
+            'chapter_number' => $chapter,
+            'user_id' => auth()->id(),
+        ]);
+
         abort_if($project->user_id !== auth()->id(), 403);
 
-        $chapter = Chapter::where('project_id', $project->id)
-            ->where('chapter_number', $chapterNumber)
+        $chapterModel = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapter)
             ->firstOrFail();
 
-        $targetWordCount = $chapter->target_word_count ?? $this->getChapterWordCount($project, $chapterNumber);
-        $minimumWords = max(500, (int) round($targetWordCount * 0.8));
+        Log::info('🟢 [MARK COMPLETE] Chapter found', [
+            'chapter_id' => $chapterModel->id,
+            'chapter_title' => $chapterModel->title,
+            'current_status' => $chapterModel->status,
+            'word_count' => $chapterModel->word_count,
+        ]);
 
-        if ($chapter->word_count < $minimumWords) {
-            return redirect()->back()->with('error', "Chapter must have at least {$minimumWords} words to be marked as complete. Current: {$chapter->word_count} words");
+        // Align minimum requirement with ManualEditor: flat 500 words
+        $minimumWords = 500;
+
+        if ($chapterModel->word_count < $minimumWords) {
+            Log::warning('🔴 [MARK COMPLETE] Word count validation failed', [
+                'chapter_id' => $chapterModel->id,
+                'word_count' => $chapterModel->word_count,
+                'min_required' => $minimumWords,
+            ]);
+
+            return redirect()->back()->with('error', "Chapter must have at least {$minimumWords} words to be marked as complete. Current: {$chapterModel->word_count} words");
         }
 
-        $chapter->update([
+        Log::info('🟢 [MARK COMPLETE] Updating chapter status to completed');
+
+        $chapterModel->update([
             'status' => ChapterStatus::Completed->value,
+        ]);
+
+        Log::info('✅ [MARK COMPLETE] Chapter marked as complete successfully', [
+            'chapter_id' => $chapterModel->id,
+            'new_status' => $chapterModel->status,
         ]);
 
         return redirect()->back()->with('success', 'Chapter marked as complete successfully!');
@@ -4808,9 +4835,9 @@ ORIGINAL PROMPT CONTEXT:
      */
     private function convertTiptapToHtml(string $content): string
     {
-        // If content is already HTML, return it
+        // If content is already HTML, process it for mermaid blocks and return
         if (str_starts_with(trim($content), '<')) {
-            return $content;
+            return $this->processMermaidInHtml($content);
         }
 
         // Try to decode as JSON (Tiptap format)
@@ -4822,6 +4849,37 @@ ORIGINAL PROMPT CONTEXT:
 
         // Basic Tiptap to HTML conversion
         return $this->tiptapNodeToHtml($json);
+    }
+
+    /**
+     * Process HTML content to convert mermaid data attributes to proper mermaid divs
+     */
+    private function processMermaidInHtml(string $html): string
+    {
+        // Convert data-mermaid divs to proper mermaid class divs for Mermaid.js
+        $html = preg_replace_callback(
+            '/<div[^>]*data-mermaid[^>]*data-mermaid-code="([^"]*)"[^>]*>.*?<\/div>/s',
+            function ($matches) {
+                $code = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+
+                return '<div class="mermaid">'."\n".$code."\n".'</div>';
+            },
+            $html
+        );
+
+        // Also handle pre/code blocks with language-mermaid class
+        $html = preg_replace_callback(
+            '/<pre[^>]*>\s*<code[^>]*class="[^"]*language-mermaid[^"]*"[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/s',
+            function ($matches) {
+                $code = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+                $code = strip_tags($code); // Remove any nested HTML tags
+
+                return '<div class="mermaid">'."\n".trim($code)."\n".'</div>';
+            },
+            $html
+        );
+
+        return $html;
     }
 
     /**
@@ -4899,6 +4957,18 @@ ORIGINAL PROMPT CONTEXT:
                 return '<br>';
             case 'horizontalRule':
                 return '<hr>';
+            case 'mermaid':
+                $code = $attrs['code'] ?? $childrenHtml;
+
+                return '<div class="mermaid">'."\n".$code."\n".'</div>';
+            case 'table':
+                return "<table>{$childrenHtml}</table>";
+            case 'tableRow':
+                return "<tr>{$childrenHtml}</tr>";
+            case 'tableHeader':
+                return "<th>{$childrenHtml}</th>";
+            case 'tableCell':
+                return "<td>{$childrenHtml}</td>";
             default:
                 return $childrenHtml;
         }

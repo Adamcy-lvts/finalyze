@@ -11,8 +11,8 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
-import { router } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, Moon, PenTool, Save, Sun, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next';
+import { router, usePage } from '@inertiajs/vue3';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, Moon, PenTool, Save, Sun, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2 } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -129,6 +129,22 @@ interface Props {
 
 
 const props = defineProps<Props>();
+
+// Flash message handling (mirror ManualEditor behavior)
+const page = usePage();
+watch(
+    () => page.props?.flash,
+    (flash: any) => {
+        if (!flash) return;
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+        if (flash.error) {
+            toast.error(flash.error);
+        }
+    },
+    { deep: true, immediate: true }
+);
 
 // Core editor state
 const chapterTitle = ref(props.chapter.title || '');
@@ -1820,32 +1836,6 @@ const goToBulkAnalysis = () => {
     router.visit(route('projects.analysis', { project: props.project.slug }));
 };
 
-const markChapterAsComplete = async () => {
-    try {
-        await save(false);
-
-        router.post(
-            route('chapters.mark-complete', {
-                project: props.project.slug,
-                chapter: props.chapter.chapter_number
-            }),
-            {},
-            {
-                onSuccess: () => {
-                    toast.success('Chapter marked as complete');
-                },
-                onError: (errors) => {
-                    console.error('Mark complete failed:', errors);
-                    toast.error('Failed to mark chapter as complete');
-                }
-            }
-        );
-    } catch (error) {
-        console.error('Error marking chapter complete:', error);
-        toast.error('Failed to save chapter before marking complete');
-    }
-};
-
 // Event handlers
 const handleContentChange = () => {
     addToHistory(chapterContent.value);
@@ -2456,7 +2446,41 @@ const {
 );
 
 // Use centralized word count values for defense questions
+// Use centralized word count values for defense questions
 const meetsDefenseThreshold = wordCountMeetsDefenseThreshold;
+
+// Mark chapter as complete
+const markAsComplete = async () => {
+    console.log('🔵 [MARK COMPLETE] Function called')
+    console.log('🔵 [MARK COMPLETE] Current word count:', currentWordCount.value)
+
+    try {
+        // First save the chapter
+        console.log('🔵 [MARK COMPLETE] Saving chapter...')
+        await save(false)
+        console.log('✅ [MARK COMPLETE] Chapter saved')
+
+        // Then mark as complete (flash messages handled by watcher)
+        const routeUrl = route('chapters.mark-complete', {
+            project: props.project.slug,
+            chapter: props.chapter.chapter_number
+        })
+        console.log('🔵 [MARK COMPLETE] Posting to:', routeUrl)
+
+        router.post(routeUrl, {}, {
+            onSuccess: () => {
+                console.log('✅ [MARK COMPLETE] Request successful')
+            },
+            onError: (errors) => {
+                console.error('❌ [MARK COMPLETE] Request failed:', errors)
+            }
+        })
+    } catch (error) {
+        console.error('❌ [MARK COMPLETE] Error:', error)
+        toast.error('Failed to save chapter before marking complete')
+    }
+};
+
 const shouldShowDefenseProgress = computed(() => {
     const wordCount = currentWordCount.value;
     return wordCount > 0 && wordCount < DEFENSE_THRESHOLD && !hasTriggeredGeneration.value;
@@ -2910,7 +2934,7 @@ onMounted(async () => {
                                             Run Bulk Analysis
                                         </Button>
 
-                                        <Button @click="markChapterAsComplete" :disabled="isSaving" size="sm"
+                                        <Button @click="markAsComplete" :disabled="isSaving" size="sm"
                                             class="h-8 rounded-full bg-gradient-to-r from-primary to-primary/90 shadow-sm hover:shadow-md transition-all">
                                             <CheckCircle class="mr-2 h-3.5 w-3.5" />
                                             Complete
@@ -3002,522 +3026,392 @@ onMounted(async () => {
         </div>
 
         <!-- Normal mode - render inside AppLayout -->
-        <AppLayout v-else class="h-screen overflow-hidden">
-            <div class="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-                <div class="w-full px-4 py-6 transition-all duration-300">
+        <AppLayout v-else class="h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+            <div class="flex h-full w-full overflow-hidden relative">
+                <!-- Ambient Background Effects -->
+                <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                    <div
+                        class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/5 blur-[100px]">
+                    </div>
+                    <div
+                        class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-500/5 blur-[100px]">
+                    </div>
+                </div>
+
+                <!-- Left Sidebar (Navigation) -->
+                <aside v-show="!isLeftSidebarCollapsed"
+                    class="hidden lg:flex w-80 flex-col border-r border-border/40 bg-background/60 backdrop-blur-xl z-20 transition-all duration-300">
+                    <div class="h-14 flex items-center justify-between px-4 border-b border-border/40 shrink-0">
+                        <span class="text-sm font-semibold tracking-tight">Navigation</span>
+                        <Badge variant="outline" class="text-[10px] h-5 px-1.5">{{ memoizedAllChapters.length }}
+                            Chapters
+                        </Badge>
+                    </div>
+                    <ScrollArea class="flex-1">
+                        <div class="p-4">
+                            <ChapterNavigation :all-chapters="memoizedAllChapters" :current-chapter="memoizedChapter"
+                                :project="memoizedProject" :outlines="project.outlines || []"
+                                :faculty-chapters="facultyChapters || []" :current-word-count="currentWordCount"
+                                :target-word-count="targetWordCount" :writing-quality-score="writingQualityScore"
+                                :chapter-content-length="chapterContent.length" @go-to-chapter="goToChapter"
+                                @generate-next-chapter="generateNextChapter" />
+                        </div>
+                    </ScrollArea>
+                </aside>
+
+                <!-- Center Workspace -->
+                <main class="flex-1 flex flex-col relative z-10 min-w-0 bg-background/30 transition-all duration-300">
+
                     <!-- Header -->
-                    <div class="mb-6 flex items-center justify-between">
-                        <div class="flex items-center gap-4">
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button @click="router.visit(route('projects.show', props.project.slug))"
-                                        variant="ghost" size="icon" class="hidden sm:flex">
-                                        <ArrowLeft class="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Back to Project</p>
-                                </TooltipContent>
-                            </Tooltip>
+                    <header
+                        class="min-h-[5.5rem] flex flex-shrink-0 items-center justify-between border-b border-border/40 bg-background/60 backdrop-blur-md px-4 py-2 relative z-30 transition-all duration-300">
 
-                            <div>
-                                <SafeHtmlText as="h1" class="text-xl font-bold sm:text-2xl"
-                                    :content="props.project.title" />
-                                <p class="text-sm text-muted-foreground">
-                                    Chapter {{ props.chapter.chapter_number }} • {{ currentWordCount }} / {{
-                                        targetWordCount }}
-                                    words
-                                </p>
-                            </div>
-                        </div>
+                        <!-- Left: Toggles and Content -->
+                        <div class="flex items-center gap-4 flex-1">
+                            <!-- Sidebar Toggles -->
+                            <div class="flex items-center gap-2 flex-shrink-0 h-full self-start mt-1">
+                                <Button variant="ghost" size="icon"
+                                    @click="isLeftSidebarCollapsed = !isLeftSidebarCollapsed"
+                                    class="hidden lg:flex text-muted-foreground hover:text-foreground -ml-2 h-8 w-8">
+                                    <PanelLeftClose v-if="!isLeftSidebarCollapsed" class="h-4 w-4" />
+                                    <PanelLeftOpen v-else class="h-4 w-4" />
+                                </Button>
 
-                        <!-- Mobile menu buttons -->
-                        <div class="flex items-center gap-2">
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button @click="showLeftSidebar = true" variant="outline" size="icon"
-                                        class="lg:hidden">
-                                        <Menu class="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Chapter Navigation</p>
-                                </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button @click="showRightSidebar = true" variant="outline" size="icon"
-                                        class="lg:hidden">
-                                        <Brain class="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>AI Tools & Defense Prep</p>
-                                </TooltipContent>
-                            </Tooltip>
+                                <!-- Mobile Menu Trigger -->
+                                <Button variant="ghost" size="icon" @click="showLeftSidebar = true"
+                                    class="lg:hidden text-muted-foreground hover:text-foreground -ml-2 h-8 w-8">
+                                    <Menu class="h-4 w-4" />
+                                </Button>
 
-
-
-                            <!-- Desktop controls -->
-                            <div class="hidden items-center gap-2 lg:flex">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="toggleChatMode" :variant="showChatMode ? 'default' : 'outline'"
-                                            size="sm">
-                                            <MessageSquare class="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{{ showChatMode ? 'Exit' : 'Open' }} AI Chat Assistant</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="toggleCitationMode"
-                                            :variant="showCitationMode ? 'default' : 'outline'" size="sm">
-                                            <BookCheck class="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{{ showCitationMode ? 'Exit' : 'Open' }} Citation Verification</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="showStatistics = !showStatistics"
-                                            :variant="showStatistics ? 'default' : 'outline'" size="sm">
-                                            <Target class="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{{ showStatistics ? 'Hide' : 'Show' }} Writing Statistics</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="toggleDarkMode" variant="outline" size="sm">
-                                            <Moon v-if="!isDarkMode" class="h-4 w-4" />
-                                            <Sun v-else class="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Switch to {{ isDarkMode ? 'Light' : 'Dark' }} Mode</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button @click="toggleNativeFullscreen"
-                                            :variant="isNativeFullscreen ? 'default' : 'outline'" size="sm">
-                                            <Maximize2 class="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{{ isNativeFullscreen ? 'Exit' : 'Enter' }} Fullscreen Mode (F11)</p>
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
-                                    :all-chapters="memoizedAllChapters" size="sm" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Progress bar -->
-                    <div class="mb-6">
-                        <div class="mb-2 flex items-center justify-between">
-                            <span class="text-sm font-medium">Writing Progress</span>
-                            <span class="text-sm text-muted-foreground">{{ currentWordCount }} / {{ targetWordCount }}
-                                words ({{
-                                    Math.round(progressPercentage) }}%)</span>
-                        </div>
-                        <Progress :model-value="Number(progressPercentage)" class="h-2" />
-                    </div>
-
-                    <!-- AI Generation Progress Card (Fullscreen) -->
-                    <div v-if="isGenerating" class="mb-6">
-                        <div
-                            class="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50 p-4 shadow-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-purple-950/30">
-                            <!-- Background Animation -->
-                            <div
-                                class="absolute inset-0 -skew-x-12 animate-pulse bg-gradient-to-r from-transparent via-white/10 to-transparent">
+                                <div class="h-8 w-px bg-border/50 hidden lg:block mx-1"></div>
                             </div>
 
-                            <!-- Header -->
-                            <div class="relative z-10 mb-3 flex items-center justify-between">
-                                <div class="flex items-center gap-2">
-                                    <div class="relative">
-                                        <div
-                                            class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600">
-                                            <Brain class="h-4 w-4 text-white" />
-                                        </div>
-                                        <!-- Pulsing ring -->
-                                        <div
-                                            class="absolute inset-0 h-8 w-8 animate-ping rounded-full bg-gradient-to-br from-blue-500 to-purple-600 opacity-20">
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h4 class="text-sm font-semibold text-blue-900 dark:text-blue-100">AI Chapter
-                                            Generator
-                                        </h4>
-                                        <p class="text-xs text-blue-700 dark:text-blue-300">{{ generationPhase }}</p>
-                                    </div>
+                            <!-- Main Header Content (Column) -->
+                            <div class="flex flex-col gap-1.5 flex-1 min-w-0">
+                                <!-- Top Row: Project Title -->
+                                <div class="flex items-start gap-3 w-full">
+                                    <SafeHtmlText as="h1"
+                                        class="text-lg font-bold tracking-tight text-foreground leading-tight cursor-pointer hover:text-primary/80 transition-colors break-words line-clamp-2"
+                                        :content="props.project.title"
+                                        @click="router.visit(route('projects.show', props.project.slug))" />
+                                    <Badge variant="secondary"
+                                        class="h-5 px-2 text-[10px] font-medium rounded-full bg-secondary/50 border border-border/50 shrink-0 mt-0.5">
+                                        Ch {{ props.chapter.chapter_number }}
+                                    </Badge>
                                 </div>
-                                <Badge variant="outline"
-                                    class="border-blue-300 text-xs text-blue-700 dark:border-blue-700 dark:text-blue-300">
-                                    {{ Math.round(generationPercentage) }}%
-                                </Badge>
-                            </div>
 
-                            <!-- Progress Bar -->
-                            <div class="relative z-10 mb-3">
-                                <div class="mb-1 flex items-center justify-between">
-                                    <span class="text-xs text-blue-800 dark:text-blue-200">Generation Progress</span>
-                                    <span class="text-xs text-blue-600 dark:text-blue-400">{{ streamWordCount }} / {{
-                                        estimatedTotalWords }} words</span>
-                                </div>
-                                <div class="relative h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50">
-                                    <!-- Animated progress bar -->
-                                    <div class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500 ease-out"
-                                        :style="{ width: `${generationPercentage}%` }">
-                                        <!-- Shimmer effect -->
-                                        <div
-                                            class="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/30 to-transparent">
-                                        </div>
-                                    </div>
-                                    <!-- Progress glow -->
-                                    <div class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-400 to-purple-400 opacity-50 blur-sm transition-all duration-500"
-                                        :style="{ width: `${generationPercentage}%` }"></div>
-                                </div>
-                            </div>
-
-                            <!-- Status Message -->
-                            <div class="relative z-10 flex items-center gap-2">
-                                <!-- Dynamic icon based on phase -->
-                                <div class="flex-shrink-0">
-                                    <div v-if="generationPhase === 'Initializing'"
-                                        class="h-3 w-3 animate-bounce rounded-full bg-blue-500"></div>
-                                    <div v-else-if="generationPhase === 'Connecting'" class="flex gap-1">
-                                        <div class="h-3 w-1 animate-pulse rounded-full bg-blue-500"></div>
-                                        <div class="h-3 w-1 animate-pulse rounded-full bg-purple-500"
-                                            style="animation-delay: 0.2s"></div>
-                                        <div class="h-3 w-1 animate-pulse rounded-full bg-blue-500"
-                                            style="animation-delay: 0.4s"></div>
-                                    </div>
-                                    <div v-else-if="generationPhase === 'Generating'"
-                                        class="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent">
-                                    </div>
-                                    <div v-else-if="generationPhase === 'Complete'"
-                                        class="h-3 w-3 rounded-full bg-green-500">
-                                    </div>
-                                    <div v-else class="h-3 w-3 rounded-full bg-red-500"></div>
-                                </div>
-                                <p class="flex-1 text-xs text-blue-800 dark:text-blue-200">{{ generationProgress }}</p>
-                            </div>
-
-                            <!-- Quality indicator -->
-                            <div v-if="generationPhase === 'Generating' && streamWordCount > 50"
-                                class="relative z-10 mt-3 border-t border-blue-200 pt-3 dark:border-blue-800">
-                                <div class="flex items-center justify-between text-xs">
-                                    <span class="text-blue-700 dark:text-blue-300">Writing Quality</span>
-                                    <div class="flex items-center gap-1">
-                                        <div class="flex gap-0.5">
-                                            <div v-for="i in 5" :key="i" class="h-2 w-2 rounded-full"
-                                                :class="i <= Math.ceil(writingQualityScore / 20) ? 'bg-yellow-400' : 'bg-blue-200 dark:bg-blue-800'">
-                                            </div>
-                                        </div>
-                                        <span class="ml-1 text-blue-600 dark:text-blue-400">{{ writingQualityScore
-                                        }}%</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Writing Statistics -->
-                    <WritingStatistics :show-statistics="showStatistics" :current-word-count="currentWordCount"
-                        :writing-stats="writingStats" :quality-analysis="latestAnalysis" :is-analyzing="isAnalyzing" />
-
-                    <!-- Main Content Grid -->
-                    <!-- Main Content Grid -->
-                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 transition-all duration-300">
-                        <!-- Left Sidebar (Desktop) -->
-                        <div v-show="!isLeftSidebarCollapsed"
-                            class="hidden lg:block lg:col-span-2 transition-all duration-300">
-                            <div class="h-[calc(100vh-320px)] overflow-y-auto space-y-6 custom-scrollbar pr-1">
-                                <ChapterNavigation :all-chapters="memoizedAllChapters"
-                                    :current-chapter="memoizedChapter" :project="memoizedProject"
-                                    :outlines="project.outlines || []" :faculty-chapters="facultyChapters || []"
-                                    :current-word-count="currentWordCount" :target-word-count="targetWordCount"
-                                    :writing-quality-score="writingQualityScore"
-                                    :chapter-content-length="chapterContent.length" @go-to-chapter="goToChapter"
-                                    @generate-next-chapter="generateNextChapter" />
-                            </div>
-                        </div>
-
-                        <!-- Main Editor -->
-                        <div :class="[
-                            'transition-all duration-300',
-                            isLeftSidebarCollapsed && isRightSidebarCollapsed ? 'lg:col-span-12' :
-                                isLeftSidebarCollapsed ? 'lg:col-span-9' :
-                                    isRightSidebarCollapsed ? 'lg:col-span-10' :
-                                        'lg:col-span-7'
-                        ]">
-                            <Card class="border-[0.5px] border-border/50 transition-all duration-300">
-                                <CardHeader class="pb-4">
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center gap-2">
-                                            <Button variant="ghost" size="icon"
-                                                class="h-6 w-6 hidden lg:flex mr-1 text-muted-foreground hover:text-foreground"
-                                                @click="isLeftSidebarCollapsed = !isLeftSidebarCollapsed"
-                                                :title="isLeftSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'">
-                                                <PanelLeftClose v-if="!isLeftSidebarCollapsed" class="h-4 w-4" />
-                                                <PanelLeftOpen v-else class="h-4 w-4" />
-                                            </Button>
-                                            <CardTitle class="text-lg">Chapter {{ chapter.chapter_number }}</CardTitle>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <Badge :variant="chapter.status === 'approved' ? 'default' : 'secondary'">
-                                                {{ chapter.status.replace('_', ' ') }}
-                                            </Badge>
-                                            <Badge variant="outline" class="text-xs" :class="{
-                                                'text-green-600 border-green-200 bg-green-50': (latestAnalysis?.total_score || 0) >= 80,
-                                                'text-yellow-600 border-yellow-200 bg-yellow-50': (latestAnalysis?.total_score || 0) >= 70 && (latestAnalysis?.total_score || 0) < 80,
-                                                'text-orange-600 border-orange-200 bg-orange-50': (latestAnalysis?.total_score || 0) >= 60 && (latestAnalysis?.total_score || 0) < 70,
-                                                'text-red-600 border-red-200 bg-red-50': (latestAnalysis?.total_score || 0) < 60
-                                            }">
-                                                {{ latestAnalysis?.total_score ? Math.round(latestAnalysis.total_score)
-                                                    :
-                                                    writingQualityScore }}% Quality
-                                            </Badge>
-                                            <Button variant="ghost" size="icon"
-                                                class="h-6 w-6 hidden lg:flex ml-1 text-muted-foreground hover:text-foreground"
-                                                @click="isRightSidebarCollapsed = !isRightSidebarCollapsed"
-                                                :title="isRightSidebarCollapsed ? 'Expand Tools' : 'Collapse Tools'">
-                                                <PanelRightClose v-if="!isRightSidebarCollapsed" class="h-4 w-4" />
-                                                <PanelRightOpen v-else class="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </CardHeader>
-
-                                <CardContent class="space-y-4">
-                                    <!-- Chapter Title Input -->
-                                    <div class="space-y-2">
-                                        <Label for="chapter-title">Chapter Title</Label>
-                                        <Input id="chapter-title" v-model="chapterTitle"
-                                            placeholder="Enter chapter title..." class="text-lg font-medium" />
-                                    </div>
-
-                                    <!-- Content Editor -->
-                                    <div class="space-y-2">
-                                        <div class="flex items-center justify-between">
-                                            <Label for="chapter-content">Content</Label>
-                                            <div class="flex items-center gap-2">
+                                <!-- Bottom Row: Toolbar/Buttons -->
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <!-- Helper Actions -->
+                                    <div
+                                        class="flex items-center bg-background/50 rounded-md border border-border/50 p-0.5 mr-2 backdrop-blur-sm hidden sm:flex">
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button @click="showStatistics = !showStatistics"
+                                                    :variant="showStatistics ? 'secondary' : 'ghost'" size="sm"
+                                                    class="h-7 px-3 text-xs gap-2">
+                                                    <Target class="h-3.5 w-3.5" />
+                                                    Stats
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Toggle Writing Statistics</TooltipContent>
+                                        </Tooltip>
+                                        <div class="w-px h-3 bg-border/50 mx-0.5"></div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
                                                 <Button @click="togglePresentationMode"
-                                                    :variant="showPresentationMode ? 'default' : 'outline'" size="sm">
-                                                    <Eye class="mr-1 h-4 w-4" />
-                                                    {{ showPresentationMode ? 'Edit Mode' : 'Preview Mode' }}
+                                                    :variant="showPresentationMode ? 'secondary' : 'ghost'" size="sm"
+                                                    class="h-7 px-3 text-xs gap-2">
+                                                    <Eye v-if="!showPresentationMode" class="h-3.5 w-3.5" />
+                                                    <Edit2 v-else class="h-3.5 w-3.5" />
+                                                    {{ showPresentationMode ? 'Edit' : 'Preview' }}
                                                 </Button>
-                                            </div>
-                                        </div>
-
-                                        <!-- Rich Text Editor -->
-                                        <ScrollArea ref="editorFullscreenScrollRef" class="h-[calc(100vh-320px)] w-full"
-                                            v-show="!showPresentationMode">
-                                            <RichTextEditor v-model="chapterContent"
-                                                placeholder="Start writing your chapter..." min-height="600px"
-                                                class="text-base leading-relaxed" ref="richTextEditorFullscreen"
-                                                @update:selected-text="(text) => { selectedText = text; console.log('📋 ChapterEditor Fullscreen - Selected text updated:', { length: text.length, preview: text.substring(0, 50) + (text.length > 50 ? '...' : '') }); }" />
-                                        </ScrollArea>
-
-
-                                        <!-- Presentation View -->
-                                        <ScrollArea ref="previewFullscreenScrollRef"
-                                            class="h-[calc(100vh-320px)] w-full" v-show="showPresentationMode">
-                                            <RichTextViewer :content="chapterContent" :show-font-controls="false"
-                                                class="min-h-[600px] rounded-md border border-border/50 bg-background p-6"
-                                                style="font-family: 'Times New Roman', serif; line-height: 1.8" />
-                                        </ScrollArea>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Toggle Preview Mode</TooltipContent>
+                                        </Tooltip>
+                                        <div class="w-px h-3 bg-border/50 mx-0.5"></div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button @click="toggleChatMode" variant="ghost" size="sm"
+                                                    class="h-7 px-3 text-xs gap-2">
+                                                    <MessageSquare class="h-3.5 w-3.5 text-blue-500" />
+                                                    AI Chat
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Open AI Assistant Overlay</TooltipContent>
+                                        </Tooltip>
+                                        <div class="w-px h-3 bg-border/50 mx-0.5"></div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button @click="toggleNativeFullscreen" variant="ghost" size="sm"
+                                                    class="h-7 px-3 text-xs gap-2"
+                                                    :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
+                                                    <Minimize2 v-if="isNativeFullscreen" class="h-3.5 w-3.5" />
+                                                    <Maximize2 v-else class="h-3.5 w-3.5" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Toggle Full Screen</TooltipContent>
+                                        </Tooltip>
                                     </div>
 
-                                    <!-- Action Buttons -->
-                                    <div class="flex flex-col gap-2 pt-4 sm:flex-row">
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button @click="save(false)" :disabled="!isValid || isSaving" size="sm"
-                                                    class="flex-1 sm:flex-none">
-                                                    <Save class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                                                    <span class="hidden sm:inline">{{ isSaving ? 'Saving...' : `Save
-                                                        Draft`
-                                                        }}</span>
-                                                    <span class="sm:hidden">{{ isSaving ? 'Saving...' : 'Save' }}</span>
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>Save chapter as draft (Ctrl+S)</p>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                    <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
+                                        :all-chapters="memoizedAllChapters" size="sm" variant="outline"
+                                        class="h-7 hidden md:flex" />
 
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button @click="goToBulkAnalysis" variant="outline" size="sm"
-                                                    class="flex-1 sm:flex-none">
-                                                    <BookCheck class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                                                    <span class="hidden sm:inline">Bulk Analysis</span>
-                                                    <span class="sm:hidden">Analyze</span>
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>Open bulk chapter analysis to score this project.</p>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                    <Button variant="ghost" size="sm" class="hidden md:flex h-7 gap-2"
+                                        @click="goToBulkAnalysis" title="Open bulk analysis">
+                                        <Brain class="w-4 h-4" />
+                                        <span class="text-xs font-medium">Analyze</span>
+                                    </Button>
 
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button @click="showPreview = !showPreview" variant="outline" size="sm"
-                                                    class="flex-1 sm:flex-none">
-                                                    <Eye v-if="!showPreview"
-                                                        class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                                                    <PenTool v-else class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                                                    <span class="hidden sm:inline">{{ showPreview ? 'Edit' : 'Preview'
-                                                        }}</span>
-                                                    <span class="sm:hidden">{{ showPreview ? 'Edit' : 'Preview'
-                                                        }}</span>
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>{{ showPreview ? 'Switch to edit mode' : 'Switch to preview mode' }}
-                                                </p>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                    <Button @click="save(false)" :disabled="isSaving"
+                                        :variant="isValid ? 'default' : 'secondary'" size="sm"
+                                        class="h-7 px-3 text-xs shadow-sm gap-2">
+                                        <Save class="h-3.5 w-3.5" />
+                                        {{ isSaving ? 'Saving...' : 'Save' }}
+                                    </Button>
 
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button @click="markChapterAsComplete" :disabled="isSaving" size="sm"
-                                                    class="flex-1 sm:flex-none">
-                                                    <CheckCircle class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                                                    <span class="hidden sm:inline">Save & Mark Complete</span>
-                                                    <span class="sm:hidden">Complete</span>
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>Mark chapter as complete (requires 80% of target word count)</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
-                                            :all-chapters="memoizedAllChapters" size="sm" variant="outline"
-                                            class="flex-1 sm:flex-none" />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <!-- Right Sidebar (Desktop) -->
-                        <div v-show="!isRightSidebarCollapsed"
-                            class="hidden lg:block lg:col-span-3 transition-all duration-300">
-                            <div class="h-[calc(100vh-40px)] overflow-y-auto space-y-4 custom-scrollbar px-1">
-                                <AISidebar :project="memoizedProject" :chapter="memoizedChapter"
-                                    :is-generating="isGenerating" :selected-text="selectedText"
-                                    :is-loading-suggestions="isLoadingSuggestions"
-                                    :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
-                                    :current-word-count="currentWordCount" :target-word-count="targetWordCount"
-                                    @start-streaming-generation="handleAIGeneration"
-                                    @get-ai-suggestions="getAISuggestions"
-                                    @update:show-citation-helper="showCitationHelper = $event"
-                                    @insert-citation="insertCitation" @check-citations="checkCitations" />
-
-                                <DefensePreparationPanel :show-defense-prep="showDefensePrep"
-                                    :questions="defenseQuestions" :is-loading="isLoadingDefenseQuestions"
-                                    :is-generating="isGeneratingDefenseQuestions" :chapter-context="{
-                                        chapter_number: currentChapter.chapter_number,
-                                        chapter_title: currentChapter.title,
-                                        word_count: currentWordCount
-                                    }" :defense-watcher="{
-                                        meetsThreshold: meetsDefenseThreshold,
-                                        shouldShowProgress: shouldShowDefenseProgress,
-                                        progressPercentage: defenseProgressPercentage,
-                                        wordsRemaining: defenseWordsRemaining,
-                                        hasTriggeredGeneration,
-                                        threshold: DEFENSE_THRESHOLD,
-                                        statusMessage: getDefenseStatusMessage()
-                                    }" :auto-generate-enabled="autoGenerateDefense"
-                                    @update:show-defense-prep="handleDefensePanelToggle"
-                                    @generate-more="generateNewDefenseQuestions"
-                                    @toggle-auto-generate="handleDefenseAutoToggle"
-                                    @refresh="() => loadDefenseQuestions(true, { skipGeneration: true })"
-                                    @mark-helpful="markQuestionHelpful" @hide-question="hideQuestion" />
-
+                                    <Button @click="markAsComplete" :disabled="isSaving" size="sm"
+                                        class="h-7 px-3 text-xs shadow-sm gap-2">
+                                        <CheckCircle class="h-3.5 w-3.5" />
+                                        Mark Complete
+                                    </Button>
+                                </div>
                             </div>
                         </div>
+
+                        <!-- Right Sidebar Toggle (Far Right) -->
+                        <div class="flex items-center self-start mt-1 ml-2">
+                            <Button variant="ghost" size="icon"
+                                @click="isRightSidebarCollapsed = !isRightSidebarCollapsed"
+                                class="hidden lg:flex text-muted-foreground hover:text-foreground ml-1 h-8 w-8">
+                                <PanelRightClose v-if="!isRightSidebarCollapsed" class="h-4 w-4" />
+                                <PanelRightOpen v-else class="h-4 w-4" />
+                            </Button>
+
+                            <!-- Mobile AI Trigger -->
+                            <Button variant="ghost" size="icon" @click="showRightSidebar = true"
+                                class="lg:hidden text-muted-foreground hover:text-foreground ml-1 h-8 w-8">
+                                <Brain class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </header>
+
+                    <!-- Main Editor Area -->
+                    <div class="flex-1 overflow-hidden relative group bg-background/20">
+                        <!-- AI Status Overlay -->
+                        <Transition enter-active-class="transition-all duration-300 ease-out"
+                            enter-from-class="opacity-0 -translate-y-4" enter-to-class="opacity-100 translate-y-0"
+                            leave-active-class="transition-all duration-200 ease-in"
+                            leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-4">
+                            <div v-if="isGenerating"
+                                class="absolute top-6 left-0 right-0 z-40 px-4 flex justify-center pointer-events-none">
+                                <div class="w-full max-w-lg pointer-events-auto">
+                                    <div
+                                        class="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50/95 to-purple-50/95 p-3 shadow-lg backdrop-blur-lg dark:border-blue-800 dark:from-blue-950/90 dark:to-purple-950/90">
+                                        <div class="flex items-center gap-3">
+                                            <div
+                                                class="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 shadow-md">
+                                                <Brain class="h-4 w-4 text-white animate-pulse" />
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center justify-between mb-1">
+                                                    <h4 class="text-xs font-semibold text-foreground">Generating
+                                                        Content...</h4>
+                                                    <span class="text-xs font-mono text-muted-foreground">{{
+                                                        Math.round(generationPercentage) }}%</span>
+                                                </div>
+                                                <div
+                                                    class="h-1.5 w-full bg-blue-100 dark:bg-blue-900/40 rounded-full overflow-hidden">
+                                                    <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                                                        :style="{ width: `${generationPercentage}%` }"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p class="mt-2 text-xs text-muted-foreground ml-11 truncate">{{
+                                            generationProgress }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </Transition>
+
+                        <ScrollArea ref="editorScrollRef" class="h-full w-full">
+                            <div class="max-w-[850px] mx-auto py-12 px-6 sm:px-10 min-h-full">
+                                <Transition enter-active-class="transition-all duration-300 ease-out"
+                                    enter-from-class="opacity-0 -translate-y-2"
+                                    enter-to-class="opacity-100 translate-y-0"
+                                    leave-active-class="transition-all duration-200 ease-in"
+                                    leave-from-class="opacity-100 translate-y-0"
+                                    leave-to-class="opacity-0 -translate-y-2">
+                                    <WritingStatistics v-if="showStatistics" :show-statistics="true"
+                                        :current-word-count="currentWordCount" :writing-stats="writingStats"
+                                        :quality-analysis="latestAnalysis" :is-analyzing="isAnalyzing" class="mb-8" />
+                                </Transition>
+
+
+                                <div v-show="!showPresentationMode" class="min-h-[600px] pb-32">
+                                    <RichTextEditor ref="richTextEditor" v-model="chapterContent"
+                                        placeholder="Start writing your chapter..."
+                                        class="prose prose-slate dark:prose-invert prose-lg max-w-none focus:outline-none min-h-[500px]"
+                                        @update:selected-text="selectedText = $event" :min-height="'500px'" />
+                                </div>
+                                <div v-show="showPresentationMode" class="pb-32">
+                                    <RichTextViewer :content="chapterContent"
+                                        class="prose prose-slate dark:prose-invert prose-lg max-w-none" />
+                                </div>
+                            </div>
+                        </ScrollArea>
                     </div>
 
-                    <!-- Mobile Overlays -->
-                    <MobileNavOverlay :show-left-sidebar="showLeftSidebar" :show-right-sidebar="showRightSidebar"
-                        :is-mobile="isMobile" :all-chapters="memoizedAllChapters" :current-chapter="memoizedChapter"
-                        :project="memoizedProject" :current-word-count="currentWordCount"
-                        :target-word-count="targetWordCount" :writing-quality-score="writingQualityScore"
-                        :chapter-content-length="chapterContent.length" :is-generating="isGenerating"
-                        :selected-text="selectedText" :is-loading-suggestions="isLoadingSuggestions"
-                        :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
-                        @update:show-left-sidebar="showLeftSidebar = $event"
-                        @update:show-right-sidebar="showRightSidebar = $event" @go-to-chapter="goToChapter"
-                        @generate-next-chapter="generateNextChapter" @start-streaming-generation="handleAIGeneration"
-                        @get-ai-suggestions="getAISuggestions"
-                        @update:show-citation-helper="showCitationHelper = $event" @check-citations="checkCitations" />
+                    <!-- Footer Info -->
+                    <div
+                        class="h-7 border-t border-border/30 bg-background/40 backdrop-blur-sm flex items-center justify-between px-4 text-[10px] text-muted-foreground shrink-0">
+                        <div class="flex items-center gap-3">
+                            <span>Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
+                            <span class="hidden sm:inline">Last saved: {{ isSaving ? 'Saving...' : 'Just now' }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span>Quality: <span
+                                    :class="writingQualityScore > 70 ? 'text-green-500' : 'text-amber-500'">{{
+                                        writingQualityScore }}%</span></span>
+                            <span v-if="isValid" class="text-green-500 flex items-center gap-1 ml-2">
+                                <CheckCircle class="h-3 w-3" /> Ready
+                            </span>
+                        </div>
+                    </div>
+                </main>
 
-                    <!-- Credit balance modal -->
-                    <PurchaseModal :open="showPurchaseModal" :current-balance="balance"
-                        :required-words="requiredWordsForModal" :action="actionDescriptionForModal"
-                        @update:open="(v) => showPurchaseModal = v" @close="closePurchaseModal" />
+                <!-- Right Sidebar (Tools) -->
+                <aside v-show="!isRightSidebarCollapsed"
+                    class="hidden lg:flex w-96 flex-col border-l border-border/40 bg-background/60 backdrop-blur-xl z-20 transition-all duration-300">
+                    <div class="h-14 flex items-center justify-between px-4 border-b border-border/40 shrink-0">
+                        <span class="text-sm font-semibold tracking-tight">Writing Assistant</span>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" class="h-7 w-7">
+                                    <BookCheck class="h-3.5 w-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Manage Citations</TooltipContent>
+                        </Tooltip>
+                    </div>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar">
+                        <div class="p-4 space-y-6">
+                            <AISidebar :project="memoizedProject" :chapter="memoizedChapter"
+                                :is-generating="isGenerating" :selected-text="selectedText"
+                                :is-loading-suggestions="isLoadingSuggestions"
+                                :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+                                :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+                                @start-streaming-generation="handleAIGeneration" @get-ai-suggestions="getAISuggestions"
+                                @update:show-citation-helper="showCitationHelper = $event"
+                                @insert-citation="insertCitation" @check-citations="checkCitations" />
 
-                    <!-- Recovery Dialog for interrupted generation -->
-                    <div v-if="showRecoveryDialog"
-                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <Card class="w-full max-w-md mx-4 bg-white dark:bg-slate-900 border-amber-500/50">
-                            <CardHeader>
-                                <CardTitle class="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+                            <DefensePreparationPanel :show-defense-prep="showDefensePrep" :questions="defenseQuestions"
+                                :is-loading="isLoadingDefenseQuestions" :is-generating="isGeneratingDefenseQuestions"
+                                :chapter-context="{
+                                    chapter_number: currentChapter.chapter_number,
+                                    chapter_title: currentChapter.title,
+                                    word_count: currentWordCount
+                                }" :defense-watcher="{
+                                    meetsThreshold: meetsDefenseThreshold,
+                                    shouldShowProgress: shouldShowDefenseProgress,
+                                    progressPercentage: defenseProgressPercentage,
+                                    wordsRemaining: defenseWordsRemaining,
+                                    hasTriggeredGeneration,
+                                    threshold: DEFENSE_THRESHOLD,
+                                    statusMessage: getDefenseStatusMessage()
+                                }" :auto-generate-enabled="autoGenerateDefense"
+                                @update:show-defense-prep="handleDefensePanelToggle"
+                                @generate-more="generateNewDefenseQuestions"
+                                @toggle-auto-generate="handleDefenseAutoToggle"
+                                @refresh="() => loadDefenseQuestions(true, { skipGeneration: true })"
+                                @mark-helpful="markQuestionHelpful" @hide-question="hideQuestion" />
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Mobile Overlays -->
+                <MobileNavOverlay :show-left-sidebar="showLeftSidebar" :show-right-sidebar="showRightSidebar"
+                    :is-mobile="isMobile" :all-chapters="memoizedAllChapters" :current-chapter="memoizedChapter"
+                    :project="memoizedProject" :current-word-count="currentWordCount"
+                    :target-word-count="targetWordCount" :writing-quality-score="writingQualityScore"
+                    :chapter-content-length="chapterContent.length" :is-generating="isGenerating"
+                    :selected-text="selectedText" :is-loading-suggestions="isLoadingSuggestions"
+                    :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+                    @update:show-left-sidebar="showLeftSidebar = $event"
+                    @update:show-right-sidebar="showRightSidebar = $event" @go-to-chapter="goToChapter"
+                    @generate-next-chapter="generateNextChapter" @start-streaming-generation="handleAIGeneration"
+                    @get-ai-suggestions="getAISuggestions" @update:show-citation-helper="showCitationHelper = $event"
+                    @check-citations="checkCitations" />
+
+                <!-- Credit balance modal -->
+                <PurchaseModal :open="showPurchaseModal" :current-balance="balance"
+                    :required-words="requiredWordsForModal" :action="actionDescriptionForModal"
+                    @update:open="(v) => showPurchaseModal = v" @close="closePurchaseModal" />
+
+                <!-- Recovery Dialog -->
+                <div v-if="showRecoveryDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <Card class="w-full max-w-md mx-4 bg-white dark:bg-slate-900 border-amber-500/50 shadow-2xl">
+                        <CardHeader>
+                            <CardTitle class="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                Generation Interrupted
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p class="text-slate-600 dark:text-slate-300 mb-4">
+                                Connection lost. <span class="font-semibold text-amber-600 dark:text-amber-400">{{
+                                    savedWordCountOnError }} words</span> may have been saved.
+                            </p>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <Button @click="resumeGeneration"
+                                    class="flex-1 bg-amber-600 hover:bg-amber-700 text-white">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none"
                                         viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                     </svg>
-                                    Generation Interrupted
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p class="text-slate-600 dark:text-slate-300 mb-4">
-                                    The connection was lost during generation, but
-                                    <span class="font-semibold text-amber-600 dark:text-amber-400">{{
-                                        savedWordCountOnError }}
-                                        words</span>
-                                    may have been saved to the server.
-                                </p>
-                                <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                                    Reload the page to recover your content, or dismiss this dialog to continue with
-                                    what's
-                                    currently displayed.
-                                </p>
-                                <div class="flex flex-col sm:flex-row gap-3">
-                                    <Button @click="resumeGeneration"
-                                        class="flex-1 bg-amber-600 hover:bg-amber-700 text-white">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none"
-                                            viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                        </svg>
-                                        Reload & Recover
-                                    </Button>
-                                    <Button @click="dismissRecovery" variant="outline" class="flex-1">
-                                        Dismiss
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
+                                    Reload & Recover
+                                </Button>
+                                <Button @click="dismissRecovery" variant="outline" class="flex-1">
+                                    Dismiss
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
         </AppLayout>
     </TooltipProvider>
 </template>
+
+<style scoped>
+/* Custom scrollbar for sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--border) / 0.8);
+}
+
+/* Firefox scrollbar */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+}
+</style>

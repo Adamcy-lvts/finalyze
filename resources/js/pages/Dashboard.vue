@@ -33,6 +33,8 @@ interface Props {
         slug: string;
         title: string;
         type: string;
+        status: string;
+        setupStep: number;
         progress: number;
         currentChapter: number;
         chapters: Array<{
@@ -76,6 +78,25 @@ const formatStatus = (status: string) => {
 const isChapterComplete = (chapter: any) => {
     return ['approved', 'completed'].includes(chapter.status) || (chapter.target_word_count > 0 && chapter.word_count >= chapter.target_word_count);
 };
+
+// Helper to check if project needs setup completion
+const needsSetupCompletion = (project: Props['activeProject']) => {
+    if (!project) return false;
+    // Project is in setup phase and hasn't completed setup
+    return project.status === 'setup' && project.setupStep < 4;
+};
+
+// Helper to check if project is in writing phase
+const isInWritingPhase = (project: Props['activeProject']) => {
+    if (!project) return false;
+    return ['writing', 'completed'].includes(project.status);
+};
+
+// Helper to check if project needs topic selection/approval
+const needsTopicWork = (project: Props['activeProject']) => {
+    if (!project) return false;
+    return ['topic_selection', 'topic_pending_approval', 'topic_approved', 'guidance'].includes(project.status);
+};
 </script>
 
 <template>
@@ -94,17 +115,26 @@ const isChapterComplete = (chapter: any) => {
                                 <p class="text-muted-foreground">Here's what's happening with your projects today.</p>
                             </div>
                             <div v-if="activeProject" class="w-full md:w-auto">
-                                <Button v-if="activeProject.currentChapter === 0"
+                                <!-- Show Complete Setup only for projects in setup phase -->
+                                <Button v-if="needsSetupCompletion(activeProject)"
                                     @click="() => router.visit(route('projects.show', activeProject!.slug))"
                                     class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
                                     <span class="mr-2">🚀</span>
                                     Complete Setup
                                 </Button>
-                                <Button v-else
+                                <!-- Show Continue Writing for projects in writing phase -->
+                                <Button v-else-if="isInWritingPhase(activeProject)"
                                     @click="() => router.visit(route('projects.writing', activeProject!.slug))"
                                     class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
                                     <PenTool class="mr-2 h-4 w-4" />
                                     Continue Writing
+                                </Button>
+                                <!-- Show View Project for other statuses (topic selection, guidance, etc.) -->
+                                <Button v-else
+                                    @click="() => router.visit(route('projects.show', activeProject!.slug))"
+                                    class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
+                                    <Target class="mr-2 h-4 w-4" />
+                                    View Project
                                 </Button>
                             </div>
                         </div>
@@ -294,14 +324,16 @@ const isChapterComplete = (chapter: any) => {
 
                                     <div
                                         class="bg-muted/30 p-4 flex flex-col sm:flex-row justify-end gap-3 border-t border-border/50">
-                                        <div v-if="activeProject.currentChapter === 0" class="w-full flex justify-end">
+                                        <!-- Show Complete Setup only for projects in setup phase -->
+                                        <div v-if="needsSetupCompletion(activeProject)" class="w-full flex justify-end">
                                             <Button size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20"
                                                 @click="() => router.visit(route('projects.show', activeProject!.slug))">
                                                 <span class="mr-2">🚀</span>
                                                 Complete Setup
                                             </Button>
                                         </div>
-                                        <template v-else>
+                                        <!-- Show writing actions for projects in writing phase -->
+                                        <template v-else-if="isInWritingPhase(activeProject)">
                                             <Button variant="ghost" size="sm" class="w-full sm:w-auto"
                                                 @click="() => router.visit(route('projects.show', activeProject!.slug))">
                                                 View Details
@@ -310,6 +342,14 @@ const isChapterComplete = (chapter: any) => {
                                                 @click="() => router.visit(route('projects.writing', activeProject!.slug))">
                                                 <PenTool class="mr-2 h-4 w-4" />
                                                 Open Writer
+                                            </Button>
+                                        </template>
+                                        <!-- Show View Project for other statuses -->
+                                        <template v-else>
+                                            <Button size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20"
+                                                @click="() => router.visit(route('projects.show', activeProject!.slug))">
+                                                <Target class="mr-2 h-4 w-4" />
+                                                View Project
                                             </Button>
                                         </template>
                                     </div>

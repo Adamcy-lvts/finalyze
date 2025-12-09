@@ -17,21 +17,12 @@ import { TableCell } from '@tiptap/extension-table'
 import { Extension } from '@tiptap/core'
 // import Underline from '@tiptap/extension-underline' // Commented out to avoid duplicate with StarterKit
 import { Citation } from '@/tiptap-extensions/CitationExtension.js'
+import { Mermaid } from '@/tiptap-extensions/MermaidExtension'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import TextAlign from '@tiptap/extension-text-align'
 import { common, createLowlight } from 'lowlight'
-import mermaid from 'mermaid'
-
 // Initialize lowlight with common languages
 const lowlight = createLowlight(common)
-
-// Initialize Mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-  fontFamily: 'Arial, sans-serif',
-})
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -278,23 +269,42 @@ const parseMarkdownTable = (lines: string[], startIndex: number): { html: string
   return { html: tableHTML, nextIndex: currentIndex }
 }
 
-// Helper function to convert Mermaid markdown code blocks to HTML
+// Helper function to convert Mermaid markdown code blocks to HTML for the Mermaid extension
 const convertMermaidBlocks = (text: string): string => {
   if (!text) return ''
 
   // Match ```mermaid ... ``` blocks (with proper backticks)
   text = text.replace(/```mermaid\n?([\s\S]*?)```/g, (_match, code) => {
-    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+    const trimmedCode = code.trim()
+    // Escape HTML entities in the code for the data attribute
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
   })
 
   // Match malformed mermaid blocks like ``mermaid ... `` (two backticks)
   text = text.replace(/``mermaid\n?([\s\S]*?)``/g, (_match, code) => {
-    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
   })
 
-  // Match inline mermaid text wrapped in backticks
-  text = text.replace(/`mermaid\n?([\s\S]*?)`/g, (_match, code) => {
-    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  // Match inline mermaid text wrapped in backticks (less common but handle it)
+  text = text.replace(/`mermaid\n([\s\S]*?)`/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
   })
 
   return text
@@ -388,27 +398,6 @@ const convertTextToHTML = (text: string): string => {
   }).join('')
 }
 
-// Helper function to render Mermaid diagrams
-const renderMermaidDiagrams = async (element: HTMLElement) => {
-  const mermaidBlocks = element.querySelectorAll('pre code.language-mermaid, .mermaid-diagram')
-
-  for (let i = 0; i < mermaidBlocks.length; i++) {
-    const block = mermaidBlocks[i] as HTMLElement
-    const code = block.textContent || ''
-
-    try {
-      const { svg } = await mermaid.render(`mermaid-editor-${Date.now()}-${i}`, code)
-      const container = document.createElement('div')
-      container.className = 'mermaid-container'
-      container.innerHTML = svg
-      block.parentElement?.replaceWith(container)
-    } catch (error) {
-      console.error('Mermaid rendering error:', error)
-      block.parentElement?.classList.add('mermaid-error')
-    }
-  }
-}
-
 // Initialize Tiptap editor
 const editor = useEditor({
   content: convertTextToHTML(props.modelValue),
@@ -451,6 +440,7 @@ const editor = useEditor({
     TableCell,
     // Underline, // Commented out - StarterKit might include this
     Citation,
+    Mermaid,
     TextAlign.configure({
       types: ['heading', 'paragraph'],
     }),
@@ -497,17 +487,10 @@ const editor = useEditor({
 })
 
 // Watch for external changes
-watch(() => props.modelValue, async (newValue) => {
+watch(() => props.modelValue, (newValue) => {
   if (editor.value && editor.value.getHTML() !== newValue) {
     const processedContent = convertTextToHTML(newValue)
     editor.value.commands.setContent(processedContent, { emitUpdate: false })
-
-    // Render Mermaid diagrams after content update
-    await nextTick()
-    const editorElement = document.querySelector('.ProseMirror')
-    if (editorElement) {
-      await renderMermaidDiagrams(editorElement as HTMLElement)
-    }
 
     // Emit the processed HTML content back to parent after conversion
     nextTick(() => {
@@ -527,16 +510,9 @@ watch(() => props.readonly, (readonly) => {
 
 // Initialize editor state on mount
 onMounted(() => {
-  setTimeout(async () => {
+  setTimeout(() => {
     if (editor.value) {
       updateCurrentFontSize()
-
-      // Render Mermaid diagrams on initial load
-      await nextTick()
-      const editorElement = document.querySelector('.ProseMirror')
-      if (editorElement) {
-        await renderMermaidDiagrams(editorElement as HTMLElement)
-      }
     }
   }, 100)
 })
@@ -924,32 +900,32 @@ defineExpose({
 
 <template>
   <div class="relative flex flex-col w-full h-full group">
-    <!-- Floating Toolbar -->
+    <!-- Floating Toolbar - Responsive & Scrollable -->
     <div v-if="showToolbar && !readonly"
-      class="sticky top-0 z-20 mx-2 md:mx-4 mt-1 md:mt-2 mb-2 md:mb-4 flex flex-wrap items-center gap-0.5 md:gap-1 rounded-lg md:rounded-xl border border-border/40 bg-background/80 p-1 md:p-1.5 shadow-sm backdrop-blur-md transition-all duration-200 supports-[backdrop-filter]:bg-background/60">
+      class="sticky top-0 z-20 mx-0 sm:mx-2 md:mx-4 mt-0 sm:mt-1 md:mt-2 mb-2 md:mb-4 flex items-center gap-1 rounded-none sm:rounded-lg md:rounded-xl border-y sm:border border-border/40 bg-background/95 p-1.5 shadow-sm backdrop-blur-md transition-all duration-200 supports-[backdrop-filter]:bg-background/80 overflow-x-auto no-scrollbar mask-gradient-right">
 
       <!-- History Controls -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1 md:pr-1.5 mr-1 md:mr-1.5">
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80" @click="undo"
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80" @click="undo"
           :disabled="!editor?.can().undo()">
-          <Undo class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Undo class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80" @click="redo"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80" @click="redo"
           :disabled="!editor?.can().redo()">
-          <Redo class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Redo class="h-4 w-4" />
         </Button>
       </div>
 
       <!-- Text Style -->
-      <div class="hidden md:flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5">
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" class="h-8 gap-1.5 rounded-lg px-2 font-normal hover:bg-muted/80">
-              <span class="w-20 truncate text-left text-xs">
+              <span class="w-16 sm:w-20 truncate text-left text-xs">
                 {{ editor?.isActive('heading', { level: 1 }) ? 'Heading 1' :
                   editor?.isActive('heading', { level: 2 }) ? 'Heading 2' :
                     editor?.isActive('heading', { level: 3 }) ? 'Heading 3' :
-                      'Paragraph' }}
+                      'Normal' }}
               </span>
               <Type class="h-3.5 w-3.5 opacity-50" />
             </Button>
@@ -978,16 +954,16 @@ defineExpose({
         </DropdownMenu>
 
         <!-- Font Size Controls -->
-        <div class="hidden sm:flex items-center gap-0.5">
-          <Button variant="ghost" size="icon" class="h-7 md:h-8 w-5 md:w-6 rounded-l-lg hover:bg-muted/80"
+        <div class="flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" class="h-8 w-6 rounded-l-lg hover:bg-muted/80"
             @click="decreaseFontSize">
             <Minus class="h-3 w-3" />
           </Button>
           <div
-            class="flex h-7 md:h-8 w-8 md:w-10 items-center justify-center border-y border-border/20 bg-muted/20 text-xs font-medium">
+            class="flex h-8 w-9 items-center justify-center border-y border-border/20 bg-muted/20 text-xs font-medium">
             {{ fontSize.replace('pt', '') }}
           </div>
-          <Button variant="ghost" size="icon" class="h-7 md:h-8 w-5 md:w-6 rounded-r-lg hover:bg-muted/80"
+          <Button variant="ghost" size="icon" class="h-8 w-6 rounded-r-lg hover:bg-muted/80"
             @click="increaseFontSize">
             <Plus class="h-3 w-3" />
           </Button>
@@ -995,77 +971,81 @@ defineExpose({
       </div>
 
       <!-- Basic Formatting -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1 md:pr-1.5 mr-1 md:mr-1.5">
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('bold') }" @click="toggleBold">
-          <Bold class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Bold class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('italic') }" @click="toggleItalic">
-          <Italic class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Italic class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('underline') }" @click="toggleUnderline">
-          <UnderlineIcon class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <UnderlineIcon class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('strike') }" @click="toggleStrike">
-          <Strikethrough class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Strikethrough class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('code') }" @click="toggleCode">
-          <Code class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Code class="h-4 w-4" />
         </Button>
       </div>
 
       <!-- Lists & Alignment -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1 md:pr-1.5 mr-1 md:mr-1.5">
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('bulletList') }" @click="toggleBulletList">
-          <List class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <List class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('orderedList') }" @click="toggleOrderedList">
-          <ListOrdered class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <ListOrdered class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('blockquote') }" @click="toggleBlockquote">
-          <Quote class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Quote class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'left' }) }"
-          @click="setTextAlign('left')">
-          <AlignLeft class="h-3.5 w-3.5 md:h-4 md:w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'center' }) }"
-          @click="setTextAlign('center')">
-          <AlignCenter class="h-3.5 w-3.5 md:h-4 md:w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'right' }) }"
-          @click="setTextAlign('right')">
-          <AlignRight class="h-3.5 w-3.5 md:h-4 md:w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'justify' }) }"
-          @click="setTextAlign('justify')">
-          <AlignJustify class="h-3.5 w-3.5 md:h-4 md:w-4" />
-        </Button>
+        
+        <!-- Text Align Group -->
+        <div class="flex items-center gap-0.5 border-l border-border/20 ml-0.5 pl-0.5">
+            <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'left' }) }"
+            @click="setTextAlign('left')">
+            <AlignLeft class="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'center' }) }"
+            @click="setTextAlign('center')">
+            <AlignCenter class="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'right' }) }"
+            @click="setTextAlign('right')">
+            <AlignRight class="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'justify' }) }"
+            @click="setTextAlign('justify')">
+            <AlignJustify class="h-4 w-4" />
+            </Button>
+        </div>
       </div>
 
       <!-- Insert & Extras -->
-      <div class="flex items-center gap-0.5">
-        <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+      <div class="flex items-center gap-0.5 flex-shrink-0">
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('link') }" @click="openLinkDialog">
-          <LinkIcon class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <LinkIcon class="h-4 w-4" />
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" class="h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+            <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
               :class="{ 'bg-primary/10 text-primary': editor?.isActive('table') }">
-              <TableIcon class="h-3.5 w-3.5 md:h-4 md:w-4" />
+              <TableIcon class="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
@@ -1084,14 +1064,14 @@ defineExpose({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('highlight') }" @click="toggleHighlight">
-          <Highlighter class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Highlighter class="h-4 w-4" />
         </Button>
 
-        <Button variant="ghost" size="icon" class="hidden sm:flex h-7 w-7 md:h-8 md:w-8 rounded-lg hover:bg-muted/80"
+        <Button variant="ghost" size="icon" class="h-8 w-8 rounded-lg hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.getAttributes('textStyle').color }" @click="openColorDialog">
-          <Palette class="h-3.5 w-3.5 md:h-4 md:w-4" />
+          <Palette class="h-4 w-4" />
         </Button>
       </div>
     </div>

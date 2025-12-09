@@ -7,7 +7,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table'
 import { TableHeader } from '@tiptap/extension-table'
 import { TableCell } from '@tiptap/extension-table'
-import { watch, onBeforeUnmount, ref, onMounted, nextTick } from 'vue'
+import { watch, onBeforeUnmount, ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -16,20 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import mermaid from 'mermaid'
+import { Mermaid } from '@/tiptap-extensions/MermaidExtension'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
 
 // Initialize lowlight with common languages
 const lowlight = createLowlight(common)
-
-// Initialize Mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-  fontFamily: 'Arial, sans-serif',
-})
 
 interface Props {
   content: string
@@ -40,44 +32,41 @@ const props = withDefaults(defineProps<Props>(), {
   showFontControls: true
 })
 
-// Helper function to render Mermaid diagrams
-const renderMermaidDiagrams = async (element: HTMLElement) => {
-  const mermaidBlocks = element.querySelectorAll('pre code.language-mermaid, .mermaid-diagram')
-
-  for (let i = 0; i < mermaidBlocks.length; i++) {
-    const block = mermaidBlocks[i] as HTMLElement
-    const code = block.textContent || ''
-
-    try {
-      const { svg } = await mermaid.render(`mermaid-${Date.now()}-${i}`, code)
-      const container = document.createElement('div')
-      container.className = 'mermaid-container'
-      container.innerHTML = svg
-      block.parentElement?.replaceWith(container)
-    } catch (error) {
-      console.error('Mermaid rendering error:', error)
-      block.parentElement?.classList.add('mermaid-error')
-    }
-  }
-}
-
-// Helper function to convert Mermaid markdown code blocks to HTML
+// Helper function to convert Mermaid markdown code blocks to HTML for the Mermaid extension
 const convertMermaidBlocks = (text: string): string => {
   if (!text) return ''
 
   // Match ```mermaid ... ``` blocks (with proper backticks)
-  text = text.replace(/```mermaid\n?([\s\S]*?)```/g, (match, code) => {
-    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  text = text.replace(/```mermaid\n?([\s\S]*?)```/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
   })
 
   // Match malformed mermaid blocks like ``mermaid ... `` (two backticks)
-  text = text.replace(/``mermaid\n?([\s\S]*?)``/g, (match, code) => {
-    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  text = text.replace(/``mermaid\n?([\s\S]*?)``/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
   })
 
-  // Match inline mermaid text wrapped in backticks
-  text = text.replace(/`mermaid\n?([\s\S]*?)`/g, (match, code) => {
-    return `<pre><code class="language-mermaid">${code.trim()}</code></pre>`
+  // Match inline mermaid text wrapped in backticks (less common)
+  text = text.replace(/`mermaid\n([\s\S]*?)`/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
   })
 
   return text
@@ -336,7 +325,8 @@ const editor = useEditor({
     }),
     TableRow,
     TableHeader,
-    TableCell
+    TableCell,
+    Mermaid,
   ],
   editorProps: {
     attributes: {
@@ -357,35 +347,21 @@ const changeFontSize = (size: string) => {
   }
 }
 
-// Initialize font size and render Mermaid diagrams on mount
+// Initialize font size on mount
 onMounted(() => {
-  setTimeout(async () => {
+  setTimeout(() => {
     if (editor.value) {
       // Set default font size for all content
       editor.value.chain().selectAll().setFontSize('12pt').run()
-
-      // Render Mermaid diagrams
-      await nextTick()
-      const editorElement = document.querySelector('.ProseMirror')
-      if (editorElement) {
-        await renderMermaidDiagrams(editorElement as HTMLElement)
-      }
     }
   }, 100)
 })
 
 // Watch for content changes
-watch(() => props.content, async (newContent) => {
+watch(() => props.content, (newContent) => {
   if (editor.value && editor.value.getHTML() !== newContent) {
     const processedContent = convertTextToHTML(newContent)
     editor.value.commands.setContent(processedContent)
-
-    // Render Mermaid diagrams after content update
-    await nextTick()
-    const editorElement = document.querySelector('.ProseMirror')
-    if (editorElement) {
-      await renderMermaidDiagrams(editorElement as HTMLElement)
-    }
   }
 })
 

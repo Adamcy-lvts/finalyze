@@ -77,11 +77,18 @@ class DashboardController extends Controller
         $recentActivities = $this->generateRecentActivities($projects);
 
         if ($activeProject) {
+            // Get the status value (handle enum)
+            $statusValue = $activeProject->status instanceof \App\Enums\ProjectStatus
+                ? $activeProject->status->value
+                : $activeProject->status;
+
             $activeProjectData = [
                 'id' => $activeProject->id,
                 'slug' => $activeProject->slug,
                 'title' => $activeProject->title,
                 'type' => $activeProject->type,
+                'status' => $statusValue,
+                'setupStep' => $activeProject->setup_step,
                 'progress' => $activeProject->getProgressPercentage(),
                 'currentChapter' => $activeProject->current_chapter,
                 'chapters' => $activeProject->chapters->map(function ($chapter) {
