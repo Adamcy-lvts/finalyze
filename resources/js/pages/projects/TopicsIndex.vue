@@ -206,21 +206,21 @@ const matchTopicFilters = (topic: Topic) => {
     return matchesSearch && matchesDifficulty && matchesTimeline && matchesResearchType;
 };
 
-// Match topic to a category (Faculty)
 const matchTopicToCategory = (topic: Topic, categoryName: string): boolean => {
-    const topicFaculty = normalizeText(topic.faculty || '');
-    const topicField = normalizeText(topic.field_of_study || '');
-    const selected = normalizeText(categoryName);
+    // If topic has no faculty set, it shouldn't appear in specific faculty tabs
+    if (!topic.faculty) return false;
 
-    if (!selected) return true;
+    const clean = (str: string) => {
+        return normalizeText(str)
+            .replace(/\b(faculty|school|college|department|institute|centre|center)\s+(of\s+)?/g, '')
+            .trim();
+    };
 
-    // Check faculty match first
-    if (topicFaculty && (topicFaculty === selected || topicFaculty.includes(selected) || selected.includes(topicFaculty))) {
-        return true;
-    }
+    const target = clean(categoryName);
+    const faculty = clean(topic.faculty);
 
-    // Fallback to field of study
-    return topicField === selected || topicField.includes(selected) || selected.includes(topicField);
+    // Strict match on the cleaned faculty name
+    return faculty === target;
 };
 
 // Filtered flat list of all topics
@@ -474,7 +474,7 @@ const difficultyBadge = (difficulty?: string) => {
                                         class="w-full rounded-md border border-border/50 bg-background/80 px-3 py-2 text-sm">
                                         <option value="">All</option>
                                         <option v-for="opt in filterOptions.difficulties" :key="opt" :value="opt">{{ opt
-                                        }}</option>
+                                            }}</option>
                                     </select>
                                 </div>
                                 <div>
@@ -577,7 +577,7 @@ const difficultyBadge = (difficulty?: string) => {
                             <!-- Category Badge -->
                             <div
                                 class="absolute top-0 right-0 px-3 py-1 bg-primary/10 text-primary text-[10px] font-medium rounded-bl-lg">
-                                {{ topic.field_of_study || 'General' }}
+                                {{ topic.faculty || topic.field_of_study || 'General' }}
                             </div>
 
                             <!-- Card Header -->
