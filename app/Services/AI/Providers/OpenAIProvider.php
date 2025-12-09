@@ -87,6 +87,10 @@ class OpenAIProvider implements AIProviderInterface
         $feature = $options['feature'] ?? null;
         $userId = $options['user_id'] ?? null;
 
+        // Retry configuration for stream connection errors
+        $maxRetries = 3;
+        $retryDelay = 2; // seconds, will increase exponentially
+
         Log::info('OpenAI Provider - Starting stream generation', [
             'model' => $model,
             'prompt_length' => strlen($prompt),
@@ -94,113 +98,163 @@ class OpenAIProvider implements AIProviderInterface
             'max_tokens' => $maxTokens,
         ]);
 
-        try {
-            $stream = OpenAI::chat()->createStreamed([
-                'model' => $model,
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Use consistent markdown formatting: **bold** for emphasis, *italic* for emphasis, ## for headings, ### for subheadings, - for bullet points, 1. for numbered lists. Always use proper markdown syntax.',
+        $lastException = null;
+        
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $stream = OpenAI::chat()->createStreamed([
+                    'model' => $model,
+                    'messages' => [
+                        [
+                            'role' => 'system',
+                            'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Use consistent markdown formatting: **bold** for emphasis, *italic* for emphasis, ## for headings, ### for subheadings, - for bullet points, 1. for numbered lists. Always use proper markdown syntax.',
+                        ],
+                        [
+                            'role' => 'user',
+                            'content' => $prompt,
+                        ],
                     ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt,
-                    ],
-                ],
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-                'stream' => true,
-            ]);
+                    'temperature' => $temperature,
+                    'max_tokens' => $maxTokens,
+                    'stream' => true,
+                ]);
 
-            $totalChunks = 0;
-            $totalContent = '';
-            $promptTokens = 0;
-            $completionTokens = 0;
+                $totalChunks = 0;
+                $totalContent = '';
+                $promptTokens = 0;
 
-            foreach ($stream as $response) {
-                $content = $response->choices[0]->delta->content ?? '';
+                foreach ($stream as $response) {
+                    $content = $response->choices[0]->delta->content ?? '';
 
-                if (! empty($content)) {
-                    $totalChunks++;
-                    $totalContent .= $content;
+                    if (! empty($content)) {
+                        $totalChunks++;
+                        $totalContent .= $content;
 
-                    Log::debug('OpenAI Provider - Stream chunk', [
-                        'chunk_number' => $totalChunks,
-                        'chunk_length' => strlen($content),
-                        'total_length' => strlen($totalContent),
-                        'word_count' => str_word_count($totalContent),
+                        Log::debug('OpenAI Provider - Stream chunk', [
+                            'chunk_number' => $totalChunks,
+                            'chunk_length' => strlen($content),
+                            'total_length' => strlen($totalContent),
+                            'word_count' => str_word_count($totalContent),
+                        ]);
+
+                        yield $content;
+                    }
+
+                    // Check if we've reached the end
+                    if (isset($response->choices[0]->finish_reason)) {
+                        $finishReason = $response->choices[0]->finish_reason;
+
+                        if ($finishReason === 'length') {
+                            Log::warning('OpenAI Provider - Stream stopped: hit max_tokens limit', [
+                                'total_chunks' => $totalChunks,
+                                'content_length' => strlen($totalContent),
+                                'word_count' => str_word_count($totalContent),
+                                'finish_reason' => 'length',
+                            ]);
+                        }
+
+                        if ($finishReason === 'stop' || $finishReason === 'length') {
+                            break;
+                        }
+                    }
+                }
+
+                Log::info('OpenAI Provider - Stream completed', [
+                    'total_chunks' => $totalChunks,
+                    'final_content_length' => strlen($totalContent),
+                    'final_word_count' => str_word_count($totalContent),
+                    'attempt' => $attempt,
+                ]);
+
+                // Streaming responses from OpenAI do not include token usage;
+                // approximate using word count so we at least track something.
+                $approxTokens = (int) round(str_word_count($totalContent) * 1.3);
+                app(AIUsageLogger::class)->log(
+                    $userId,
+                    $feature,
+                    $model,
+                    $promptTokens,
+                    $approxTokens,
+                    null,
+                    ['approx_stream_tokens' => true]
+                );
+
+                // Success - exit the retry loop
+                return;
+
+            } catch (\OpenAI\Exceptions\RateLimitException $e) {
+                Log::warning('OpenAI Provider - Rate limit exceeded during streaming', [
+                    'error' => $e->getMessage(),
+                    'model' => $model,
+                    'attempt' => $attempt,
+                ]);
+
+                // Yield rate limit message to client with retry suggestion
+                yield "\n\n❌ **Rate Limit Exceeded**\n\nOpenAI API usage limit has been reached. Please try again in a few minutes or check your OpenAI usage limits.\n\n";
+                throw $e;
+
+            } catch (\OpenAI\Exceptions\UnauthorizedException $e) {
+                Log::error('OpenAI Provider - Unauthorized during streaming', [
+                    'error' => $e->getMessage(),
+                    'model' => $model,
+                    'attempt' => $attempt,
+                ]);
+
+                // Yield authorization error message
+                yield "\n\n❌ **Authentication Error**\n\nOpenAI API key is invalid or expired. Please check your API configuration.\n\n";
+                throw $e;
+
+            } catch (\Exception $e) {
+                $lastException = $e;
+                $errorMessage = $e->getMessage();
+                
+                // Check if this is a recoverable stream/connection error
+                $isRecoverableError = 
+                    str_contains(strtolower($errorMessage), 'unable to read') ||
+                    str_contains(strtolower($errorMessage), 'stream') ||
+                    str_contains(strtolower($errorMessage), 'connection') ||
+                    str_contains(strtolower($errorMessage), 'timeout') ||
+                    str_contains(strtolower($errorMessage), 'reset') ||
+                    str_contains(strtolower($errorMessage), 'broken pipe') ||
+                    str_contains(strtolower($errorMessage), 'network') ||
+                    $e instanceof \GuzzleHttp\Exception\ConnectException ||
+                    $e instanceof \GuzzleHttp\Exception\RequestException;
+
+                if ($isRecoverableError && $attempt < $maxRetries) {
+                    $delay = $retryDelay * pow(2, $attempt - 1); // Exponential backoff: 2s, 4s, 8s
+                    
+                    Log::warning("OpenAI Provider - Stream connection error, retrying in {$delay}s", [
+                        'error' => $errorMessage,
+                        'error_class' => get_class($e),
+                        'model' => $model,
+                        'attempt' => $attempt,
+                        'max_retries' => $maxRetries,
+                        'next_delay' => $delay,
                     ]);
 
-                    yield $content;
+                    sleep($delay);
+                    continue; // Retry
                 }
 
-                // Check if we've reached the end
-                if (isset($response->choices[0]->finish_reason)) {
-                    $finishReason = $response->choices[0]->finish_reason;
+                // Non-recoverable error or max retries reached
+                Log::error('OpenAI Provider - Stream generation failed', [
+                    'error' => $errorMessage,
+                    'error_class' => get_class($e),
+                    'model' => $model,
+                    'attempt' => $attempt,
+                    'max_retries' => $maxRetries,
+                    'trace' => $e->getTraceAsString(),
+                ]);
 
-                    if ($finishReason === 'length') {
-                        Log::warning('OpenAI Provider - Stream stopped: hit max_tokens limit', [
-                            'total_chunks' => $totalChunks,
-                            'content_length' => strlen($totalContent),
-                            'word_count' => str_word_count($totalContent),
-                            'finish_reason' => 'length',
-                        ]);
-                    }
-
-                    if ($finishReason === 'stop' || $finishReason === 'length') {
-                        break;
-                    }
-                }
+                // Yield error message to client
+                yield "\n\n❌ **Generation Error**\n\nError generating content with OpenAI: " . $errorMessage . "\n\n";
+                throw $e;
             }
+        }
 
-            Log::info('OpenAI Provider - Stream completed', [
-                'total_chunks' => $totalChunks,
-                'final_content_length' => strlen($totalContent),
-                'final_word_count' => str_word_count($totalContent),
-            ]);
-
-            // Streaming responses from OpenAI do not include token usage;
-            // approximate using word count so we at least track something.
-            $approxTokens = (int) round(str_word_count($totalContent) * 1.3);
-            app(AIUsageLogger::class)->log(
-                $userId,
-                $feature,
-                $model,
-                $promptTokens,
-                $approxTokens,
-                null,
-                ['approx_stream_tokens' => true]
-            );
-
-        } catch (\OpenAI\Exceptions\RateLimitException $e) {
-            Log::warning('OpenAI Provider - Rate limit exceeded during streaming', [
-                'error' => $e->getMessage(),
-                'model' => $model,
-            ]);
-
-            // Yield rate limit message to client with retry suggestion
-            yield "\n\n❌ **Rate Limit Exceeded**\n\nOpenAI API usage limit has been reached. Please try again in a few minutes or check your OpenAI usage limits.\n\n";
-            throw $e;
-        } catch (\OpenAI\Exceptions\UnauthorizedException $e) {
-            Log::error('OpenAI Provider - Unauthorized during streaming', [
-                'error' => $e->getMessage(),
-                'model' => $model,
-            ]);
-
-            // Yield authorization error message
-            yield "\n\n❌ **Authentication Error**\n\nOpenAI API key is invalid or expired. Please check your API configuration.\n\n";
-            throw $e;
-        } catch (\Exception $e) {
-            Log::error('OpenAI Provider - Stream generation failed', [
-                'error' => $e->getMessage(),
-                'error_class' => get_class($e),
-                'model' => $model,
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // Yield error message to client
-            yield "\n\n❌ **Generation Error**\n\nError generating content with OpenAI: ".$e->getMessage()."\n\n";
-            throw $e;
+        // This should not be reached, but just in case
+        if ($lastException) {
+            throw $lastException;
         }
     }
 
