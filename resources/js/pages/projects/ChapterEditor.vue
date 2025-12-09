@@ -215,95 +215,60 @@ const connectionCheckDelay = 3000; // 3 seconds between checks
 
 // Check connection quality before starting generation
 const checkConnectionQuality = async (): Promise<boolean> => {
-    isCheckingConnection.value = true;
-    connectionCheckAttempts.value = 0;
+    // Quick check if browser is online
+    if (!navigator.onLine) {
+        toast.error('No Internet Connection', {
+            description: 'Please check your internet connection and try again.',
+        });
+        return false;
+    }
 
-    while (connectionCheckAttempts.value < maxConnectionCheckAttempts) {
-        connectionCheckAttempts.value++;
+    // Check connection type if available (Network Information API)
+    const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    if (connection) {
+        const effectiveType = connection.effectiveType;
 
-        // Check if browser is online
-        if (!navigator.onLine) {
-            toast.warning('No Internet Connection', {
-                description: `Waiting for connection... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
-                duration: 3000,
+        // Warn if connection is very slow (2G or slow-2g) but allow proceeding
+        if (effectiveType === 'slow-2g' || effectiveType === '2g') {
+            toast.warning('Slow Connection Detected', {
+                description: 'Your connection is slow. Content will be auto-saved during generation.',
+                duration: 4000,
             });
-            await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
-            continue;
-        }
-
-        // Check connection type if available (Network Information API)
-        const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-        if (connection) {
-            const effectiveType = connection.effectiveType;
-            const downlink = connection.downlink;
-
-            console.log('📶 Connection info:', { effectiveType, downlink, rtt: connection.rtt });
-
-            // Warn if connection is slow (2G or slow-2g)
-            if (effectiveType === 'slow-2g' || effectiveType === '2g') {
-                toast.warning('Slow Connection Detected', {
-                    description: `Your connection (${effectiveType}) may cause issues. Waiting... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
-                    duration: 3000,
-                });
-                await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
-                continue;
-            }
-        }
-
-        // Measure actual latency with a ping to our server
-        try {
-            const pingStart = performance.now();
-            const response = await fetch(route('api.ping'), {
-                method: 'HEAD',
-                cache: 'no-cache',
-            }).catch(() => null);
-
-            const latency = performance.now() - pingStart;
-            console.log('📡 Server latency:', latency.toFixed(0), 'ms');
-
-            // If latency is too high (>2000ms), warn and wait
-            if (latency > 2000) {
-                toast.warning('High Latency Detected', {
-                    description: `Response time is ${Math.round(latency)}ms. Waiting for better connection... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
-                    duration: 3000,
-                });
-                await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
-                continue;
-            }
-
-            // Latency is acceptable (<2s)
-            if (latency > 1000) {
-                // Latency between 1-2s, warn but continue
-                toast.info('Connection is slow but usable', {
-                    description: `Response time: ${Math.round(latency)}ms. Content will be auto-saved during generation.`,
-                    duration: 3000,
-                });
-            }
-
-            // Connection is good!
-            isCheckingConnection.value = false;
-            return true;
-
-        } catch (error) {
-            console.warn('Connection check failed:', error);
-            toast.warning('Connection Check Failed', {
-                description: `Retrying... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
-                duration: 3000,
-            });
-            await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
-            continue;
         }
     }
 
-    // Max attempts reached - ask user if they want to proceed anyway
-    isCheckingConnection.value = false;
+    // Quick ping test (with short timeout)
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const proceed = confirm(
-        'Your connection appears unstable. Content will be auto-saved during generation to prevent data loss.\n\n' +
-        'Do you want to proceed anyway?'
-    );
+        const pingStart = performance.now();
+        await fetch(route('api.ping'), {
+            method: 'HEAD',
+            cache: 'no-cache',
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-    return proceed;
+        const latency = performance.now() - pingStart;
+        console.log('📡 Server latency:', latency.toFixed(0), 'ms');
+
+        if (latency > 2000) {
+            toast.info('Connection is slow', {
+                description: 'Content will be auto-saved during generation to prevent data loss.',
+                duration: 3000,
+            });
+        }
+    } catch (error) {
+        // Ping failed but we're online, warn and proceed
+        console.warn('Connection check ping failed:', error);
+        toast.info('Connection check skipped', {
+            description: 'Content will be auto-saved during generation.',
+            duration: 2000,
+        });
+    }
+
+    return true;
 };
 
 // Word balance guard
@@ -1366,9 +1331,9 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
                 streamBuffer.value += data.content;
                 streamWordCount.value = data.word_count || streamBuffer.value.split(/\s+/).filter((word) => word.length > 0).length;
 
-                // Throttle UI updates to improve performance and visibility
+                // Throttle UI updates to improve performance and reduce flickering
                 const now = Date.now();
-                if (now - lastStreamUpdate.value > 150) { // Update UI every 150ms
+                if (now - lastStreamUpdate.value > 200) { // Update UI every 200ms (reduced from 150ms)
                     chapterContent.value = streamBuffer.value;
                     lastStreamUpdate.value = now;
 
@@ -1377,7 +1342,7 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
                     generationPercentage.value = Math.max(52, 52 + wordProgress); // 52-95% range
 
                     generationProgress.value = `Generating chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
-                    calculateWritingStats();
+                    // Note: calculateWritingStats() removed during streaming to prevent flickering - called on completion instead
 
                     // Auto-scroll to follow the streaming content
                     scrollToBottom();
@@ -1401,6 +1366,9 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
 
                 const finalWords = data.final_word_count || streamWordCount.value;
                 generationProgress.value = `✓ Generated ${finalWords} words successfully`;
+
+                // Calculate writing stats now that generation is complete
+                calculateWritingStats();
 
                 // Record actual usage
                 recordWordUsage(
@@ -3259,7 +3227,7 @@ onMounted(async () => {
                                             </div>
                                         </div>
                                         <span class="ml-1 text-blue-600 dark:text-blue-400">{{ writingQualityScore
-                                            }}%</span>
+                                        }}%</span>
                                     </div>
                                 </div>
                             </div>
@@ -3382,7 +3350,7 @@ onMounted(async () => {
                                                     <Save class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <span class="hidden sm:inline">{{ isSaving ? 'Saving...' : `Save
                                                         Draft`
-                                                    }}</span>
+                                                        }}</span>
                                                     <span class="sm:hidden">{{ isSaving ? 'Saving...' : 'Save' }}</span>
                                                 </Button>
                                             </TooltipTrigger>
@@ -3413,9 +3381,9 @@ onMounted(async () => {
                                                         class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <PenTool v-else class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <span class="hidden sm:inline">{{ showPreview ? 'Edit' : 'Preview'
-                                                    }}</span>
+                                                        }}</span>
                                                     <span class="sm:hidden">{{ showPreview ? 'Edit' : 'Preview'
-                                                    }}</span>
+                                                        }}</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>
