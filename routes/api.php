@@ -9,6 +9,11 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
 use Illuminate\Support\Facades\Route;
 
+// Simple ping endpoint for connection quality check (no auth required)
+Route::get('/ping', function () {
+    return response()->noContent();
+})->name('api.ping');
+
 // API routes - using sanctum for SPA authentication
 Route::middleware(['auth:sanctum'])->group(function () {
     // University, Faculty, and Department endpoints

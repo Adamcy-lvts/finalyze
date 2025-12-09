@@ -24,6 +24,11 @@ class ProjectStateMiddleware
             ]);
         }
 
+        // Skip basic utility routes
+        if ($request->is('api/ping')) {
+            return $next($request);
+        }
+
         // Skip citation verification routes entirely
         if ($request->is('api/chapters/*/verify-citations')) {
             return $next($request);

@@ -207,6 +207,105 @@ const showRecoveryDialog = ref(false);
 const partialContentSaved = ref(false);
 const savedWordCountOnError = ref(0);
 
+// Connection quality check state
+const isCheckingConnection = ref(false);
+const connectionCheckAttempts = ref(0);
+const maxConnectionCheckAttempts = 3;
+const connectionCheckDelay = 3000; // 3 seconds between checks
+
+// Check connection quality before starting generation
+const checkConnectionQuality = async (): Promise<boolean> => {
+    isCheckingConnection.value = true;
+    connectionCheckAttempts.value = 0;
+
+    while (connectionCheckAttempts.value < maxConnectionCheckAttempts) {
+        connectionCheckAttempts.value++;
+
+        // Check if browser is online
+        if (!navigator.onLine) {
+            toast.warning('No Internet Connection', {
+                description: `Waiting for connection... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
+                duration: 3000,
+            });
+            await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
+            continue;
+        }
+
+        // Check connection type if available (Network Information API)
+        const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+        if (connection) {
+            const effectiveType = connection.effectiveType;
+            const downlink = connection.downlink;
+
+            console.log('📶 Connection info:', { effectiveType, downlink, rtt: connection.rtt });
+
+            // Warn if connection is slow (2G or slow-2g)
+            if (effectiveType === 'slow-2g' || effectiveType === '2g') {
+                toast.warning('Slow Connection Detected', {
+                    description: `Your connection (${effectiveType}) may cause issues. Waiting... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
+                    duration: 3000,
+                });
+                await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
+                continue;
+            }
+        }
+
+        // Measure actual latency with a ping to our server
+        try {
+            const pingStart = performance.now();
+            const response = await fetch(route('api.ping'), {
+                method: 'HEAD',
+                cache: 'no-cache',
+            }).catch(() => null);
+
+            const latency = performance.now() - pingStart;
+            console.log('📡 Server latency:', latency.toFixed(0), 'ms');
+
+            // If latency is too high (>2000ms), warn and wait
+            if (latency > 2000) {
+                toast.warning('High Latency Detected', {
+                    description: `Response time is ${Math.round(latency)}ms. Waiting for better connection... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
+                    duration: 3000,
+                });
+                await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
+                continue;
+            }
+
+            // Latency is acceptable (<2s)
+            if (latency > 1000) {
+                // Latency between 1-2s, warn but continue
+                toast.info('Connection is slow but usable', {
+                    description: `Response time: ${Math.round(latency)}ms. Content will be auto-saved during generation.`,
+                    duration: 3000,
+                });
+            }
+
+            // Connection is good!
+            isCheckingConnection.value = false;
+            return true;
+
+        } catch (error) {
+            console.warn('Connection check failed:', error);
+            toast.warning('Connection Check Failed', {
+                description: `Retrying... (${connectionCheckAttempts.value}/${maxConnectionCheckAttempts})`,
+                duration: 3000,
+            });
+            await new Promise(resolve => setTimeout(resolve, connectionCheckDelay));
+            continue;
+        }
+    }
+
+    // Max attempts reached - ask user if they want to proceed anyway
+    isCheckingConnection.value = false;
+
+    const proceed = confirm(
+        'Your connection appears unstable. Content will be auto-saved during generation to prevent data loss.\n\n' +
+        'Do you want to proceed anyway?'
+    );
+
+    return proceed;
+};
+
 // Word balance guard
 const {
     balance,
@@ -1197,6 +1296,12 @@ const monitorPaperCollection = async (): Promise<boolean> => {
 const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'improve') => {
     const requiredWords = estimates.chapter(targetWordCount.value || 0);
     if (!ensureBalance(requiredWords, 'generate this chapter with AI')) {
+        return;
+    }
+
+    // Check connection quality before starting
+    const connectionOk = await checkConnectionQuality();
+    if (!connectionOk) {
         return;
     }
 
