@@ -31,7 +31,10 @@ import {
     X,
     Search,
     Save,
-    BookmarkPlus
+    BookmarkPlus,
+    Trash2,
+    Copy,
+    RefreshCw
 } from 'lucide-vue-next';
 
 interface Topic {
@@ -136,6 +139,159 @@ const saveSessionName = async (sessionId: string) => {
         toast.error('Failed to rename session');
     } finally {
         cancelEditingSession();
+    }
+};
+
+// Delete session state and method
+const isDeletingSession = ref(false);
+const sessionToDelete = ref<string | null>(null);
+
+const deleteSession = async (sessionId: string) => {
+    if (isDeletingSession.value) return;
+
+    if (!confirm('Are you sure you want to delete this conversation? This cannot be undone.')) {
+        return;
+    }
+
+    isDeletingSession.value = true;
+    sessionToDelete.value = sessionId;
+
+    try {
+        const response = await fetch(route('topics.chat.delete-session', props.project.slug), {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+            body: JSON.stringify({ session_id: sessionId }),
+        });
+
+        if (response.ok) {
+            toast.success('Conversation deleted');
+            // If we deleted the current session, start a new one
+            if (sessionId === props.sessionId) {
+                startNewChat();
+            } else {
+                router.reload();
+            }
+        } else {
+            toast.error('Failed to delete conversation');
+        }
+    } catch (error) {
+        toast.error('Failed to delete conversation');
+    } finally {
+        isDeletingSession.value = false;
+        sessionToDelete.value = null;
+    }
+};
+
+// Copy message to clipboard
+const copyMessage = async (content: string) => {
+    try {
+        // Strip HTML tags for cleaner copy
+        const plainText = content.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+        await navigator.clipboard.writeText(plainText);
+        toast.success('Copied to clipboard');
+    } catch (error) {
+        toast.error('Failed to copy');
+    }
+};
+
+// Regenerate last AI response
+const isRegenerating = ref(false);
+
+const regenerateResponse = async () => {
+    if (isRegenerating.value || !currentTopic.value) return;
+
+    // Find the last user message
+    const userMessages = messages.value.filter(m => m.role === 'user');
+    if (userMessages.length === 0) {
+        toast.error('No message to regenerate');
+        return;
+    }
+
+    // Remove the last AI response
+    const lastUserIndex = messages.value.findIndex(m => m.id === userMessages[userMessages.length - 1].id);
+    if (lastUserIndex >= 0 && lastUserIndex < messages.value.length - 1) {
+        messages.value = messages.value.slice(0, lastUserIndex + 1);
+    }
+
+    isRegenerating.value = true;
+
+    // Placeholder for AI response
+    const aiMsgId = (Date.now()).toString();
+    messages.value.push({
+        id: aiMsgId,
+        role: 'assistant',
+        content: '',
+        isTyping: true
+    });
+    scrollToBottom();
+
+    try {
+        const response = await fetch(route('topics.chat', props.project.slug), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+            body: JSON.stringify({
+                messages: messages.value.filter(m => !m.isTyping).map(m => ({ role: m.role, content: m.content })),
+                topic_context: currentTopic.value,
+                session_id: props.sessionId,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+
+        if (!response.body) throw new Error('No response body');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let aiContent = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.content) {
+                            aiContent += data.content;
+                            const idx = messages.value.findIndex(m => m.id === aiMsgId);
+                            if (idx !== -1) {
+                                messages.value[idx].content = aiContent;
+                                messages.value[idx].isTyping = false;
+                            }
+                            scrollToBottom();
+                        }
+                    } catch (e) {
+                        // ignore parse errors
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Regenerate error:', error);
+        toast.error('Failed to regenerate response');
+        // Remove failed message
+        const idx = messages.value.findIndex(m => m.id === aiMsgId);
+        if (idx !== -1) {
+            messages.value.splice(idx, 1);
+        }
+    } finally {
+        isRegenerating.value = false;
+        const idx = messages.value.findIndex(m => m.id === aiMsgId);
+        if (idx !== -1) {
+            messages.value[idx].isTyping = false;
+        }
     }
 };
 
@@ -531,11 +687,19 @@ watch(sidebarMode, (newMode) => {
                                         :class="['text-sm font-medium line-clamp-1 flex-1', props.sessionId === session.id ? 'text-primary' : 'text-foreground']">
                                         {{ session.title }}
                                     </h3>
-                                    <button @click="startEditingSession(session, $event)"
-                                        class="opacity-0 group-hover:opacity-100 p-1 hover:bg-muted rounded transition-opacity ml-2"
-                                        title="Rename">
-                                        <Pencil class="h-3 w-3 text-muted-foreground" />
-                                    </button>
+                                    <div class="flex items-center gap-1">
+                                        <button @click="startEditingSession(session, $event)"
+                                            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-muted rounded transition-opacity"
+                                            title="Rename">
+                                            <Pencil class="h-3 w-3 text-muted-foreground" />
+                                        </button>
+                                        <button @click.stop="deleteSession(session.id)"
+                                            :disabled="isDeletingSession && sessionToDelete === session.id"
+                                            class="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-opacity"
+                                            title="Delete">
+                                            <Trash2 class="h-3 w-3 text-red-500" />
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div v-if="editingSessionId !== session.id" class="flex items-center gap-2 mt-1">
@@ -659,6 +823,23 @@ watch(sidebarMode, (newMode) => {
                                             </div>
                                         </div>
                                     </div>
+                                </div>
+
+                                <!-- Message Actions -->
+                                <div v-if="!msg.isTyping"
+                                    :class="['flex items-center gap-1 mt-1', msg.role === 'user' ? 'justify-end mr-12' : 'justify-start ml-12']">
+                                    <button @click="copyMessage(msg.content)"
+                                        class="p-1.5 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground"
+                                        title="Copy message">
+                                        <Copy class="h-3 w-3" />
+                                    </button>
+                                    <button
+                                        v-if="msg.role === 'assistant' && msg.id === messages.filter(m => m.role === 'assistant' && !m.isTyping).slice(-1)[0]?.id"
+                                        @click="regenerateResponse" :disabled="isRegenerating || isSending"
+                                        class="p-1.5 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                        title="Regenerate response">
+                                        <RefreshCw :class="['h-3 w-3', isRegenerating ? 'animate-spin' : '']" />
+                                    </button>
                                 </div>
 
                                 <div v-if="msg.role === 'user'"

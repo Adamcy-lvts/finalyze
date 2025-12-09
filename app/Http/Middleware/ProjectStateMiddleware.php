@@ -85,7 +85,8 @@ class ProjectStateMiddleware
         if ($request->route()?->getName() === 'topics.lab' || 
             $request->route()?->getName() === 'topics.chat' ||
             $request->route()?->getName() === 'topics.chat.rename' ||
-            $request->route()?->getName() === 'topics.chat.save-topic') {
+            $request->route()?->getName() === 'topics.chat.save-topic' ||
+            $request->route()?->getName() === 'topics.chat.delete-session') {
             return $next($request);
         }
 

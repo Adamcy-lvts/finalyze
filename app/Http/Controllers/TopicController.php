@@ -857,6 +857,38 @@ If the student asks to change the topic significantly, guide them on how it alig
     }
 
     /**
+     * Delete a chat session
+     */
+    public function deleteSession(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|uuid',
+        ]);
+
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        // Delete all messages in this session
+        $deleted = \App\Models\ChatConversation::where('session_id', $validated['session_id'])
+            ->where('user_id', auth()->id())
+            ->where('project_id', $project->id)
+            ->delete();
+
+        if ($deleted > 0) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Session deleted successfully',
+                'deleted_count' => $deleted,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Session not found',
+        ], 404);
+    }
+
+    /**
      * Save a refined topic from chat to the project_topics table
      */
     public function saveRefinedTopic(Request $request, Project $project)

@@ -229,6 +229,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/projects/{project}/topics/chat', [TopicController::class, 'chat'])->name('topics.chat');
         Route::post('/projects/{project}/topics/chat/rename', [TopicController::class, 'renameSession'])->name('topics.chat.rename');
         Route::post('/projects/{project}/topics/chat/save-topic', [TopicController::class, 'saveRefinedTopic'])->name('topics.chat.save-topic');
+        Route::delete('/projects/{project}/topics/chat/session', [TopicController::class, 'deleteSession'])->name('topics.chat.delete-session');
         Route::post('/projects/{project}/topics/select', [TopicController::class, 'select'])->name('topics.select');
         Route::post('/projects/{project}/topics/approve', [TopicController::class, 'approve'])->name('topics.approve');
         Route::post('/projects/{project}/go-back-to-wizard', [ProjectController::class, 'goBackToWizard'])->name('projects.go-back-to-wizard');
