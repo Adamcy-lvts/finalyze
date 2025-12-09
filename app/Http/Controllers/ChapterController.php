@@ -234,8 +234,23 @@ class ChapterController extends Controller
                 $isRephrasing = $request->input('generation_type') === 'rephrase';
                 $isExpanding = $request->input('generation_type') === 'expand';
 
+                // Generate unique generation ID for tracking
+                $generationId = \Illuminate\Support\Str::uuid()->toString();
+                
+                // Check if resuming from previous generation
+                $resumeFrom = $request->input('resume_from', 0);
+                $isResuming = $resumeFrom > 0 && !empty($chapter->content);
+
                 // Initialize content appropriately
-                if ($isSecondGeneration) {
+                if ($isResuming) {
+                    // Resume from existing partial content
+                    $fullContent = $chapter->content;
+                    $newSectionContent = '';
+                    Log::info('📥 RESUME - Resuming generation from previous content', [
+                        'resume_from_words' => $resumeFrom,
+                        'existing_content_length' => strlen($fullContent),
+                    ]);
+                } elseif ($isSecondGeneration) {
                     // For section generation, start with existing content
                     $fullContent = $chapter->content;
                     $newSectionContent = '';
@@ -255,18 +270,37 @@ class ChapterController extends Controller
                     $newSectionContent = '';
                 }
 
+                // Mark generation as in progress (for chapter/progressive generation only)
+                $shouldTrackGeneration = in_array($request->input('generation_type'), ['progressive', 'single', 'section']);
+                if ($shouldTrackGeneration) {
+                    $chapter->update([
+                        'generation_in_progress' => true,
+                        'generation_id' => $generationId,
+                        'generation_started_at' => now(),
+                        'generation_last_saved_words' => 0,
+                    ]);
+                }
+
                 // Log the start of AI generation
                 Log::info('AI Generation - Starting stream request', [
                     'chapter_id' => $chapter->id,
                     'chapter_number' => $chapterNumber,
                     'generation_type' => $request->input('generation_type'),
+                    'generation_id' => $generationId,
                     'is_section_append' => $isSecondGeneration,
-                    'existing_content_length' => strlen($chapter->content),
+                    'is_resuming' => $isResuming,
+                    'existing_content_length' => strlen($chapter->content ?? ''),
                     'prompt_length' => strlen($prompt),
                 ]);
 
                 // Use optimized generation based on chapter type
                 $chapterType = $this->getChapterType($chapterNumber);
+
+                // Periodic save configuration
+                $lastSaveWordCount = $resumeFrom; // Start from resume point
+                $saveInterval = 500; // Save every 500 words
+                $lastSaveTime = time();
+                $saveTimeInterval = 30; // Also save every 30 seconds
 
                 // For progressive generation, use simplified single-pass generation with stopping logic
                 if ($request->input('generation_type') === 'progressive') {
@@ -279,13 +313,15 @@ class ChapterController extends Controller
                         'maximum_word_count' => $maxWordCount,
                         'chapter_id' => $chapter->id,
                         'chapter_number' => $chapterNumber,
+                        'generation_id' => $generationId,
                     ]);
 
-                    $fullContent = $this->generateStreamingContentSimplified($prompt, $chapterType, $targetWordCount, $maxWordCount);
+                    $fullContent = $this->generateStreamingContentSimplified($prompt, $chapterType, $targetWordCount, $maxWordCount, $chapter, $generationId);
                     $wordCount = str_word_count($fullContent);
                 } else {
                     // Use regular streaming generation for other types
                     $chunkCount = 0;
+                    $wordCount = 0;
                     foreach ($this->aiGenerator->generateOptimized($prompt, $chapterType) as $chunk) {
                         $chunkCount++;
 
@@ -299,6 +335,42 @@ class ChapterController extends Controller
                         }
 
                         $wordCount = str_word_count($fullContent);
+
+                        // PERIODIC AUTO-SAVE: Save every 500 words or 30 seconds
+                        $currentTime = time();
+                        $shouldSave = ($wordCount - $lastSaveWordCount >= $saveInterval) || 
+                                      ($currentTime - $lastSaveTime >= $saveTimeInterval);
+
+                        if ($shouldSave && $shouldTrackGeneration) {
+                            try {
+                                $chapter->update([
+                                    'content' => $fullContent,
+                                    'word_count' => $wordCount,
+                                    'status' => 'draft',
+                                    'generation_last_saved_words' => $wordCount,
+                                ]);
+                                $lastSaveWordCount = $wordCount;
+                                $lastSaveTime = $currentTime;
+
+                                Log::debug('💾 AUTO-SAVE - Periodic save during generation', [
+                                    'chapter_id' => $chapter->id,
+                                    'word_count' => $wordCount,
+                                    'generation_id' => $generationId,
+                                ]);
+
+                                // Notify client of save
+                                $this->sendSSEMessage([
+                                    'type' => 'autosave',
+                                    'word_count' => $wordCount,
+                                    'generation_id' => $generationId,
+                                ]);
+                            } catch (\Exception $saveError) {
+                                Log::warning('Auto-save failed during generation', [
+                                    'error' => $saveError->getMessage(),
+                                    'chapter_id' => $chapter->id,
+                                ]);
+                            }
+                        }
 
                         // Log rephrase progress every 10 chunks
                         if ($isRephrasing && $chunkCount % 10 === 0) {
@@ -326,6 +398,7 @@ class ChapterController extends Controller
                             'content' => $chunk,
                             'word_count' => $wordCount,
                             'is_section_append' => $isSecondGeneration,
+                            'generation_id' => $generationId,
                         ]);
 
                         // Add delay to slow down streaming for better UX
@@ -338,13 +411,18 @@ class ChapterController extends Controller
                     }
                 }
 
-                // Save the generated content
+                // Save the generated content and clear generation tracking
                 $chapter->update([
                     'content' => $fullContent,
                     'word_count' => $wordCount,
                     'status' => 'draft',
                     'ai_generated' => true,
                     'last_ai_generation' => now(),
+                    // Clear generation tracking
+                    'generation_in_progress' => false,
+                    'generation_id' => null,
+                    'generation_started_at' => null,
+                    'generation_last_saved_words' => 0,
                 ]);
 
                 // Update section progress if this was section generation
@@ -400,6 +478,44 @@ class ChapterController extends Controller
                 ]);
 
             } catch (\Exception $e) {
+                // RESILIENCE: Try to save any partial content that was generated
+                $savedWords = 0;
+                $hasPartialContent = isset($fullContent) && !empty($fullContent) && str_word_count($fullContent) > 100;
+                
+                if ($hasPartialContent && isset($shouldTrackGeneration) && $shouldTrackGeneration) {
+                    try {
+                        $savedWords = str_word_count($fullContent);
+                        $chapter->update([
+                            'content' => $fullContent,
+                            'word_count' => $savedWords,
+                            'status' => 'draft',
+                            'generation_in_progress' => false, // Mark as not in progress
+                            'generation_last_saved_words' => $savedWords,
+                        ]);
+                        
+                        Log::info('💾 RECOVERY - Saved partial content on error', [
+                            'chapter_id' => $chapter->id,
+                            'saved_words' => $savedWords,
+                            'error' => $e->getMessage(),
+                        ]);
+                    } catch (\Exception $saveError) {
+                        Log::error('Failed to save partial content during error recovery', [
+                            'error' => $saveError->getMessage(),
+                            'chapter_id' => $chapter->id,
+                        ]);
+                    }
+                } else {
+                    // Clear generation tracking even if no partial content
+                    try {
+                        $chapter->update([
+                            'generation_in_progress' => false,
+                            'generation_id' => null,
+                        ]);
+                    } catch (\Exception $e) {
+                        // Ignore errors here
+                    }
+                }
+
                 if ($request->input('generation_type') === 'rephrase') {
                     Log::error('❌ REPHRASE - Generation failed', [
                         'error' => $e->getMessage(),
@@ -429,11 +545,18 @@ class ChapterController extends Controller
                     Log::error('AI Generation failed', [
                         'error' => $e->getMessage(),
                         'chapter_id' => $chapter->id,
+                        'partial_content_saved' => $hasPartialContent,
+                        'saved_words' => $savedWords,
+                        'generation_id' => $generationId ?? null,
                     ]);
 
                     $this->sendSSEMessage([
                         'type' => 'error',
                         'message' => 'Generation failed. Please try again.',
+                        'partial_saved' => $hasPartialContent,
+                        'saved_word_count' => $savedWords,
+                        'can_resume' => $hasPartialContent,
+                        'generation_id' => $generationId ?? null,
                     ]);
                 }
             }

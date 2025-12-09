@@ -196,6 +196,17 @@ const aiSuggestions = ref<string[]>([]);
 const isLoadingSuggestions = ref(false);
 const showCitationHelper = ref(false);
 
+// Reconnection state for handling unstable connections
+const reconnectAttempts = ref(0);
+const maxReconnectAttempts = 3;
+const reconnectDelay = ref(2000);
+const isReconnecting = ref(false);
+const currentGenerationId = ref<string | null>(null);
+const currentGenerationType = ref<string>('progressive');
+const showRecoveryDialog = ref(false);
+const partialContentSaved = ref(false);
+const savedWordCountOnError = ref(0);
+
 // Word balance guard
 const {
     balance,
@@ -797,24 +808,24 @@ const startRephraseGeneration = async (selectedText: string, style: string) => {
                         });
                     }
 
-                // Auto-save
-                save(true);
+                    // Auto-save
+                    save(true);
 
-                toast.success('✅ Text Rephrased Successfully', {
-                    description: `Rephrased ${selectedWordCount} words in ${style} style.`,
-                    duration: 5000,
-                });
+                    toast.success('✅ Text Rephrased Successfully', {
+                        description: `Rephrased ${selectedWordCount} words in ${style} style.`,
+                        duration: 5000,
+                    });
 
-                recordWordUsage(
-                    streamWordCount.value || selectedWordCount,
-                    `Rephrase (${style})`,
-                    'chapter',
-                    props.chapter.id
-                ).catch((err) => console.error('Failed to record word usage (rephrase):', err));
+                    recordWordUsage(
+                        streamWordCount.value || selectedWordCount,
+                        `Rephrase (${style})`,
+                        'chapter',
+                        props.chapter.id
+                    ).catch((err) => console.error('Failed to record word usage (rephrase):', err));
 
-                isGenerating.value = false;
-                eventSource.value?.close();
-                break;
+                    isGenerating.value = false;
+                    eventSource.value?.close();
+                    break;
 
                 case 'error':
                     throw new Error(data.message || 'Text rephrasing failed');
@@ -1308,16 +1319,32 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
             case 'error':
                 generationPhase.value = 'Error';
                 generationPercentage.value = 50; // Reset to start of AI stage
-                isGenerating.value = false;
+
+                // Check if partial content was saved
+                if (data.partial_saved) {
+                    partialContentSaved.value = true;
+                    savedWordCountOnError.value = data.saved_word_count || 0;
+                }
 
                 // Handle different error types
                 if (data.code === 'OFFLINE_MODE') {
                     generationProgress.value = '📡 AI services offline';
+                    isGenerating.value = false;
                     toast.error('AI Services Offline', {
                         description: 'Please check your internet connection and try again.',
                     });
+                } else if (data.can_resume) {
+                    // Partial content was saved, offer resume option
+                    generationProgress.value = `⚠️ Generation interrupted (${data.saved_word_count} words saved)`;
+                    isGenerating.value = false;
+                    showRecoveryDialog.value = true;
+                    toast.warning('Generation Interrupted', {
+                        description: `${data.saved_word_count} words were saved. You can resume generation.`,
+                        duration: 8000,
+                    });
                 } else {
                     generationProgress.value = '❌ Generation failed';
+                    isGenerating.value = false;
                     toast.error('Generation Error', {
                         description: data.message || 'Please try again.',
                     });
@@ -1326,20 +1353,226 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
                 eventSource.value?.close();
                 eventSource.value = null;
                 break;
+
+            case 'autosave':
+                // Server auto-saved partial content
+                if (data.word_count) {
+                    console.log(`💾 Auto-saved: ${data.word_count} words`);
+                    // Update generation ID for tracking
+                    if (data.generation_id) {
+                        currentGenerationId.value = data.generation_id;
+                    }
+                }
+                break;
         }
     };
 
     eventSource.value.onerror = () => {
-        generationPhase.value = 'Error';
-        generationPercentage.value = 50; // Reset to start of AI stage
-        isGenerating.value = false;
-        generationProgress.value = '❌ Connection error';
-        toast.error('Connection Error', {
-            description: 'Please check your internet connection and try again.',
-        });
-        eventSource.value?.close();
-        eventSource.value = null;
+        // Attempt reconnection before giving up
+        if (reconnectAttempts.value < maxReconnectAttempts) {
+            reconnectAttempts.value++;
+            isReconnecting.value = true;
+            generationPhase.value = 'Reconnecting';
+            generationProgress.value = `🔄 Connection lost. Reconnecting... (${reconnectAttempts.value}/${maxReconnectAttempts})`;
+
+            // Close existing connection
+            eventSource.value?.close();
+            eventSource.value = null;
+
+            // Calculate delay with exponential backoff
+            const delay = reconnectDelay.value * Math.pow(2, reconnectAttempts.value - 1);
+
+            console.log(`🔌 Attempting reconnection in ${delay}ms (attempt ${reconnectAttempts.value})`);
+
+            setTimeout(() => {
+                attemptReconnection(type);
+            }, delay);
+        } else {
+            // Max retries reached
+            generationPhase.value = 'Error';
+            generationPercentage.value = 50;
+            isGenerating.value = false;
+            isReconnecting.value = false;
+            generationProgress.value = '❌ Connection failed after multiple attempts';
+
+            // Check if we have partial content from the server
+            if (streamWordCount.value > 100) {
+                partialContentSaved.value = true;
+                savedWordCountOnError.value = streamWordCount.value;
+                showRecoveryDialog.value = true;
+                toast.warning('Connection Lost', {
+                    description: `${streamWordCount.value} words may have been saved. Check and resume if needed.`,
+                    duration: 8000,
+                });
+            } else {
+                toast.error('Connection Error', {
+                    description: 'Please check your internet connection and try again.',
+                });
+            }
+
+            eventSource.value?.close();
+            eventSource.value = null;
+
+            // Reset reconnection state for next attempt
+            reconnectAttempts.value = 0;
+            reconnectDelay.value = 2000;
+        }
     };
+};
+
+// Attempt to reconnect to the streaming generation
+const attemptReconnection = (type: 'progressive' | 'outline' | 'improve') => {
+    const url = route('chapters.stream', {
+        project: props.project.slug,
+        chapter: props.chapter.chapter_number,
+    });
+
+    // Build URL with resume parameter
+    const resumeParams = new URLSearchParams({
+        generation_type: type,
+        resume_from: streamWordCount.value.toString(),
+    });
+
+    if (currentGenerationId.value) {
+        resumeParams.set('generation_id', currentGenerationId.value);
+    }
+
+    console.log(`🔌 Reconnecting to stream from ${streamWordCount.value} words...`);
+
+    eventSource.value = new EventSource(`${url}?${resumeParams}`);
+
+    eventSource.value.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        // On successful reconnection, reset attempt counter
+        if (data.type === 'content' || data.type === 'start') {
+            isReconnecting.value = false;
+            reconnectAttempts.value = 0;
+            generationPhase.value = 'Generating';
+        }
+
+        switch (data.type) {
+            case 'start':
+                generationProgress.value = '✅ Reconnected! Continuing generation...';
+                toast.success('Reconnected', {
+                    description: 'Generation resumed successfully.',
+                    duration: 3000,
+                });
+                break;
+
+            case 'content':
+                generationPhase.value = 'Generating';
+                streamBuffer.value += data.content;
+                streamWordCount.value = data.word_count || streamBuffer.value.split(/\s+/).filter((word) => word.length > 0).length;
+
+                const now = Date.now();
+                if (now - lastStreamUpdate.value > 150) {
+                    chapterContent.value = streamBuffer.value;
+                    lastStreamUpdate.value = now;
+
+                    const wordProgress = Math.min((streamWordCount.value / estimatedTotalWords.value) * 43, 43);
+                    generationPercentage.value = Math.max(52, 52 + wordProgress);
+                    generationProgress.value = `Generating chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
+
+                    scrollToBottom();
+                }
+                break;
+
+            case 'complete':
+                generationPhase.value = 'Complete';
+                generationPercentage.value = 100;
+                isGenerating.value = false;
+                isReconnecting.value = false;
+                chapterContent.value = streamBuffer.value;
+
+                const finalWords = data.final_word_count || streamWordCount.value;
+                generationProgress.value = `✓ Generated ${finalWords} words successfully`;
+
+                recordWordUsage(
+                    finalWords,
+                    `Chapter generation (${props.chapter.chapter_number})`,
+                    'chapter',
+                    props.chapter.id,
+                ).catch((err) => console.error('Failed to record word usage:', err));
+
+                setTimeout(() => {
+                    triggerAutoSave();
+                }, 500);
+
+                eventSource.value?.close();
+                eventSource.value = null;
+                break;
+
+            case 'error':
+                generationPhase.value = 'Error';
+                isGenerating.value = false;
+                isReconnecting.value = false;
+                generationProgress.value = '❌ Generation failed';
+                toast.error('Generation Error', {
+                    description: data.message || 'Please try again.',
+                });
+                eventSource.value?.close();
+                eventSource.value = null;
+                break;
+
+            case 'autosave':
+                if (data.generation_id) {
+                    currentGenerationId.value = data.generation_id;
+                }
+                break;
+        }
+    };
+
+    eventSource.value.onerror = () => {
+        // Continue retry logic
+        if (reconnectAttempts.value < maxReconnectAttempts) {
+            reconnectAttempts.value++;
+            const delay = reconnectDelay.value * Math.pow(2, reconnectAttempts.value - 1);
+            generationProgress.value = `🔄 Reconnecting... (${reconnectAttempts.value}/${maxReconnectAttempts})`;
+
+            eventSource.value?.close();
+
+            setTimeout(() => {
+                attemptReconnection(type);
+            }, delay);
+        } else {
+            generationPhase.value = 'Error';
+            isGenerating.value = false;
+            isReconnecting.value = false;
+            generationProgress.value = '❌ Connection failed';
+
+            if (streamWordCount.value > 100) {
+                showRecoveryDialog.value = true;
+                toast.warning('Connection Lost', {
+                    description: `${streamWordCount.value} words may be saved. Refresh to recover.`,
+                });
+            } else {
+                toast.error('Connection Error', {
+                    description: 'Please check your connection and try again.',
+                });
+            }
+
+            eventSource.value?.close();
+            eventSource.value = null;
+            reconnectAttempts.value = 0;
+        }
+    };
+};
+
+// Resume generation from saved partial content
+const resumeGeneration = () => {
+    showRecoveryDialog.value = false;
+    partialContentSaved.value = false;
+
+    // Reload the page to get the latest saved content
+    window.location.reload();
+};
+
+// Dismiss recovery dialog and keep current state
+const dismissRecovery = () => {
+    showRecoveryDialog.value = false;
+    partialContentSaved.value = false;
+    savedWordCountOnError.value = 0;
 };
 
 const getAISuggestions = async () => {
@@ -2302,11 +2535,8 @@ onMounted(async () => {
                     </Tooltip>
 
                     <div class="flex flex-col">
-                        <SafeHtmlText
-                            as="h1"
-                            class="text-lg font-bold tracking-tight text-foreground/90 font-display"
-                            :content="props.project.title"
-                        />
+                        <SafeHtmlText as="h1" class="text-lg font-bold tracking-tight text-foreground/90 font-display"
+                            :content="props.project.title" />
                         <div class="flex items-center gap-3 text-xs text-muted-foreground">
                             <Badge variant="outline"
                                 class="h-5 px-2 rounded-full border-primary/20 bg-primary/5 text-primary font-medium">
@@ -2601,16 +2831,13 @@ onMounted(async () => {
                                             Save Draft
                                         </Button>
 
-                                        <Button @click="goToBulkAnalysis"
-                                            variant="outline"
-                                            size="sm" class="h-8 rounded-full">
-                                            <BookCheck
-                                                class="mr-2 h-3.5 w-3.5" />
+                                        <Button @click="goToBulkAnalysis" variant="outline" size="sm"
+                                            class="h-8 rounded-full">
+                                            <BookCheck class="mr-2 h-3.5 w-3.5" />
                                             Run Bulk Analysis
                                         </Button>
 
-                                        <Button @click="markChapterAsComplete"
-                                            :disabled="isSaving" size="sm"
+                                        <Button @click="markChapterAsComplete" :disabled="isSaving" size="sm"
                                             class="h-8 rounded-full bg-gradient-to-r from-primary to-primary/90 shadow-sm hover:shadow-md transition-all">
                                             <CheckCircle class="mr-2 h-3.5 w-3.5" />
                                             Complete
@@ -2672,8 +2899,8 @@ onMounted(async () => {
                                         @update:show-defense-prep="handleDefensePanelToggle"
                                         @generate-more="generateNewDefenseQuestions"
                                         @toggle-auto-generate="handleDefenseAutoToggle"
-                                        @refresh="() => loadDefenseQuestions(true, { skipGeneration: true })" @mark-helpful="markQuestionHelpful"
-                                        @hide-question="hideQuestion" />
+                                        @refresh="() => loadDefenseQuestions(true, { skipGeneration: true })"
+                                        @mark-helpful="markQuestionHelpful" @hide-question="hideQuestion" />
                                     <template #fallback>
                                         <div class="flex items-center justify-center p-4">
                                             <div
@@ -2721,11 +2948,8 @@ onMounted(async () => {
                             </Tooltip>
 
                             <div>
-                                <SafeHtmlText
-                                    as="h1"
-                                    class="text-xl font-bold sm:text-2xl"
-                                    :content="props.project.title"
-                                />
+                                <SafeHtmlText as="h1" class="text-xl font-bold sm:text-2xl"
+                                    :content="props.project.title" />
                                 <p class="text-sm text-muted-foreground">
                                     Chapter {{ props.chapter.chapter_number }} • {{ currentWordCount }} / {{
                                         targetWordCount }}
@@ -2930,7 +3154,7 @@ onMounted(async () => {
                                             </div>
                                         </div>
                                         <span class="ml-1 text-blue-600 dark:text-blue-400">{{ writingQualityScore
-                                        }}%</span>
+                                            }}%</span>
                                     </div>
                                 </div>
                             </div>
@@ -3051,7 +3275,9 @@ onMounted(async () => {
                                                 <Button @click="save(false)" :disabled="!isValid || isSaving" size="sm"
                                                     class="flex-1 sm:flex-none">
                                                     <Save class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-                                                    <span class="hidden sm:inline">{{ isSaving ? 'Saving...' : 'Save Draft' }}</span>
+                                                    <span class="hidden sm:inline">{{ isSaving ? 'Saving...' : `Save
+                                                        Draft`
+                                                    }}</span>
                                                     <span class="sm:hidden">{{ isSaving ? 'Saving...' : 'Save' }}</span>
                                                 </Button>
                                             </TooltipTrigger>
@@ -3062,9 +3288,8 @@ onMounted(async () => {
 
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button @click="goToBulkAnalysis"
-                                                    variant="outline"
-                                                    size="sm" class="flex-1 sm:flex-none">
+                                                <Button @click="goToBulkAnalysis" variant="outline" size="sm"
+                                                    class="flex-1 sm:flex-none">
                                                     <BookCheck class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <span class="hidden sm:inline">Bulk Analysis</span>
                                                     <span class="sm:hidden">Analyze</span>
@@ -3083,9 +3308,9 @@ onMounted(async () => {
                                                         class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <PenTool v-else class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <span class="hidden sm:inline">{{ showPreview ? 'Edit' : 'Preview'
-                                                        }}</span>
+                                                    }}</span>
                                                     <span class="sm:hidden">{{ showPreview ? 'Edit' : 'Preview'
-                                                        }}</span>
+                                                    }}</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>
@@ -3096,9 +3321,8 @@ onMounted(async () => {
 
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button @click="markChapterAsComplete"
-                                                    :disabled="isSaving"
-                                                    size="sm" class="flex-1 sm:flex-none">
+                                                <Button @click="markChapterAsComplete" :disabled="isSaving" size="sm"
+                                                    class="flex-1 sm:flex-none">
                                                     <CheckCircle class="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
                                                     <span class="hidden sm:inline">Save & Mark Complete</span>
                                                     <span class="sm:hidden">Complete</span>
@@ -3149,8 +3373,8 @@ onMounted(async () => {
                                     @update:show-defense-prep="handleDefensePanelToggle"
                                     @generate-more="generateNewDefenseQuestions"
                                     @toggle-auto-generate="handleDefenseAutoToggle"
-                                    @refresh="() => loadDefenseQuestions(true, { skipGeneration: true })" @mark-helpful="markQuestionHelpful"
-                                    @hide-question="hideQuestion" />
+                                    @refresh="() => loadDefenseQuestions(true, { skipGeneration: true })"
+                                    @mark-helpful="markQuestionHelpful" @hide-question="hideQuestion" />
 
                             </div>
                         </div>
@@ -3171,14 +3395,54 @@ onMounted(async () => {
                         @update:show-citation-helper="showCitationHelper = $event" @check-citations="checkCitations" />
 
                     <!-- Credit balance modal -->
-                    <PurchaseModal
-                        :open="showPurchaseModal"
-                        :current-balance="balance"
-                        :required-words="requiredWordsForModal"
-                        :action="actionDescriptionForModal"
-                        @update:open="(v) => showPurchaseModal = v"
-                        @close="closePurchaseModal"
-                    />
+                    <PurchaseModal :open="showPurchaseModal" :current-balance="balance"
+                        :required-words="requiredWordsForModal" :action="actionDescriptionForModal"
+                        @update:open="(v) => showPurchaseModal = v" @close="closePurchaseModal" />
+
+                    <!-- Recovery Dialog for interrupted generation -->
+                    <div v-if="showRecoveryDialog"
+                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <Card class="w-full max-w-md mx-4 bg-white dark:bg-slate-900 border-amber-500/50">
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+                                        viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    Generation Interrupted
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p class="text-slate-600 dark:text-slate-300 mb-4">
+                                    The connection was lost during generation, but
+                                    <span class="font-semibold text-amber-600 dark:text-amber-400">{{
+                                        savedWordCountOnError }}
+                                        words</span>
+                                    may have been saved to the server.
+                                </p>
+                                <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                                    Reload the page to recover your content, or dismiss this dialog to continue with
+                                    what's
+                                    currently displayed.
+                                </p>
+                                <div class="flex flex-col sm:flex-row gap-3">
+                                    <Button @click="resumeGeneration"
+                                        class="flex-1 bg-amber-600 hover:bg-amber-700 text-white">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none"
+                                            viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Reload & Recover
+                                    </Button>
+                                    <Button @click="dismissRecovery" variant="outline" class="flex-1">
+                                        Dismiss
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
             </div>
         </AppLayout>
