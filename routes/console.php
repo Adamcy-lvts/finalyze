@@ -10,3 +10,7 @@ Artisan::command('inspire', function () {
 
 // Schedule automatic cleanup of abandoned payments
 Schedule::command('payments:cleanup-abandoned')->hourly();
+
+// Schedule Pulse data cleanup (removes data older than PULSE_STORAGE_KEEP)
+Schedule::command('pulse:clear')->dailyAt('03:00');
+

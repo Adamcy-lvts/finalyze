@@ -123,6 +123,25 @@ services:
       - mysql
       - redis
 
+  pulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finalyze_pulse
+    command: php artisan pulse:check
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      REDIS_HOST: redis
+    volumes:
+      - .:/var/www/html
+    networks:
+      - finalyze_network
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
 networks:
   finalyze_network:
     driver: bridge
