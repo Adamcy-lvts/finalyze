@@ -233,29 +233,27 @@ class TopicController extends Controller
 
         if (! $user) {
             return response()->stream(function () {
-                echo 'data: '.json_encode([
-                    'type' => 'error',
+                $this->sendSSEMessage('error', [
                     'message' => 'Authentication required',
                     'error_code' => 'UNAUTHENTICATED',
-                ])."\n\n";
-                echo 'data: '.json_encode(['type' => 'end'])."\n\n";
-                flush();
-            }, 401, $headers);
+                    'status_code' => 401,
+                ]);
+                $this->sendSSEMessage('end', []);
+            }, 200, $headers);
         }
 
         if ($user->word_balance < $this->getMinimumTopicBalance()) {
             return response()->stream(function () use ($user) {
-                echo 'data: '.json_encode([
-                    'type' => 'error',
+                $this->sendSSEMessage('error', [
                     'message' => 'Insufficient word balance to generate topics.',
                     'balance' => $user->word_balance,
                     'required' => $this->getMinimumTopicBalance(),
                     'shortage' => max(0, $this->getMinimumTopicBalance() - $user->word_balance),
                     'error_code' => 'INSUFFICIENT_BALANCE',
-                ])."\n\n";
-                echo 'data: '.json_encode(['type' => 'end'])."\n\n";
-                flush();
-            }, 402, $headers);
+                    'status_code' => 402,
+                ]);
+                $this->sendSSEMessage('end', []);
+            }, 200, $headers);
         }
 
         try {

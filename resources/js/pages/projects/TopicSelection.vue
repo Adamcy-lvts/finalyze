@@ -160,6 +160,7 @@ const generateTopics = async () => {
 
     isGenerating.value = true;
     generatedTopics.value = [];
+    let streamClosed = false;
 
     try {
         // Initialize progress tracking
@@ -234,11 +235,21 @@ const generateTopics = async () => {
                         }
                         break;
 
-                    case 'error':
-                        throw new Error(data.message || 'Stream error occurred');
+                    case 'error': {
+                        const message = data.message || 'Stream error occurred';
+                        generationProgress.value = message;
+                        toast('Error', {
+                            description: message,
+                        });
+                        streamClosed = true;
+                        eventSource.close();
+                        isGenerating.value = false;
+                        break;
+                    }
 
                     case 'end':
                         console.log('📡 SSE - Stream ended');
+                        streamClosed = true;
                         eventSource.close();
                         isGenerating.value = false;
                         break;
@@ -249,8 +260,15 @@ const generateTopics = async () => {
         };
 
         eventSource.onerror = (error) => {
+            if (streamClosed) {
+                console.log('📡 SSE - Ignoring connection error after stream closed');
+                return;
+            }
+
             console.error('📡 SSE - Connection error:', error);
             eventSource.close();
+
+            streamClosed = true;
 
             // Check if we already have topics (partial success)
             if (generatedTopics.value.length > 0) {
@@ -276,22 +294,24 @@ const generateTopics = async () => {
 
         // Set a timeout to prevent infinite loading
         setTimeout(() => {
-            if (isGenerating.value) {
-                console.log('⏰ TOPIC GENERATION - Timeout reached, closing stream');
-                eventSource.close();
-
-                if (generatedTopics.value.length > 0) {
-                    generationProgress.value = `✓ Generated ${generatedTopics.value.length} topics (timeout reached)`;
-                    activeTab.value = 'generated';
-                } else {
-                    generationProgress.value = 'Generation timed out. Please try again.';
-                    toast('Timeout', {
-                        description: 'Topic generation took longer than expected. Please try again.',
-                    });
-                }
-
-                isGenerating.value = false;
+            if (!isGenerating.value || streamClosed) {
+                return;
             }
+
+            console.log('⏰ TOPIC GENERATION - Timeout reached, closing stream');
+            eventSource.close();
+
+            if (generatedTopics.value.length > 0) {
+                generationProgress.value = `✓ Generated ${generatedTopics.value.length} topics (timeout reached)`;
+                activeTab.value = 'generated';
+            } else {
+                generationProgress.value = 'Generation timed out. Please try again.';
+                toast('Timeout', {
+                    description: 'Topic generation took longer than expected. Please try again.',
+                });
+            }
+
+            isGenerating.value = false;
         }, 300000); // 5 minutes timeout
 
     } catch (error: any) {
