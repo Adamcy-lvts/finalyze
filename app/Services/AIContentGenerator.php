@@ -21,8 +21,7 @@ class AIContentGenerator
         // Register providers in priority order (configurable via environment)
         $this->providers = $this->getConfiguredProviders();
 
-        // Select the best available provider - but don't throw on failure
-        $this->selectProviderSafely();
+        // Defer provider selection until it is first needed (prevents blocking non-AI routes)
     }
 
     /**
@@ -87,6 +86,16 @@ class AIContentGenerator
     }
 
     /**
+     * Ensure an active provider has been selected before generating content
+     */
+    private function ensureProviderSelected(): void
+    {
+        if ($this->activeProvider === null) {
+            $this->selectProviderSafely();
+        }
+    }
+
+    /**
      * Select the best available provider
      */
     private function selectProvider(): void
@@ -122,6 +131,8 @@ class AIContentGenerator
      */
     public function streamGenerate(string $prompt, array $options = []): Generator
     {
+        $this->ensureProviderSelected();
+
         if (! $this->activeProvider) {
             // Gracefully handle offline state
             Log::warning('AI generation attempted while offline', [
@@ -261,6 +272,8 @@ class AIContentGenerator
      */
     public function generate(string $prompt, array $options = []): string
     {
+        $this->ensureProviderSelected();
+
         if (! $this->activeProvider) {
             // Gracefully handle offline state
             Log::warning('AI generation attempted while offline', [
@@ -450,6 +463,8 @@ Maintain formal academic tone throughout.";
      */
     public function isAvailable(): bool
     {
+        $this->ensureProviderSelected();
+
         return $this->activeProvider !== null;
     }
 
