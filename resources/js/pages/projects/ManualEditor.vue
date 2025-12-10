@@ -18,8 +18,6 @@ import ExportMenu from '@/components/chapter-editor/ExportMenu.vue'
 import SafeHtmlText from '@/components/SafeHtmlText.vue'
 import { Toaster } from '@/components/ui/sonner'
 import CitationHelper from '@/components/chapter-editor/CitationHelper.vue'
-import { useDark, useToggle } from '@vueuse/core'
-import { Sun, Moon } from 'lucide-vue-next'
 import { useManualEditor } from '@/composables/useManualEditor'
 import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggestions'
 import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
@@ -43,8 +41,6 @@ const props = defineProps<{
   chatHistory: ChatMessage[]
 }>()
 
-const isDark = useDark()
-const toggleDark = useToggle(isDark)
 
 // Get page instance for flash messages
 const page = usePage()
@@ -589,12 +585,6 @@ const markAsComplete = async () => {
 
         <!-- View Controls (Desktop Only) -->
         <div class="hidden lg:flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/40">
-          <Button variant="ghost" size="icon" class="h-7 w-7 rounded-md" @click="toggleDark()"
-            :title="isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
-            <Sun v-if="isDark" class="w-4 h-4" />
-            <Moon v-else class="w-4 h-4" />
-          </Button>
-
           <Button variant="ghost" size="icon" class="h-7 w-7 rounded-md" @click="toggleNativeFullscreen"
             :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
             <Minimize2 v-if="isNativeFullscreen" class="w-4 h-4" />
