@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, Moon, PenTool, Save, Sun, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2 } from 'lucide-vue-next';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2 } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -46,7 +46,6 @@ import { useChapterAnalysis } from '@/composables/useChapterAnalysis';
 // Streaming generation composable available for future use
 // import { useStreamingGeneration, type StreamProgress } from '@/composables/useStreamingGeneration';
 import { useSmoothScroller } from '@/utils/smoothScroller';
-import { useAppearance } from '@/composables/useAppearance';
 
 
 interface Chapter {
@@ -156,20 +155,8 @@ const chapterContent = ref(props.chapter.content || '');
 const showPreview = ref(true); // Default to preview/presentation mode
 
 
-// Appearance handling
-const { appearance, updateAppearance } = useAppearance();
-const systemPrefersDark = ref(false);
-let systemMediaQuery: MediaQueryList | null = null;
-
-const updateSystemPreference = () => {
-    systemPrefersDark.value = systemMediaQuery?.matches ?? false;
-};
-
-const isDarkMode = computed(() => {
-    if (appearance.value === 'dark') return true;
-    if (appearance.value === 'light') return false;
-    return systemPrefersDark.value;
-});
+// Appearance composable still imported for potential future use, but we don't control theme locally
+// Theme is managed globally by the system
 
 // UI Enhancement states
 const isNativeFullscreen = ref(false);
@@ -336,16 +323,8 @@ const paperCollectionData = ref<any>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const textareaFullscreenRef = ref<HTMLTextAreaElement | null>(null);
 
-// ScrollArea refs for auto-scroll
+// ScrollArea refs for auto-scroll (editorScrollRef is used for both editor and presentation mode in fullscreen)
 const editorScrollRef = ref();
-const editorFullscreenScrollRef = ref();
-const previewScrollRef = ref();
-const previewFullscreenScrollRef = ref();
-
-
-// Presentation mode refs (legacy - keeping for compatibility)
-const previewContainerRef = ref<HTMLDivElement | null>(null);
-const previewContainerFullscreenRef = ref<HTMLDivElement | null>(null);
 
 // Presentation mode state
 const showPresentationMode = ref(false);
@@ -1840,10 +1819,7 @@ const handleFullscreenChange = () => {
 };
 
 // Dark mode toggle
-const toggleDarkMode = () => {
-    const nextAppearance = isDarkMode.value ? 'light' : 'dark';
-    updateAppearance(nextAppearance);
-};
+
 
 // Chat mode toggle with persistence
 const toggleChatMode = () => {
@@ -1923,10 +1899,7 @@ onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
-    // Track system preference so the toggle icon reflects "system" mode correctly
-    systemMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    updateSystemPreference();
-    systemMediaQuery?.addEventListener('change', updateSystemPreference);
+
 
     // Restore chat mode from localStorage
     showChatMode.value = loadChatModeFromStorage();
@@ -1955,52 +1928,56 @@ const scrollToBottom = () => {
     if (!isGenerating.value) return;
 
     nextTick(() => {
-        // Try to use the smooth scroller first
-        smoothScrollToBottom();
+        // Find the appropriate scroll container
+        // In fullscreen mode: use editorScrollRef (both editor and presentation share it)
+        // In non-fullscreen mode: find the scrollable div in the card
+        let scrollContainer: HTMLElement | null = null;
 
-        // Fallback: find and attach to the active scroll container if not already attached
-        const activeScrollArea = showPresentationMode.value
-            ? isNativeFullscreen.value
-                ? previewFullscreenScrollRef.value
-                : previewScrollRef.value
-            : isNativeFullscreen.value
-                ? editorFullscreenScrollRef.value
-                : editorScrollRef.value;
+        if (isNativeFullscreen.value) {
+            // Fullscreen uses ScrollArea component
+            const scrollAreaRef = editorScrollRef.value;
+            if (scrollAreaRef) {
+                const scrollAreaEl = scrollAreaRef.$el || scrollAreaRef;
+                scrollContainer = scrollAreaEl?.querySelector('[data-radix-scroll-area-viewport]') ||
+                    scrollAreaEl?.querySelector('[data-viewport]') ||
+                    scrollAreaEl?.querySelector('[role="region"]');
+            }
+        } else {
+            // Non-fullscreen: find the overflow-y-auto div that wraps the paper card
+            scrollContainer = document.querySelector('.overflow-y-auto.custom-scrollbar') as HTMLElement;
+        }
 
-        if (activeScrollArea) {
-            const scrollAreaEl = activeScrollArea.$el || activeScrollArea;
-            if (scrollAreaEl) {
-                // Find the viewport element
-                let viewport = scrollAreaEl.querySelector('[data-radix-scroll-area-viewport]') ||
-                    scrollAreaEl.querySelector('[data-viewport]') ||
-                    scrollAreaEl.querySelector('[role="region"]');
-
-                if (!viewport) {
-                    // Search for scrollable div
-                    const divs = scrollAreaEl.querySelectorAll('div');
-                    for (const div of divs) {
-                        if (div.scrollHeight > div.clientHeight) {
-                            viewport = div;
-                            break;
-                        }
+        if (!scrollContainer) {
+            // Last resort: try to find any scrollable container in the main content area
+            const mainContent = document.querySelector('main');
+            if (mainContent) {
+                const scrollables = mainContent.querySelectorAll('div');
+                for (const div of scrollables) {
+                    if (div.scrollHeight > div.clientHeight && div.classList.contains('overflow-y-auto')) {
+                        scrollContainer = div as HTMLElement;
+                        break;
                     }
                 }
+            }
+        }
 
-                if (viewport) {
-                    // Attach scroller to viewport for user scroll detection
-                    attachScroller(viewport as HTMLElement);
+        if (scrollContainer) {
+            // Attach scroller for user scroll detection
+            attachScroller(scrollContainer);
 
-                    // Use RAF for smooth scrolling
-                    requestAnimationFrame(() => {
-                        if (!isUserScrollingScroller.value) {
-                            viewport.scrollTo({
-                                top: viewport.scrollHeight,
-                                behavior: 'smooth'
-                            });
-                        }
+            // Try smooth scroller first (respects user scroll)
+            smoothScrollToBottom();
+
+            // Fallback: direct scroll if smooth scroller didn't work
+            // Use RAF for smooth scrolling
+            requestAnimationFrame(() => {
+                if (!isUserScrollingScroller.value && scrollContainer) {
+                    scrollContainer.scrollTo({
+                        top: scrollContainer.scrollHeight,
+                        behavior: 'smooth'
                     });
                 }
-            }
+            });
         }
     });
 };
@@ -2135,8 +2112,7 @@ onUnmounted(() => {
     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.removeEventListener('msfullscreenchange', handleFullscreenChange);
 
-    // Cleanup appearance listener
-    systemMediaQuery?.removeEventListener('change', updateSystemPreference);
+
 });
 
 // Watch for chapter prop changes (in case of navigation between chapters)
@@ -2684,18 +2660,7 @@ onMounted(async () => {
                             </TooltipContent>
                         </Tooltip>
 
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button @click="toggleDarkMode" variant="ghost" size="icon"
-                                    class="h-9 w-9 rounded-full transition-all hover:bg-muted">
-                                    <Moon v-if="!isDarkMode" class="h-4.5 w-4.5 text-muted-foreground" />
-                                    <Sun v-else class="h-4.5 w-4.5 text-muted-foreground" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>Toggle Theme</p>
-                            </TooltipContent>
-                        </Tooltip>
+
 
                         <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
                             :all-chapters="memoizedAllChapters" size="icon" variant="ghost"
@@ -2904,8 +2869,7 @@ onMounted(async () => {
                                         <RichTextEditor v-show="!showPresentationMode" v-model="chapterContent"
                                             placeholder="Start writing your chapter..." min-height="500px"
                                             class="min-h-[500px] px-8 py-6" ref="richTextEditor" :show-toolbar="true"
-                                            :streaming-mode="isStreamingMode"
-                                            :is-generating="isGenerating"
+                                            :streaming-mode="isStreamingMode" :is-generating="isGenerating"
                                             :generation-progress="generationProgress"
                                             :generation-percentage="generationPercentage"
                                             :generation-phase="generationPhase"
@@ -3258,8 +3222,7 @@ onMounted(async () => {
                                     <RichTextEditor ref="richTextEditorFullscreen" v-model="chapterContent"
                                         placeholder="Start writing your chapter..."
                                         class="prose prose-slate dark:prose-invert prose-lg max-w-none focus:outline-none min-h-[500px]"
-                                        :streaming-mode="isStreamingMode"
-                                        :is-generating="isGenerating"
+                                        :streaming-mode="isStreamingMode" :is-generating="isGenerating"
                                         :generation-progress="generationProgress"
                                         :generation-percentage="generationPercentage"
                                         :generation-phase="generationPhase"

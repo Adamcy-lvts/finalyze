@@ -108,10 +108,12 @@ const props = withDefaults(defineProps<Props>(), {
   streamingMode: false
 })
 
-// Streaming mode state
-const lastRenderedLength = ref(0)
-const streamingBuffer = ref('')
+// Streaming mode state - uses throttled updates instead of append-only
 const isStreamingActive = ref(false)
+const lastStreamingUpdate = ref(0)
+const pendingStreamingContent = ref('')
+const streamingUpdateTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const STREAMING_THROTTLE_MS = 300 // Update editor at most every 300ms during streaming
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -498,9 +500,9 @@ const editor = useEditor({
 watch(() => props.modelValue, (newValue) => {
   if (!editor.value) return
 
-  // In streaming mode, use append-only updates to prevent flicker
+  // In streaming mode, use throttled updates to prevent browser freeze
   if (props.streamingMode && isStreamingActive.value) {
-    appendStreamingContent(newValue)
+    throttledStreamingUpdate(newValue)
     return
   }
 
@@ -528,114 +530,83 @@ watch(() => props.streamingMode, (isStreaming) => {
 })
 
 /**
- * Start streaming mode - prepares editor for append-only updates
+ * Start streaming mode - prepares editor for throttled updates
  */
 function startStreamingMode(): void {
   isStreamingActive.value = true
-  streamingBuffer.value = props.modelValue || ''
-  lastRenderedLength.value = streamingBuffer.value.length
+  lastStreamingUpdate.value = 0
+  pendingStreamingContent.value = ''
 
-  console.log('RichTextEditor: Streaming mode started', {
-    initialLength: lastRenderedLength.value
-  })
+  console.log('RichTextEditor: Streaming mode started (throttled)')
 }
 
 /**
  * End streaming mode - finalizes content and cleans up
  */
 function endStreamingMode(): void {
-  isStreamingActive.value = false
-
-  // Do a final content sync to ensure everything is properly formatted
-  if (editor.value && streamingBuffer.value) {
-    const processedContent = convertTextToHTML(streamingBuffer.value)
-    editor.value.commands.setContent(processedContent, { emitUpdate: false })
+  // Clear any pending timer
+  if (streamingUpdateTimer.value) {
+    clearTimeout(streamingUpdateTimer.value)
+    streamingUpdateTimer.value = null
   }
 
-  streamingBuffer.value = ''
-  lastRenderedLength.value = 0
+  // Apply any pending content
+  if (pendingStreamingContent.value && editor.value) {
+    applyStreamingContent(pendingStreamingContent.value)
+  }
+
+  isStreamingActive.value = false
+  pendingStreamingContent.value = ''
+  lastStreamingUpdate.value = 0
 
   console.log('RichTextEditor: Streaming mode ended')
 }
 
 /**
- * Append-only content update for streaming - prevents flicker
- * Only processes and appends the NEW content since last render
+ * Throttled streaming update - limits DOM operations to prevent browser freeze
  */
-function appendStreamingContent(fullContent: string): void {
+function throttledStreamingUpdate(content: string): void {
   if (!editor.value || !isStreamingActive.value) return
 
-  // Calculate what's new since last render
-  const newContentRaw = fullContent.substring(lastRenderedLength.value)
+  pendingStreamingContent.value = content
+  const now = Date.now()
+  const timeSinceLastUpdate = now - lastStreamingUpdate.value
 
-  if (!newContentRaw) return
+  // If enough time has passed, update immediately
+  if (timeSinceLastUpdate >= STREAMING_THROTTLE_MS) {
+    applyStreamingContent(content)
+    return
+  }
 
-  // Update buffer
-  streamingBuffer.value = fullContent
-
-  // Process only the new content (lightweight processing)
-  const newHtml = convertStreamingChunk(newContentRaw)
-
-  if (!newHtml) return
-
-  // Get end position of document
-  const endPos = editor.value.state.doc.content.size
-
-  // Insert at end without replacing anything - this prevents flicker
-  try {
-    editor.value.chain()
-      .insertContentAt(endPos, newHtml, {
-        updateSelection: false,
-        parseOptions: {
-          preserveWhitespace: 'full'
-        }
-      })
-      .run()
-
-    lastRenderedLength.value = fullContent.length
-  } catch (error) {
-    console.warn('RichTextEditor: Failed to append streaming content', error)
+  // Otherwise, schedule an update if not already scheduled
+  if (!streamingUpdateTimer.value) {
+    const delay = STREAMING_THROTTLE_MS - timeSinceLastUpdate
+    streamingUpdateTimer.value = setTimeout(() => {
+      streamingUpdateTimer.value = null
+      if (isStreamingActive.value && pendingStreamingContent.value) {
+        applyStreamingContent(pendingStreamingContent.value)
+      }
+    }, delay)
   }
 }
 
 /**
- * Lightweight markdown-to-HTML conversion for streaming chunks
- * Only processes complete patterns to avoid partial rendering issues
+ * Apply streaming content to editor - simple full replacement
  */
-function convertStreamingChunk(chunk: string): string {
-  if (!chunk) return ''
+function applyStreamingContent(content: string): void {
+  if (!editor.value) return
 
-  let html = chunk
+  lastStreamingUpdate.value = Date.now()
 
-  // Only process if we have complete patterns (ending with newline or specific markers)
-  // This prevents partial markdown from being incorrectly converted
+  // Simple approach: just set the content if it's different
+  // This is much cheaper than insertContentAt operations
+  const processedContent = convertTextToHTML(content)
+  const currentHtml = editor.value.getHTML()
 
-  // Complete headings (must end with newline or be at end)
-  html = html.replace(/^### (.+?)(?:\n|$)/gm, '<h3>$1</h3>')
-  html = html.replace(/^## (.+?)(?:\n|$)/gm, '<h2>$1</h2>')
-  html = html.replace(/^# (.+?)(?:\n|$)/gm, '<h1>$1</h1>')
-
-  // Bold text (complete pairs only)
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-
-  // Italic text (complete pairs only)
-  html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-
-  // Convert double newlines to paragraph breaks
-  if (html.includes('\n\n')) {
-    const blocks = html.split('\n\n')
-    html = blocks.map(block => {
-      const trimmed = block.trim()
-      if (!trimmed) return ''
-      if (trimmed.startsWith('<h') || trimmed.startsWith('<')) return trimmed
-      return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`
-    }).filter(Boolean).join('')
-  } else if (html.includes('\n')) {
-    // Single newlines become line breaks
-    html = html.replace(/\n/g, '<br>')
+  if (currentHtml !== processedContent) {
+    // Use setContent without emitting to avoid feedback loops
+    editor.value.commands.setContent(processedContent, { emitUpdate: false })
   }
-
-  return html
 }
 
 /**
@@ -644,7 +615,7 @@ function convertStreamingChunk(chunk: string): string {
 function refreshContent(): void {
   if (!editor.value) return
 
-  const currentContent = streamingBuffer.value || props.modelValue
+  const currentContent = pendingStreamingContent.value || props.modelValue
   const processedContent = convertTextToHTML(currentContent)
   editor.value.commands.setContent(processedContent, { emitUpdate: false })
 }
@@ -653,10 +624,10 @@ function refreshContent(): void {
  * Get current streaming position info
  */
 function getStreamingInfo(): { length: number; wordCount: number } {
-  const content = streamingBuffer.value || props.modelValue
+  const content = pendingStreamingContent.value || props.modelValue
   return {
     length: content.length,
-    wordCount: content.split(/\s+/).filter(w => w.length > 0).length
+    wordCount: content.split(/\s+/).filter((w: string) => w.length > 0).length
   }
 }
 
@@ -678,6 +649,12 @@ onMounted(() => {
 
 // Cleanup
 onBeforeUnmount(() => {
+  // Clear streaming timer
+  if (streamingUpdateTimer.value) {
+    clearTimeout(streamingUpdateTimer.value)
+    streamingUpdateTimer.value = null
+  }
+
   if (editor.value) {
     editor.value.destroy()
   }
@@ -1058,10 +1035,9 @@ defineExpose({
   getText: () => editor.value?.getText() || '',
   wordCount,
 
-  // Streaming methods for flicker-free updates
+  // Streaming methods for throttled updates
   startStreamingMode,
   endStreamingMode,
-  appendStreamingContent,
   refreshContent,
   getStreamingInfo,
   isStreamingActive: () => isStreamingActive.value,
@@ -1417,8 +1393,8 @@ defineExpose({
   }
 }
 
-/* Dark mode specific adjustments */
-.dark .ProseMirror {
+/* Dark mode specific adjustments - use :global to escape scoped styles */
+:global(.dark) :deep(.ProseMirror) {
   blockquote {
     @apply border-primary/50 bg-primary/5;
   }

@@ -376,7 +376,7 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <!-- Font Size Controls -->
-    
+
 
     <EditorContent :editor="editor" />
   </div>
@@ -543,21 +543,21 @@ onBeforeUnmount(() => {
   width: 100%;
   margin: 0;
   overflow: hidden;
-  border: 1px solid #9ca3af;
-  background-color: #ffffff;
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--background));
 }
 
 :deep(.ProseMirror table td),
 :deep(.ProseMirror table th) {
   min-width: 1em;
-  border-right: 1px solid #9ca3af;
-  border-bottom: 1px solid #9ca3af;
+  border-right: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
   padding: 10px 14px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
-  background-color: #ffffff;
-  color: #1f2937;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 :deep(.ProseMirror table td:last-child),
@@ -570,38 +570,18 @@ onBeforeUnmount(() => {
 }
 
 :deep(.ProseMirror table th) {
-  background-color: #f3f4f6;
+  background-color: hsl(var(--muted));
   font-weight: 600;
   text-align: left;
-  color: #111827;
-}
-
-/* Dark mode support for tables */
-@media (prefers-color-scheme: dark) {
-  :deep(.ProseMirror table) {
-    border-color: #6b7280;
-    background-color: #1f2937;
-  }
-
-  :deep(.ProseMirror table td),
-  :deep(.ProseMirror table th) {
-    border-color: #6b7280;
-    background-color: #1f2937;
-    color: #f9fafb;
-  }
-
-  :deep(.ProseMirror table th) {
-    background-color: #374151;
-    color: #f3f4f6;
-  }
+  color: hsl(var(--foreground));
 }
 
 /* Mermaid diagram container styles */
 :deep(.mermaid-container) {
   margin: 1.5rem 0;
   padding: 1rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   overflow-x: auto;
   display: flex;
@@ -615,31 +595,18 @@ onBeforeUnmount(() => {
 }
 
 :deep(.mermaid-error) {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background: hsl(var(--destructive) / 0.1);
+  border: 1px solid hsl(var(--destructive) / 0.3);
+  color: hsl(var(--destructive));
   padding: 1rem;
   border-radius: 0.5rem;
   margin: 1rem 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :deep(.mermaid-container) {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  :deep(.mermaid-error) {
-    background: #7f1d1d;
-    border-color: #991b1b;
-    color: #fecaca;
-  }
-}
-
 /* Code block syntax highlighting styles */
 :deep(.ProseMirror .code-block-highlighted) {
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   padding: 1rem;
   margin: 1rem 0;
@@ -653,20 +620,20 @@ onBeforeUnmount(() => {
   background: none;
   padding: 0;
   border-radius: 0;
-  color: inherit;
+  color: hsl(var(--foreground));
 }
 
-/* Syntax highlighting colors (light mode) */
+/* Syntax highlighting colors - using theme-aware colors */
 :deep(.ProseMirror .hljs-comment),
 :deep(.ProseMirror .hljs-quote) {
-  color: #6a737d;
+  color: hsl(var(--muted-foreground));
   font-style: italic;
 }
 
 :deep(.ProseMirror .hljs-keyword),
 :deep(.ProseMirror .hljs-selector-tag),
 :deep(.ProseMirror .hljs-subst) {
-  color: #d73a49;
+  color: hsl(var(--destructive));
   font-weight: 600;
 }
 
@@ -675,57 +642,24 @@ onBeforeUnmount(() => {
 :deep(.ProseMirror .hljs-title),
 :deep(.ProseMirror .hljs-section),
 :deep(.ProseMirror .hljs-selector-id) {
-  color: #032f62;
+  color: hsl(var(--primary));
 }
 
 :deep(.ProseMirror .hljs-function),
 :deep(.ProseMirror .hljs-class),
 :deep(.ProseMirror .hljs-title) {
-  color: #6f42c1;
+  color: hsl(var(--ring));
 }
 
 :deep(.ProseMirror .hljs-number),
 :deep(.ProseMirror .hljs-literal),
 :deep(.ProseMirror .hljs-variable),
 :deep(.ProseMirror .hljs-template-variable) {
-  color: #005cc5;
+  color: hsl(var(--chart-1));
 }
 
 :deep(.ProseMirror .hljs-meta),
 :deep(.ProseMirror .hljs-meta-string) {
-  color: #735c0f;
-}
-
-@media (prefers-color-scheme: dark) {
-  :deep(.ProseMirror .code-block-highlighted) {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  :deep(.ProseMirror .hljs-comment),
-  :deep(.ProseMirror .hljs-quote) {
-    color: #8b949e;
-  }
-
-  :deep(.ProseMirror .hljs-keyword),
-  :deep(.ProseMirror .hljs-selector-tag),
-  :deep(.ProseMirror .hljs-subst) {
-    color: #ff7b72;
-  }
-
-  :deep(.ProseMirror .hljs-string),
-  :deep(.ProseMirror .hljs-doctag) {
-    color: #a5d6ff;
-  }
-
-  :deep(.ProseMirror .hljs-function),
-  :deep(.ProseMirror .hljs-class) {
-    color: #d2a8ff;
-  }
-
-  :deep(.ProseMirror .hljs-number),
-  :deep(.ProseMirror .hljs-literal) {
-    color: #79c0ff;
-  }
+  color: hsl(var(--chart-4));
 }
 </style>

@@ -3,11 +3,10 @@ import { useAppearance } from '@/composables/useAppearance';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun } from 'lucide-vue-next';
 
-const { appearance, updateAppearance } = useAppearance();
+const { toggle } = useAppearance();
 
 const toggleDark = () => {
-    const isDark = document.documentElement.classList.contains('dark');
-    updateAppearance(isDark ? 'light' : 'dark');
+    toggle();
 };
 </script>
 
