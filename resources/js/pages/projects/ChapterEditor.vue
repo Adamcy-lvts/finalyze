@@ -43,6 +43,10 @@ import { useWritingStats } from '@/composables/useWritingStats';
 import { useChapterWordCount } from '@/composables/useChapterWordCount';
 import { useDefenseQuestionWatcher } from '@/composables/useDefenseQuestionWatcher';
 import { useChapterAnalysis } from '@/composables/useChapterAnalysis';
+// Streaming generation composable available for future use
+// import { useStreamingGeneration, type StreamProgress } from '@/composables/useStreamingGeneration';
+import { useSmoothScroller } from '@/utils/smoothScroller';
+import { useAppearance } from '@/composables/useAppearance';
 
 
 interface Chapter {
@@ -152,8 +156,22 @@ const chapterContent = ref(props.chapter.content || '');
 const showPreview = ref(true); // Default to preview/presentation mode
 
 
+// Appearance handling
+const { appearance, updateAppearance } = useAppearance();
+const systemPrefersDark = ref(false);
+let systemMediaQuery: MediaQueryList | null = null;
+
+const updateSystemPreference = () => {
+    systemPrefersDark.value = systemMediaQuery?.matches ?? false;
+};
+
+const isDarkMode = computed(() => {
+    if (appearance.value === 'dark') return true;
+    if (appearance.value === 'light') return false;
+    return systemPrefersDark.value;
+});
+
 // UI Enhancement states
-const isDarkMode = ref(false);
 const isNativeFullscreen = ref(false);
 const showAISidebar = ref(false);
 const showStatistics = ref(false);
@@ -333,6 +351,23 @@ const previewContainerFullscreenRef = ref<HTMLDivElement | null>(null);
 const showPresentationMode = ref(false);
 
 // Note: formatContentForPresentation function removed - now using Tiptap RichTextViewer
+
+// Initialize smooth scroller for auto-scroll during streaming
+const {
+    attach: attachScroller,
+    scrollToBottom: smoothScrollToBottom,
+    forceScrollToBottom,
+    reset: resetScroller,
+    isAutoScrollActive,
+    isUserScrolling: isUserScrollingScroller,
+} = useSmoothScroller({
+    userScrollTimeout: 2000,
+    scrollBehavior: 'smooth',
+    bottomThreshold: 100,
+});
+
+// Streaming mode state for RichTextEditor
+const isStreamingMode = ref(false);
 
 // Initialize composables
 const { hasUnsavedChanges, isSaving, triggerAutoSave, save, clearAutoSave } = useAutoSave({
@@ -1293,6 +1328,10 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
     generationPhase.value = 'Papers';
     generationProgress.value = 'Checking for verified sources...';
 
+    // Enable streaming mode on RichTextEditor for flicker-free updates
+    isStreamingMode.value = true;
+    resetScroller(); // Reset scroller state for new generation
+
     // Set estimated word count based on chapter and project type
     estimatedTotalWords.value = targetWordCount.value;
 
@@ -1377,6 +1416,9 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
                 generationPercentage.value = 100;
                 isGenerating.value = false;
 
+                // Disable streaming mode - this triggers final content sync in RichTextEditor
+                isStreamingMode.value = false;
+
                 // Ensure final content is updated
                 chapterContent.value = streamBuffer.value;
 
@@ -1408,6 +1450,9 @@ const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'impro
             case 'error':
                 generationPhase.value = 'Error';
                 generationPercentage.value = 50; // Reset to start of AI stage
+
+                // Disable streaming mode on error
+                isStreamingMode.value = false;
 
                 // Check if partial content was saved
                 if (data.partial_saved) {
@@ -1796,9 +1841,8 @@ const handleFullscreenChange = () => {
 
 // Dark mode toggle
 const toggleDarkMode = () => {
-    isDarkMode.value = !isDarkMode.value;
-    document.documentElement.classList.toggle('dark', isDarkMode.value);
-    localStorage.setItem('darkMode', isDarkMode.value.toString());
+    const nextAppearance = isDarkMode.value ? 'light' : 'dark';
+    updateAppearance(nextAppearance);
 };
 
 // Chat mode toggle with persistence
@@ -1879,10 +1923,10 @@ onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
-    // Initialize dark mode from localStorage
-    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    isDarkMode.value = savedDarkMode;
-    document.documentElement.classList.toggle('dark', savedDarkMode);
+    // Track system preference so the toggle icon reflects "system" mode correctly
+    systemMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    updateSystemPreference();
+    systemMediaQuery?.addEventListener('change', updateSystemPreference);
 
     // Restore chat mode from localStorage
     showChatMode.value = loadChatModeFromStorage();
@@ -1906,101 +1950,55 @@ onMounted(() => {
 });
 
 // Auto-scroll functionality for streaming content
-const scrollTimeout: NodeJS.Timeout | null = null;
+// Uses the smooth scroller composable for better UX (respects user scroll, smooth animations)
 const scrollToBottom = () => {
-    // Use immediate scroll during generation for better responsiveness
+    if (!isGenerating.value) return;
+
     nextTick(() => {
-        if (isGenerating.value) {
-            // Get the appropriate ScrollArea reference based on mode and screen
-            const activeScrollArea = showPresentationMode.value
-                ? isNativeFullscreen.value
-                    ? previewFullscreenScrollRef.value
-                    : previewScrollRef.value
-                : isNativeFullscreen.value
-                    ? editorFullscreenScrollRef.value
-                    : editorScrollRef.value;
+        // Try to use the smooth scroller first
+        smoothScrollToBottom();
 
-            if (activeScrollArea) {
-                try {
-                    // Get the ScrollArea component
-                    const scrollAreaComponent = activeScrollArea;
-                    if (!scrollAreaComponent) return;
+        // Fallback: find and attach to the active scroll container if not already attached
+        const activeScrollArea = showPresentationMode.value
+            ? isNativeFullscreen.value
+                ? previewFullscreenScrollRef.value
+                : previewScrollRef.value
+            : isNativeFullscreen.value
+                ? editorFullscreenScrollRef.value
+                : editorScrollRef.value;
 
-                    // Get the actual DOM element
-                    const scrollAreaEl = scrollAreaComponent.$el || scrollAreaComponent;
-                    if (!scrollAreaEl) return;
+        if (activeScrollArea) {
+            const scrollAreaEl = activeScrollArea.$el || activeScrollArea;
+            if (scrollAreaEl) {
+                // Find the viewport element
+                let viewport = scrollAreaEl.querySelector('[data-radix-scroll-area-viewport]') ||
+                    scrollAreaEl.querySelector('[data-viewport]') ||
+                    scrollAreaEl.querySelector('[role="region"]');
 
-                    // For ScrollArea component, look for the viewport specifically
-                    let viewport = scrollAreaEl.querySelector('[data-radix-scroll-area-viewport]');
-                    if (!viewport) viewport = scrollAreaEl.querySelector('[data-viewport]');
-                    if (!viewport) viewport = scrollAreaEl.querySelector('[role="region"]');
-                    if (!viewport) viewport = scrollAreaEl.querySelector('div[style*="overflow"]');
-                    if (!viewport) viewport = scrollAreaEl.querySelector('[data-scrollable]');
-
-                    // More thorough fallback search
-                    if (!viewport) {
-                        const possibleViewports = scrollAreaEl.querySelectorAll('div');
-                        for (const div of possibleViewports) {
-                            const style = window.getComputedStyle(div);
-                            if (
-                                style.overflow === 'auto' ||
-                                style.overflow === 'scroll' ||
-                                style.overflowY === 'auto' ||
-                                style.overflowY === 'scroll' ||
-                                div.scrollHeight > div.clientHeight
-                            ) {
-                                viewport = div;
-                                break;
-                            }
+                if (!viewport) {
+                    // Search for scrollable div
+                    const divs = scrollAreaEl.querySelectorAll('div');
+                    for (const div of divs) {
+                        if (div.scrollHeight > div.clientHeight) {
+                            viewport = div;
+                            break;
                         }
                     }
-
-                    // If still no viewport, try to find the RichTextEditor content
-                    if (!viewport) {
-                        const richTextEditor = scrollAreaEl.querySelector('.ProseMirror, [contenteditable="true"]');
-                        if (richTextEditor) {
-                            viewport = richTextEditor.closest('div[style*="overflow"]') ||
-                                richTextEditor.closest('[data-radix-scroll-area-viewport]') ||
-                                richTextEditor.parentElement;
-                        }
-                    }
-
-                    if (viewport) {
-                        // Multiple scroll attempts for better reliability
-                        const maxScroll = viewport.scrollHeight - viewport.clientHeight;
-
-                        // Force immediate scroll to bottom
-                        viewport.scrollTop = maxScroll;
-
-                        // Use requestAnimationFrame for smoother scroll
-                        requestAnimationFrame(() => {
-                            viewport.scrollTop = viewport.scrollHeight;
-
-                            // Backup scroll method
-                            if (viewport.scrollTo) {
-                                viewport.scrollTo({
-                                    top: viewport.scrollHeight,
-                                    behavior: 'instant'
-                                });
-                            }
-                        });
-
-                    } else {
-                        console.warn('Could not find scrollable viewport in ScrollArea', {
-                            scrollAreaEl,
-                            children: scrollAreaEl.children,
-                            mode: showPresentationMode.value ? 'preview' : 'editor',
-                            fullscreen: isNativeFullscreen.value
-                        });
-                    }
-                } catch (error) {
-                    console.warn('Auto-scroll failed:', error);
                 }
-            } else {
-                // Fallback: try to scroll the window if no ScrollArea found
-                const proseMirror = document.querySelector('.ProseMirror');
-                if (proseMirror) {
-                    proseMirror.scrollIntoView({ behavior: 'instant', block: 'end' });
+
+                if (viewport) {
+                    // Attach scroller to viewport for user scroll detection
+                    attachScroller(viewport as HTMLElement);
+
+                    // Use RAF for smooth scrolling
+                    requestAnimationFrame(() => {
+                        if (!isUserScrollingScroller.value) {
+                            viewport.scrollTo({
+                                top: viewport.scrollHeight,
+                                behavior: 'smooth'
+                            });
+                        }
+                    });
                 }
             }
         }
@@ -2121,9 +2119,7 @@ onUnmounted(() => {
     if (eventSource.value) {
         eventSource.value.close();
     }
-    if (scrollTimeout) {
-        clearTimeout(scrollTimeout);
-    }
+    // Streaming mode cleanup is handled by the useSmoothScroller composable
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('keydown', handleChapterKeyboardNavigation);
 
@@ -2138,6 +2134,9 @@ onUnmounted(() => {
     document.removeEventListener('fullscreenchange', handleFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+
+    // Cleanup appearance listener
+    systemMediaQuery?.removeEventListener('change', updateSystemPreference);
 });
 
 // Watch for chapter prop changes (in case of navigation between chapters)
@@ -2905,6 +2904,11 @@ onMounted(async () => {
                                         <RichTextEditor v-show="!showPresentationMode" v-model="chapterContent"
                                             placeholder="Start writing your chapter..." min-height="500px"
                                             class="min-h-[500px] px-8 py-6" ref="richTextEditor" :show-toolbar="true"
+                                            :streaming-mode="isStreamingMode"
+                                            :is-generating="isGenerating"
+                                            :generation-progress="generationProgress"
+                                            :generation-percentage="generationPercentage"
+                                            :generation-phase="generationPhase"
                                             @update:selected-text="(text) => { selectedText = text; }" />
 
                                         <div v-show="showPresentationMode" class="px-12 py-10 min-h-[500px]">
@@ -3251,9 +3255,14 @@ onMounted(async () => {
 
 
                                 <div v-show="!showPresentationMode" class="min-h-[600px] pb-32">
-                                    <RichTextEditor ref="richTextEditor" v-model="chapterContent"
+                                    <RichTextEditor ref="richTextEditorFullscreen" v-model="chapterContent"
                                         placeholder="Start writing your chapter..."
                                         class="prose prose-slate dark:prose-invert prose-lg max-w-none focus:outline-none min-h-[500px]"
+                                        :streaming-mode="isStreamingMode"
+                                        :is-generating="isGenerating"
+                                        :generation-progress="generationProgress"
+                                        :generation-percentage="generationPercentage"
+                                        :generation-phase="generationPhase"
                                         @update:selected-text="selectedText = $event" :min-height="'500px'" />
                                 </div>
                                 <div v-show="showPresentationMode" class="pb-32">

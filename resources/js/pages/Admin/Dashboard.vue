@@ -7,6 +7,17 @@
       </div>
     </template>
 
+    <template #actions>
+      <Button variant="outline" size="icon" class="relative" @click="openNotifications">
+        <Bell class="h-4 w-4" />
+        <span v-if="unreadCount > 0"
+          class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground ring-2 ring-background animate-pulse">
+          {{ unreadCount }}
+        </span>
+        <span class="sr-only">Notifications</span>
+      </Button>
+    </template>
+
     <!-- Stats Grid -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
       <Card v-for="stat in statsData" :key="stat.title"
@@ -127,11 +138,116 @@
         </CardContent>
       </Card>
     </div>
+    <!-- Notification Drawer -->
+    <Sheet v-model:open="isNotificationsOpen">
+      <SheetContent
+        class="w-full sm:max-w-md p-0 flex flex-col h-full bg-background/95 backdrop-blur-sm shadow-2xl border-l-primary/10">
+        <SheetHeader class="px-6 py-4 border-b bg-muted/30 sticky top-0 z-10">
+          <div class="flex items-center justify-between">
+            <div class="space-y-1">
+              <SheetTitle
+                class="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                Notifications</SheetTitle>
+              <SheetDescription>
+                You have {{ unreadCount }} unread messages
+              </SheetDescription>
+            </div>
+            <div v-if="unreadCount > 0">
+              <Button variant="ghost" size="xs"
+                class="h-8 text-xs hover:bg-primary/10 hover:text-primary transition-colors" @click="markAllAsRead">
+                <Check class="mr-1.5 h-3.5 w-3.5" />
+                Mark all read
+              </Button>
+            </div>
+          </div>
+        </SheetHeader>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+          <div v-if="isLoadingNotifications" class="flex flex-col items-center justify-center h-40 space-y-3">
+            <Loader2 class="h-8 w-8 animate-spin text-primary/50" />
+            <p class="text-sm text-muted-foreground animate-pulse">Loading updates...</p>
+          </div>
+
+          <div v-else-if="notifications.length === 0"
+            class="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
+            <div class="rounded-full bg-muted/50 p-6 ring-1 ring-border shadow-sm">
+              <Inbox class="h-10 w-10 text-muted-foreground/50" />
+            </div>
+            <h3 class="text-lg font-medium text-foreground">All caught up!</h3>
+            <p class="text-sm text-muted-foreground max-w-[15rem]">You don't have any new notifications at the moment.
+            </p>
+          </div>
+
+          <div v-else class="divide-y divide-border/40">
+            <div v-for="notification in notifications" :key="notification.id"
+              class="group relative flex flex-col p-4 transition-all duration-200 hover:bg-muted/40 gap-3"
+              :class="{ 'bg-primary/5': !notification.is_read && !notification.read_at }">
+              <!-- Header -->
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <div class="h-2 w-2 rounded-full shrink-0" :class="{
+                    'bg-rose-500': notification.severity === 'critical',
+                    'bg-amber-500': notification.severity === 'warning',
+                    'bg-blue-500': notification.severity === 'info' || !notification.severity,
+                    'bg-emerald-500': notification.severity === 'success',
+                    'animate-pulse': !notification.is_read && !notification.read_at
+                  }"></div>
+                  <h4 class="text-sm font-semibold text-foreground leading-none">
+                    {{ notification.title || notification.data?.title || humanizeType(notification.type) }}
+                  </h4>
+                </div>
+                <span class="text-[10px] text-muted-foreground whitespace-nowrap">
+                  {{ formatTime(notification.created_at) }}
+                </span>
+              </div>
+
+              <!-- Body -->
+              <div class="pl-4">
+                <p class="text-xs text-muted-foreground leading-relaxed"
+                  v-if="notification.message || notification.data?.message">
+                  <template v-if="(notification.message || notification.data?.message).includes('|')">
+                    <span class="flex flex-wrap gap-2 mt-1">
+                      <span v-for="(part, idx) in (notification.message || notification.data?.message).split('|')"
+                        :key="idx"
+                        class="inline-flex items-center px-2 py-1 rounded-md bg-background border border-border text-[10px] font-medium">
+                        {{ part.trim() }}
+                      </span>
+                    </span>
+                  </template>
+                  <template v-else>
+                    {{ notification.message || notification.data?.message }}
+                  </template>
+                </p>
+                <p v-else class="text-xs text-muted-foreground italic">No details provided.</p>
+              </div>
+
+              <!-- Footer / Actions -->
+              <div class="pl-4 flex items-center justify-between mt-1">
+                <!-- Custom Actions from Data (if any) -->
+                <div v-if="notification.data?.action_url" class="flex gap-2">
+                  <Button variant="outline" size="xs" class="h-6 text-[10px]" as="a"
+                    :href="notification.data.action_url">
+                    {{ notification.data.action_text || 'View Details' }}
+                  </Button>
+                </div>
+                <div v-else></div> <!-- Spacer -->
+
+                <Button v-if="!notification.is_read && !notification.read_at" variant="ghost" size="xs"
+                  class="h-6 text-[10px] gap-1 hover:text-primary transition-opacity opacity-0 group-hover:opacity-100"
+                  @click.stop="markAsRead(notification.id)">
+                  <Check class="h-3 w-3" /> Mark as read
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, ref, onMounted } from 'vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -148,8 +264,24 @@ import {
   Database,
   Cpu,
   BarChart3,
-  Filter
+
+  Filter,
+  Bell,
+  X,
+  Check,
+  Loader2,
+  Inbox
 } from 'lucide-vue-next'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+  SheetFooter
+} from '@/components/ui/sheet'
+import axios from 'axios'
 import {
   useVueTable,
   getCoreRowModel,
@@ -227,5 +359,75 @@ const table = useVueTable({
   },
   columns,
   getCoreRowModel: getCoreRowModel(),
+})
+
+// Notification Logic
+const isNotificationsOpen = ref(false)
+const notifications = ref<any[]>([])
+const isLoadingNotifications = ref(false)
+
+const unreadCount = computed(() => notifications.value.filter(n => !n.is_read && !n.read_at).length)
+
+const fetchNotifications = async () => {
+  isLoadingNotifications.value = true
+  try {
+    const { data } = await axios.get('/admin/notifications?format=json')
+    notifications.value = data.notifications || []
+  } catch (error) {
+    console.error('Failed to fetch notifications:', error)
+  } finally {
+    isLoadingNotifications.value = false
+  }
+}
+
+const openNotifications = () => {
+  isNotificationsOpen.value = true
+  fetchNotifications()
+}
+
+const markAsRead = async (id: string) => {
+  try {
+    await axios.post(`/admin/notifications/${id}/read`)
+    // Optimistic update
+    const index = notifications.value.findIndex(n => n.id === id)
+    if (index !== -1) {
+      notifications.value[index].is_read = true
+      notifications.value[index].read_at = new Date().toISOString()
+    }
+  } catch (error) {
+    console.error('Failed to mark as read:', error)
+  }
+}
+
+const markAllAsRead = async () => {
+  try {
+    await axios.post('/admin/notifications/read-all')
+    // Optimistic update
+    notifications.value.forEach(n => {
+      n.is_read = true
+      n.read_at = new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('Failed to mark all as read:', error)
+  }
+}
+
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffInSeconds < 60) return 'Just now'
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
+  return date.toLocaleDateString()
+}
+
+const humanizeType = (type: string) => {
+  return type.split('\\').pop()?.replace(/([A-Z])/g, ' $1').trim() || 'Notification'
+}
+
+onMounted(() => {
+  fetchNotifications()
 })
 </script>

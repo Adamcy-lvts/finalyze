@@ -299,7 +299,12 @@
             </div>
             <div class="stat-item">
                 <div class="stat-label">Chapter Status</div>
-                <div class="stat-value">{{ ucfirst(str_replace('_', ' ', $chapter->status)) }}</div>
+                @php
+                    $statusLabel = $chapter->status instanceof \App\Enums\ChapterStatus
+                        ? $chapter->status->label()
+                        : ucfirst(str_replace('_', ' ', (string) $chapter->status));
+                @endphp
+                <div class="stat-value">{{ $statusLabel }}</div>
             </div>
             @if($chapter->quality_score)
             <div class="stat-item">

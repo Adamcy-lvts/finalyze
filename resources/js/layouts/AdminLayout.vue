@@ -6,13 +6,13 @@
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" class="hover:bg-transparent data-[state=open]:bg-transparent">
               <Link href="/admin" class="flex items-center gap-3 w-full">
-              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <LayoutDashboard class="h-5 w-5" />
-              </div>
-              <div class="flex flex-col gap-0.5 leading-none">
-                <span class="font-semibold text-foreground">Admin Panel</span>
-                <span class="text-xs text-muted-foreground">v1.0.0</span>
-              </div>
+                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <LayoutDashboard class="h-5 w-5" />
+                </div>
+                <div class="flex flex-col gap-0.5 leading-none">
+                  <span class="font-semibold text-foreground">Admin Panel</span>
+                  <span class="text-xs text-muted-foreground">v1.0.0</span>
+                </div>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -28,8 +28,8 @@
                 <SidebarMenuButton as-child :is-active="isActive(item.href, item.exact)" :tooltip="item.label"
                   class="px-4 py-2 h-auto transition-colors hover:bg-muted/50 data-[active=true]:bg-primary/10 data-[active=true]:text-primary">
                   <Link :href="item.href" class="flex items-center gap-3">
-                  <component :is="item.icon" class="h-4 w-4" />
-                  <span class="font-medium">{{ item.label }}</span>
+                    <component :is="item.icon" class="h-4 w-4" />
+                    <span class="font-medium">{{ item.label }}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -46,8 +46,8 @@
                 <SidebarMenuButton as-child :is-active="isActive(item.href)" :tooltip="item.label"
                   class="px-4 py-2 h-auto transition-colors hover:bg-muted/50 data-[active=true]:bg-primary/10 data-[active=true]:text-primary">
                   <Link :href="item.href" class="flex items-center gap-3">
-                  <component :is="item.icon" class="h-4 w-4" />
-                  <span class="font-medium">{{ item.label }}</span>
+                    <component :is="item.icon" class="h-4 w-4" />
+                    <span class="font-medium">{{ item.label }}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -74,16 +74,16 @@
             <DropdownMenuSeparator />
             <DropdownMenuItem :as-child="true">
               <Link class="block w-full cursor-pointer" :href="route('profile.edit')" prefetch as="button">
-              <Settings class="mr-2 h-4 w-4" />
-              Settings
+                <Settings class="mr-2 h-4 w-4" />
+                Settings
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem :as-child="true">
               <Link class="block w-full cursor-pointer text-rose-500 focus:text-rose-500" method="post"
                 :href="route('logout')" as="button">
-              <LogOut class="mr-2 h-4 w-4" />
-              Log out
+                <LogOut class="mr-2 h-4 w-4" />
+                Log out
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -105,13 +105,15 @@
             </slot>
           </div>
           <div class="flex items-center gap-3 md:gap-6">
-            <Button variant="ghost" size="icon"
-              class="relative text-muted-foreground hover:text-foreground transition-colors" @click="openDrawer">
-              <Bell class="h-5 w-5" />
-              <span v-if="unreadCount > 0"
-                class="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background"></span>
-              <span class="sr-only">Notifications</span>
-            </Button>
+            <slot name="actions">
+              <Button variant="ghost" size="icon"
+                class="relative text-muted-foreground hover:text-foreground transition-colors" @click="openDrawer">
+                <Bell class="h-5 w-5" />
+                <span v-if="unreadCount > 0"
+                  class="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background"></span>
+                <span class="sr-only">Notifications</span>
+              </Button>
+            </slot>
 
             <div class="hidden md:flex items-center gap-3 text-sm text-muted-foreground">
               <span>{{ user?.name }}</span>

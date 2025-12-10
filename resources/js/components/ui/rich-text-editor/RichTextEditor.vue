@@ -92,6 +92,8 @@ interface Props {
   generationProgress?: string
   generationPercentage?: number
   generationPhase?: string
+  /** Enable streaming mode for flicker-free append-only updates */
+  streamingMode?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -102,8 +104,14 @@ const props = withDefaults(defineProps<Props>(), {
   isGenerating: false,
   generationProgress: '',
   generationPercentage: 0,
-  generationPhase: ''
+  generationPhase: '',
+  streamingMode: false
 })
+
+// Streaming mode state
+const lastRenderedLength = ref(0)
+const streamingBuffer = ref('')
+const isStreamingActive = ref(false)
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -486,9 +494,18 @@ const editor = useEditor({
   }
 })
 
-// Watch for external changes
+// Watch for external changes - handles both normal and streaming mode
 watch(() => props.modelValue, (newValue) => {
-  if (editor.value && editor.value.getHTML() !== newValue) {
+  if (!editor.value) return
+
+  // In streaming mode, use append-only updates to prevent flicker
+  if (props.streamingMode && isStreamingActive.value) {
+    appendStreamingContent(newValue)
+    return
+  }
+
+  // Normal mode: full content replacement
+  if (editor.value.getHTML() !== newValue) {
     const processedContent = convertTextToHTML(newValue)
     editor.value.commands.setContent(processedContent, { emitUpdate: false })
 
@@ -500,6 +517,148 @@ watch(() => props.modelValue, (newValue) => {
     })
   }
 })
+
+// Watch streamingMode prop to initialize/cleanup streaming state
+watch(() => props.streamingMode, (isStreaming) => {
+  if (isStreaming) {
+    startStreamingMode()
+  } else {
+    endStreamingMode()
+  }
+})
+
+/**
+ * Start streaming mode - prepares editor for append-only updates
+ */
+function startStreamingMode(): void {
+  isStreamingActive.value = true
+  streamingBuffer.value = props.modelValue || ''
+  lastRenderedLength.value = streamingBuffer.value.length
+
+  console.log('RichTextEditor: Streaming mode started', {
+    initialLength: lastRenderedLength.value
+  })
+}
+
+/**
+ * End streaming mode - finalizes content and cleans up
+ */
+function endStreamingMode(): void {
+  isStreamingActive.value = false
+
+  // Do a final content sync to ensure everything is properly formatted
+  if (editor.value && streamingBuffer.value) {
+    const processedContent = convertTextToHTML(streamingBuffer.value)
+    editor.value.commands.setContent(processedContent, { emitUpdate: false })
+  }
+
+  streamingBuffer.value = ''
+  lastRenderedLength.value = 0
+
+  console.log('RichTextEditor: Streaming mode ended')
+}
+
+/**
+ * Append-only content update for streaming - prevents flicker
+ * Only processes and appends the NEW content since last render
+ */
+function appendStreamingContent(fullContent: string): void {
+  if (!editor.value || !isStreamingActive.value) return
+
+  // Calculate what's new since last render
+  const newContentRaw = fullContent.substring(lastRenderedLength.value)
+
+  if (!newContentRaw) return
+
+  // Update buffer
+  streamingBuffer.value = fullContent
+
+  // Process only the new content (lightweight processing)
+  const newHtml = convertStreamingChunk(newContentRaw)
+
+  if (!newHtml) return
+
+  // Get end position of document
+  const endPos = editor.value.state.doc.content.size
+
+  // Insert at end without replacing anything - this prevents flicker
+  try {
+    editor.value.chain()
+      .insertContentAt(endPos, newHtml, {
+        updateSelection: false,
+        parseOptions: {
+          preserveWhitespace: 'full'
+        }
+      })
+      .run()
+
+    lastRenderedLength.value = fullContent.length
+  } catch (error) {
+    console.warn('RichTextEditor: Failed to append streaming content', error)
+  }
+}
+
+/**
+ * Lightweight markdown-to-HTML conversion for streaming chunks
+ * Only processes complete patterns to avoid partial rendering issues
+ */
+function convertStreamingChunk(chunk: string): string {
+  if (!chunk) return ''
+
+  let html = chunk
+
+  // Only process if we have complete patterns (ending with newline or specific markers)
+  // This prevents partial markdown from being incorrectly converted
+
+  // Complete headings (must end with newline or be at end)
+  html = html.replace(/^### (.+?)(?:\n|$)/gm, '<h3>$1</h3>')
+  html = html.replace(/^## (.+?)(?:\n|$)/gm, '<h2>$1</h2>')
+  html = html.replace(/^# (.+?)(?:\n|$)/gm, '<h1>$1</h1>')
+
+  // Bold text (complete pairs only)
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+
+  // Italic text (complete pairs only)
+  html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
+
+  // Convert double newlines to paragraph breaks
+  if (html.includes('\n\n')) {
+    const blocks = html.split('\n\n')
+    html = blocks.map(block => {
+      const trimmed = block.trim()
+      if (!trimmed) return ''
+      if (trimmed.startsWith('<h') || trimmed.startsWith('<')) return trimmed
+      return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`
+    }).filter(Boolean).join('')
+  } else if (html.includes('\n')) {
+    // Single newlines become line breaks
+    html = html.replace(/\n/g, '<br>')
+  }
+
+  return html
+}
+
+/**
+ * Force a full content refresh (use sparingly, e.g., on stream complete)
+ */
+function refreshContent(): void {
+  if (!editor.value) return
+
+  const currentContent = streamingBuffer.value || props.modelValue
+  const processedContent = convertTextToHTML(currentContent)
+  editor.value.commands.setContent(processedContent, { emitUpdate: false })
+}
+
+/**
+ * Get current streaming position info
+ */
+function getStreamingInfo(): { length: number; wordCount: number } {
+  const content = streamingBuffer.value || props.modelValue
+  return {
+    length: content.length,
+    wordCount: content.split(/\s+/).filter(w => w.length > 0).length
+  }
+}
 
 // Watch readonly state
 watch(() => props.readonly, (readonly) => {
@@ -884,17 +1043,31 @@ const setCursorPosition = (position: number) => {
 
 // Expose methods to parent components
 defineExpose({
+  // Selection methods
   getSelectionRange,
   getSelectedText,
   replaceSelection,
   replaceTextAt,
   getCursorPosition,
   setCursorPosition,
+
+  // Basic editor methods
   focus: () => editor.value?.commands.focus(),
   blur: () => editor.value?.commands.blur(),
   getHTML: () => editor.value?.getHTML() || '',
   getText: () => editor.value?.getText() || '',
-  wordCount
+  wordCount,
+
+  // Streaming methods for flicker-free updates
+  startStreamingMode,
+  endStreamingMode,
+  appendStreamingContent,
+  refreshContent,
+  getStreamingInfo,
+  isStreamingActive: () => isStreamingActive.value,
+
+  // Editor instance access (use carefully)
+  editor: () => editor.value,
 })
 </script>
 

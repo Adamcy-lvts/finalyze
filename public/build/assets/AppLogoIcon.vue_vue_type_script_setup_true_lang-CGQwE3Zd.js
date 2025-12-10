@@ -1,0 +1,1 @@
+import{d as s,a,o,m as n}from"./app-f2LOotth.js";const c=s({inheritAttrs:!1,__name:"AppLogoIcon",props:{className:{}},setup(r){return(e,t)=>(o(),a("img",n({src:"/img/logo-negative-space.png",alt:"Finalyze Logo",class:e.className},e.$attrs),null,16))}});export{c as _};

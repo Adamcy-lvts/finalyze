@@ -8,12 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AuthBase from '@/layouts/AuthLayout.vue';
 import { Form, Head } from '@inertiajs/vue3';
-import { LoaderCircle } from 'lucide-vue-next';
+import { LoaderCircle, Eye, EyeOff } from 'lucide-vue-next';
+import { ref } from 'vue';
 
 defineProps<{
     status?: string;
     canResetPassword: boolean;
 }>();
+
+const showPassword = ref(false);
 </script>
 
 <template>
@@ -48,15 +51,27 @@ defineProps<{
                             Forgot password?
                         </TextLink>
                     </div>
-                    <Input
-                        id="password"
-                        type="password"
-                        name="password"
-                        required
-                        :tabindex="2"
-                        autocomplete="current-password"
-                        placeholder="Password"
-                    />
+                    <div class="relative">
+                        <Input
+                            id="password"
+                            :type="showPassword ? 'text' : 'password'"
+                            name="password"
+                            required
+                            :tabindex="2"
+                            autocomplete="current-password"
+                            placeholder="Password"
+                            class="pr-10"
+                        />
+                        <button
+                            type="button"
+                            class="absolute inset-y-0 right-0 mr-2 flex items-center rounded-md px-2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            @click="showPassword = !showPassword"
+                            :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                        >
+                            <Eye v-if="!showPassword" class="h-4 w-4" />
+                            <EyeOff v-else class="h-4 w-4" />
+                        </button>
+                    </div>
                     <InputError :message="errors.password" />
                 </div>
 

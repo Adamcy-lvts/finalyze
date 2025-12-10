@@ -5,18 +5,32 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        {{-- Inline script to detect system dark mode preference and apply it immediately --}}
+        {{-- Inline script to detect stored preference and apply it immediately (before styles load) --}}
         <script>
             (function() {
-                const appearance = '{{ $appearance ?? "system" }}';
+                const fromServer = '{{ $appearance ?? "system" }}';
 
-                if (appearance === 'system') {
-                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const getCookie = (name) => {
+                    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+                    return match ? match[2] : null;
+                };
 
-                    if (prefersDark) {
-                        document.documentElement.classList.add('dark');
+                const stored = (() => {
+                    try {
+                        return localStorage.getItem('appearance');
+                    } catch (e) {
+                        return null;
                     }
-                }
+                })();
+
+                const cookieAppearance = getCookie('appearance');
+                const appearance = stored || cookieAppearance || fromServer || 'system';
+
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const resolved = appearance === 'system' ? (prefersDark ? 'dark' : 'light') : appearance;
+
+                document.documentElement.classList.toggle('dark', resolved === 'dark');
+                document.documentElement.style.colorScheme = resolved === 'dark' ? 'dark' : 'light';
             })();
         </script>
 
