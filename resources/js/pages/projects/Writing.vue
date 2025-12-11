@@ -1109,52 +1109,91 @@ const toggleWritingMode = async () => {
 
             <!-- Mode Change Confirmation Dialog -->
             <Dialog v-model:open="showModeConfirmDialog">
-                <DialogContent class="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle class="flex items-center gap-2">
-                            <component :is="pendingNewMode === 'auto' ? Brain : Edit" class="h-5 w-5"
-                                :class="pendingNewMode === 'auto' ? 'text-blue-600' : 'text-purple-600'" />
-                            Switch Writing Mode
-                        </DialogTitle>
-                        <DialogDescription class="space-y-4 pt-2 text-left">
-                            <Alert :variant="pendingNewMode === 'auto' ? 'default' : 'destructive'" class="border-l-4"
-                                :class="pendingNewMode === 'auto' ? 'border-l-blue-500 bg-blue-50 text-blue-900' : 'border-l-purple-500 bg-purple-50 text-purple-900'">
-                                <AlertTriangle class="h-4 w-4" />
-                                <AlertDescription>
-                                    You are about to switch to <strong>{{ pendingNewMode === 'auto' ? 'AI Assisted' :
-                                        'Manual'
-                                    }}</strong> mode. </AlertDescription>
-                            </Alert>
-
-                            <div class="space-y-2 text-sm">
-                                <p class="font-medium">What this means:</p>
-                                <ul class="space-y-1 text-muted-foreground ml-4 list-disc">
-                                    <template v-if="pendingNewMode === 'auto'">
-                                        <li>You'll be able to generate chapters with AI</li>
-                                        <li>Existing content will remain unchanged</li>
-                                    </template>
-                                    <template v-else>
-                                        <li>You'll write chapters manually</li>
-                                        <li>AI generation will be disabled</li>
-                                        <li>Existing content will remain unchanged</li>
-                                    </template>
-                                </ul>
+                <DialogContent class="sm:max-w-[425px] border-border/50 bg-background/80 backdrop-blur-xl shadow-2xl p-0 overflow-hidden gap-0">
+                    <!-- Stylish Header Background -->
+                    <div class="relative h-32 w-full overflow-hidden bg-gradient-to-br"
+                        :class="pendingNewMode === 'auto' ? 'from-blue-600/20 via-indigo-500/10 to-transparent' : 'from-slate-500/20 via-zinc-500/10 to-transparent'">
+                        <div class="absolute inset-0 bg-grid-white/5 [mask-image:linear-gradient(0deg,transparent,black)]"></div>
+                        
+                        <div class="absolute bottom-6 left-6 flex items-center gap-3">
+                            <div class="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 shadow-lg backdrop-blur-md"
+                                :class="pendingNewMode === 'auto' ? 'bg-blue-500/20 text-blue-500' : 'bg-zinc-500/20 text-zinc-500'">
+                                <component :is="pendingNewMode === 'auto' ? Brain : Edit" class="h-6 w-6" />
                             </div>
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter class="flex-col gap-2 sm:flex-row">
-                        <Button @click="showModeConfirmDialog = false" variant="outline" class="w-full sm:w-auto">
+                            <div>
+                                <h3 class="text-lg font-semibold tracking-tight text-foreground">
+                                    {{ pendingNewMode === 'auto' ? 'AI Assisted Mode' : 'Manual Writing Mode' }}
+                                </h3>
+                                <p class="text-xs text-muted-foreground">Switching writing experience</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 space-y-6">
+                        <!-- Context Info -->
+                        <div class="rounded-xl border border-border/50 p-4"
+                            :class="pendingNewMode === 'auto' ? 'bg-blue-50/50 dark:bg-blue-950/10' : 'bg-zinc-50/50 dark:bg-zinc-900/10'">
+                            <div class="flex gap-3">
+                                <AlertTriangle class="h-5 w-5 shrink-0 mt-0.5" 
+                                    :class="pendingNewMode === 'auto' ? 'text-blue-600' : 'text-zinc-600'" />
+                                <div class="space-y-1">
+                                    <p class="text-sm font-medium" :class="pendingNewMode === 'auto' ? 'text-blue-900 dark:text-blue-100' : 'text-zinc-900 dark:text-zinc-100'">
+                                        Mode Translation
+                                    </p>
+                                    <p class="text-xs text-muted-foreground leading-relaxed">
+                                        You are about to facilitate a mode switch. This will update your workspace tools and capabilities.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Feature Changes -->
+                        <div class="space-y-3">
+                            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">What changes</h4>
+                            <div class="grid gap-2">
+                                <template v-if="pendingNewMode === 'auto'">
+                                    <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
+                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400">
+                                            <Sparkles class="h-3.5 w-3.5" />
+                                        </div>
+                                        <span>AI Generation & Assistance enabled</span>
+                                    </div>
+                                    <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
+                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400">
+                                            <Check class="h-3.5 w-3.5" />
+                                        </div>
+                                        <span>Existing content preserved</span>
+                                    </div>
+                                </template>
+                                <template v-else>
+                                    <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
+                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                                            <Edit class="h-3.5 w-3.5" />
+                                        </div>
+                                        <span>Full manual control enabled</span>
+                                    </div>
+                                    <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
+                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400">
+                                            <Check class="h-3.5 w-3.5" />
+                                        </div>
+                                        <span>Existing content preserved</span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-border/40 bg-muted/20 p-6 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+                        <Button @click="showModeConfirmDialog = false" variant="ghost" class="w-full sm:w-auto hover:bg-transparent hover:underline">
                             Cancel
                         </Button>
                         <Button @click="confirmModeChange" :disabled="isTogglingMode"
-                            :class="pendingNewMode === 'auto' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'"
-                            class="w-full sm:w-auto text-white">
+                            class="w-full sm:w-auto text-white shadow-md transition-all hover:scale-[1.02]"
+                            :class="pendingNewMode === 'auto' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700' : 'bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800'">
                             <Clock v-if="isTogglingMode" class="mr-2 h-4 w-4 animate-spin" />
-                            {{ isTogglingMode ? 'Switching...' : `Switch to ${pendingNewMode === 'auto' ? 'AI Assisted'
-                                : 'Manual'}
-                            Mode` }}
+                            {{ isTogglingMode ? 'Switching...' : 'Confirm Switch' }}
                         </Button>
-                    </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
 

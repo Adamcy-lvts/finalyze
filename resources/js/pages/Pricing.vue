@@ -46,6 +46,7 @@ interface Props {
     wordBalance: WordBalance | null
     paystackPublicKey: string | null
     paystackConfigured: boolean
+    activePackageId?: number | null
 }
 
 const props = defineProps<Props>()
@@ -62,6 +63,61 @@ const flash = computed(() => page.props.flash as { success?: string; error?: str
 // Check if user is logged in
 const isAuthenticated = computed(() => !!page.props.auth?.user)
 
+// Verify payment after completion
+const verifyPayment = async (reference: string) => {
+    try {
+        const response = await fetch(route('payments.verify'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+            body: JSON.stringify({ reference }),
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+            toast.success(`Payment successful! ${data.data.words_credited.toLocaleString()} words added to your balance.`)
+            // Reload page to update balance
+            router.reload()
+        } else {
+            toast.error(data.message || 'Payment verification failed')
+        }
+    } catch (error) {
+        console.error('Payment verification error:', error)
+        toast.error('Could not verify payment. Please check your balance.')
+    }
+}
+
+// Open Paystack inline popup
+const openPaystackPopup = (data: { authorization_url: string; access_code: string; reference: string }, pkg: Package) => {
+     const userEmail = (page.props.auth?.user as any)?.email
+
+    if (!userEmail) {
+        toast.error('User email is missing. Cannot proceed with payment.')
+        return
+    }
+
+    // @ts-ignore
+    const handler = PaystackPop.setup({
+        key: props.paystackPublicKey,
+        email: userEmail,
+        amount: pkg.price, // Amount in kobo
+        ref: data.reference,
+        access_code: data.access_code,
+        onClose: () => {
+            toast.info('Payment window closed')
+        },
+        callback: (response: any) => {
+            // Verify payment
+            verifyPayment(response.reference)
+        },
+    })
+
+    handler.openIframe()
+}
+
 // Initialize payment
 const initializePayment = async (pkg: Package) => {
     if (!props.paystackConfigured) {
@@ -74,6 +130,14 @@ const initializePayment = async (pkg: Package) => {
             data: { redirect: route('pricing') }
         })
         return
+    }
+
+    // New logic for free package
+    if (pkg.price === 0) {
+        // Since it's free/signup bonus, just redirect to dashboard or show success
+         toast.success("Free credits claimed! Redirecting to dashboard...");
+         router.visit(route('dashboard'));
+         return;
     }
 
     processingPackage.value = pkg.id
@@ -105,60 +169,12 @@ const initializePayment = async (pkg: Package) => {
     }
 }
 
-// Open Paystack inline popup
-const openPaystackPopup = (data: { authorization_url: string; access_code: string; reference: string }, pkg: Package) => {
-    // Using Paystack inline - requires Paystack script loaded
-    // @ts-ignore - PaystackPop is loaded via script
-    const handler = PaystackPop.setup({
-        key: props.paystackPublicKey,
-        email: (page.props.auth?.user as any)?.email,
-        amount: pkg.price, // Amount in kobo
-        ref: data.reference,
-        access_code: data.access_code,
-        onClose: () => {
-            toast.info('Payment window closed')
-        },
-        callback: (response: any) => {
-            // Verify payment
-            verifyPayment(response.reference)
-        },
-    })
 
-    handler.openIframe()
-}
-
-// Verify payment after completion
-const verifyPayment = async (reference: string) => {
-    try {
-        const response = await fetch(route('payments.verify'), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-            },
-            body: JSON.stringify({ reference }),
-        })
-
-        const data = await response.json()
-
-        if (data.success) {
-            toast.success(`Payment successful! ${data.data.words_credited.toLocaleString()} words added to your balance.`)
-            // Reload page to update balance
-            router.reload()
-        } else {
-            toast.error(data.message || 'Payment verification failed')
-        }
-    } catch (error) {
-        console.error('Payment verification error:', error)
-        toast.error('Could not verify payment. Please check your balance.')
-    }
-}
 </script>
 
 <template>
     <AppLayout title="Pricing">
-        <!-- Load Paystack script -->
-        <component is="script" src="https://js.paystack.co/v1/inline.js" />
+
 
         <div class="min-h-screen bg-gradient-to-b from-background to-muted/30">
             <div class="container mx-auto px-4 py-12">
@@ -168,7 +184,7 @@ const verifyPayment = async (reference: string) => {
                         Simple, Transparent Pricing
                     </h1>
                     <p class="text-xl text-muted-foreground max-w-2xl mx-auto">
-                        Pay once for your project. No subscriptions. Words never expire.
+                        Pay once for your project. No subscriptions. Credits never expire.
                     </p>
                 </div>
 
@@ -199,13 +215,19 @@ const verifyPayment = async (reference: string) => {
 
 
                 <!-- Project Packages -->
-                <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-16">
+                <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-16">
                     <Card v-for="pkg in packages.projects" :key="pkg.id" :class="[
                         'relative transition-all duration-300 hover:shadow-lg',
-                        pkg.is_popular ? 'border-primary shadow-md' : ''
+                        pkg.is_popular ? 'border-primary shadow-md' : '',
+                        activePackageId === pkg.id ? 'border-indigo-500 shadow-[0_0_30px_-5px_rgba(99,102,241,0.3)] ring-1 ring-indigo-500' : ''
                     ]">
+                        <!-- Active Badge -->
+                        <Badge v-if="activePackageId === pkg.id" class="absolute -top-3 right-4 bg-indigo-500 hover:bg-indigo-600">
+                             Active Plan
+                        </Badge>
+
                         <!-- Popular Badge -->
-                        <Badge v-if="pkg.is_popular" class="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <Badge v-else-if="pkg.is_popular" class="absolute -top-3 left-1/2 -translate-x-1/2">
                             <Sparkles class="w-3 h-3 mr-1" />
                             Most Popular
                         </Badge>
@@ -220,16 +242,22 @@ const verifyPayment = async (reference: string) => {
                         <CardContent class="text-center">
                             <!-- Price -->
                             <div class="mb-6">
-                                <span class="text-4xl font-bold">{{ pkg.formatted_price }}</span>
-                                <span class="text-muted-foreground ml-2">one-time</span>
+                                <div v-if="pkg.price === 0">
+                                    <span class="text-4xl font-bold">Free</span>
+                                    <span class="text-muted-foreground ml-2">on signup</span>
+                                </div>
+                                <div v-else>
+                                    <span class="text-4xl font-bold">{{ pkg.formatted_price }}</span>
+                                    <span class="text-muted-foreground ml-2">one-time</span>
+                                </div>
                             </div>
 
-                            <!-- Words -->
+                            <!-- Words/Credits -->
                             <div class="bg-muted/50 rounded-lg p-4 mb-6">
                                 <div class="text-3xl font-bold text-primary">
                                     {{ pkg.formatted_words }}
                                 </div>
-                                <div class="text-sm text-muted-foreground">words included</div>
+                                <div class="text-sm text-muted-foreground">credits included</div>
                             </div>
 
                             <!-- Features -->
@@ -243,11 +271,12 @@ const verifyPayment = async (reference: string) => {
 
                         <CardFooter>
                             <Button class="w-full" size="lg" :variant="pkg.is_popular ? 'default' : 'outline'"
-                                :disabled="!paystackConfigured || processingPackage === pkg.id"
+                                :disabled="processingPackage === pkg.id || (pkg.price > 0 && !paystackConfigured)"
                                 @click="initializePayment(pkg)">
                                 <Loader2 v-if="processingPackage === pkg.id" class="mr-2 h-4 w-4 animate-spin" />
                                 <template v-else>
-                                    {{ paystackConfigured ? 'Get Started' : 'Unavailable' }}
+                                    <span v-if="pkg.price === 0">Get Started Free</span>
+                                    <span v-else>{{ paystackConfigured ? 'Get Started' : 'Unavailable' }}</span>
                                 </template>
                             </Button>
                         </CardFooter>
@@ -262,7 +291,7 @@ const verifyPayment = async (reference: string) => {
                             {{ showTopups ? 'Hide' : 'Show' }} Top-up Packs
                         </Button>
                         <p class="text-sm text-muted-foreground mt-2">
-                            Need more words? Buy additional word packs anytime.
+                            Need more credits? Buy additional credit packs anytime.
                         </p>
                     </div>
 
@@ -284,7 +313,7 @@ const verifyPayment = async (reference: string) => {
                                     {{ pkg.formatted_price }}
                                 </div>
                                 <div class="text-primary font-medium mb-4">
-                                    {{ pkg.formatted_words }} words
+                                    {{ pkg.formatted_words }} credits
                                 </div>
                                 <ul class="space-y-1">
                                     <li v-for="feature in pkg.features" :key="feature"
@@ -313,23 +342,23 @@ const verifyPayment = async (reference: string) => {
 
                     <div class="space-y-4 text-left">
                         <div class="p-4 rounded-lg bg-muted/30">
-                            <h3 class="font-medium mb-1">Do words expire?</h3>
+                            <h3 class="font-medium mb-1">Do credits expire?</h3>
                             <p class="text-sm text-muted-foreground">
-                                No! Your words never expire. Use them whenever you're ready.
+                                No! Your credits never expire. Use them whenever you're ready.
                             </p>
                         </div>
 
                         <div class="p-4 rounded-lg bg-muted/30">
-                            <h3 class="font-medium mb-1">What if I run out of words?</h3>
+                            <h3 class="font-medium mb-1">What if I run out of credits?</h3>
                             <p class="text-sm text-muted-foreground">
-                                Simply purchase a top-up pack. Your new words are added instantly.
+                                Simply purchase a top-up pack. Your new credits are added instantly.
                             </p>
                         </div>
 
                         <div class="p-4 rounded-lg bg-muted/30">
-                            <h3 class="font-medium mb-1">Can I use words across multiple projects?</h3>
+                            <h3 class="font-medium mb-1">Can I use credits across multiple projects?</h3>
                             <p class="text-sm text-muted-foreground">
-                                Yes! Your word balance is account-wide. Use it for any project, seminar, or
+                                Yes! Your credit balance is account-wide. Use it for any project, seminar, or
                                 presentation.
                             </p>
                         </div>

@@ -46,7 +46,7 @@ export const projectColumns: ColumnDef<ProjectRow>[] = [
     header: 'Status',
     cell: ({ row }) => {
       const status: string = row.getValue('status')
-      let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'secondary'
+      const variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'secondary'
       let className = ''
 
       if (status === 'completed') {

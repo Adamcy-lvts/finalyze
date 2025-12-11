@@ -58,6 +58,7 @@
         @routes
         @vite(['resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead
+        <script src="https://js.paystack.co/v1/inline.js"></script>
     </head>
     <body class="font-sans antialiased">
         @inertia

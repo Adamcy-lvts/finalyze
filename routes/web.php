@@ -22,8 +22,45 @@ use App\Http\Middleware\ProjectStateMiddleware;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome');
+Route::get('/', function (\App\Services\PaystackService $paystackService) {
+    try {
+        $packages = \App\Models\WordPackage::getForPricingPage();
+        $paystackConfigured = $paystackService->isConfigured();
+        $paystackPublicKey = $paystackService->getPublicKey();
+    } catch (\Exception $e) {
+        $packages = ['projects' => [], 'topups' => []];
+        $paystackConfigured = false;
+        $paystackPublicKey = null;
+    }
+
+    $user = auth()->user();
+    $activePackageId = null;
+
+    if ($user) {
+        $latestPayment = $user->successfulPayments()
+            ->whereHas('wordPackage', function ($query) {
+                $query->where('type', 'project');
+            })
+            ->latest('paid_at')
+            ->first();
+
+        if ($latestPayment) {
+            $activePackageId = $latestPayment->package_id;
+        } elseif ($user->received_signup_bonus) {
+             $freePkg = \App\Models\WordPackage::where('slug', 'free-starter')->first();
+             if ($freePkg) {
+                 $activePackageId = $freePkg->id;
+             }
+        }
+    }
+    
+    return Inertia::render('Welcome', [
+        'packages' => $packages,
+        'paystackConfigured' => $paystackConfigured,
+        'paystackPublicKey' => $paystackPublicKey,
+        'wordBalance' => $user ? $user->getWordBalanceData() : null,
+        'activePackageId' => $activePackageId,
+    ]);
 })->name('home');
 
 // Test broadcast route (for testing Reverb)

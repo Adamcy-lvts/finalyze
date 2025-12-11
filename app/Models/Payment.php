@@ -10,7 +10,7 @@ class Payment extends Model
 {
     protected $fillable = [
         'user_id',
-        'word_package_id',
+        'package_id',
         'amount',
         'currency',
         'words_purchased',
@@ -62,7 +62,7 @@ class Payment extends Model
 
     public function wordPackage(): BelongsTo
     {
-        return $this->belongsTo(WordPackage::class);
+        return $this->belongsTo(WordPackage::class, 'package_id');
     }
 
     // =========================================================================
@@ -213,7 +213,7 @@ class Payment extends Model
     ): self {
         return self::create([
             'user_id' => $user->id,
-            'word_package_id' => $package->id,
+            'package_id' => $package->id,
             'amount' => $package->price,
             'currency' => $package->currency,
             'words_purchased' => $package->words,

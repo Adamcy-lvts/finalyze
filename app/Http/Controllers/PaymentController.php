@@ -29,11 +29,32 @@ class PaymentController extends Controller
         $packages = WordPackage::getForPricingPage();
         $user = auth()->user();
 
+        $activePackageId = null;
+
+        if ($user) {
+            $latestPayment = $user->successfulPayments()
+                ->whereHas('wordPackage', function ($query) {
+                    $query->where('type', 'project');
+                })
+                ->latest('paid_at')
+                ->first();
+
+            if ($latestPayment) {
+                $activePackageId = $latestPayment->package_id;
+            } elseif ($user->received_signup_bonus) {
+                $freePkg = \App\Models\WordPackage::where('slug', 'free-starter')->first();
+                if ($freePkg) {
+                    $activePackageId = $freePkg->id;
+                }
+            }
+        }
+
         return Inertia::render('Pricing', [
             'packages' => $packages,
             'wordBalance' => $user ? $user->getWordBalanceData() : null,
             'paystackPublicKey' => $this->paystackService->getPublicKey(),
             'paystackConfigured' => $this->paystackService->isConfigured(),
+            'activePackageId' => $activePackageId,
         ]);
     }
 
@@ -454,7 +475,7 @@ class PaymentController extends Controller
             return ['valid' => false, 'reason' => 'user_mismatch'];
         }
 
-        if (isset($metadata['package_id']) && (int) $metadata['package_id'] !== (int) $payment->word_package_id) {
+        if (isset($metadata['package_id']) && (int) $metadata['package_id'] !== (int) $payment->package_id) {
             return ['valid' => false, 'reason' => 'package_mismatch'];
         }
 
