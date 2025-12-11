@@ -1,1 +1,0 @@
-import{d as s,c as a,o,F as n}from"./app-Ct4JdCf2.js";const c=s({inheritAttrs:!1,__name:"AppLogoIcon",props:{className:{}},setup(r){return(e,t)=>(o(),a("img",n({src:"/img/logo-negative-space.png",alt:"Finalyze Logo",class:e.className},e.$attrs),null,16))}});export{c as _};
