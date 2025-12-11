@@ -432,17 +432,17 @@ onUnmounted(() => {
 
         <nav
             class="relative z-50 border-b border-white/5 bg-[#09090b]/80 backdrop-blur-xl supports-[backdrop-filter]:bg-[#09090b]/60">
-            <div class="max-w-7xl mx-auto px-4 md:px-6 h-20 grid grid-cols-2 md:grid-cols-3 items-center">
+            <div class="max-w-7xl mx-auto px-4 md:px-6 h-20 flex items-center justify-between relative">
                 <!-- Logo -->
-                <div class="flex items-center gap-2 group cursor-pointer justify-self-start">
+                <div class="flex items-center gap-2 group cursor-pointer">
                     <Link :href="route('home')">
                         <AppLogo class="h-8 md:h-10 w-auto fill-white" />
                     </Link>
                 </div>
 
-                <!-- Desktop Links (Centered) -->
+                <!-- Desktop Links (Absolute Center) -->
                 <div
-                    class="hidden md:flex items-center justify-center gap-8 text-sm font-medium text-zinc-400 justify-self-center">
+                    class="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-400 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                     <button @click="scrollTo('features')"
                         class="hover:text-white transition-colors duration-300">Features</button>
                     <button @click="scrollTo('comparison')"
@@ -451,8 +451,8 @@ onUnmounted(() => {
                         class="hover:text-white transition-colors duration-300">Pricing</button>
                 </div>
 
-                <!-- Auth Buttons (Right) -->
-                <div class="flex items-center gap-2 md:gap-4 justify-self-end">
+                <!-- Right Side (Auth + Mobile Toggle) -->
+                <div class="flex items-center gap-2 md:gap-4">
                     <template v-if="user">
                         <Link :href="route('logout')" method="post" as="button"
                             class="text-sm font-medium text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
@@ -489,32 +489,32 @@ onUnmounted(() => {
                         <X v-else class="w-6 h-6" />
                     </button>
                 </div>
-
-                <!-- Mobile Navigation Menu -->
-                <transition enter-active-class="transition duration-200 ease-out"
-                    enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0"
-                    leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0"
-                    leave-to-class="opacity-0 -translate-y-2">
-                    <div v-if="isMobileMenuOpen"
-                        class="md:hidden absolute top-20 left-0 w-full bg-[#09090b]/95 backdrop-blur-xl border-b border-white/5 py-6 px-4 flex flex-col gap-4 shadow-2xl">
-                        <button @click="scrollTo('features'); isMobileMenuOpen = false"
-                            class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Features</button>
-                        <button @click="scrollTo('comparison'); isMobileMenuOpen = false"
-                            class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Comparison</button>
-                        <button @click="scrollTo('pricing'); isMobileMenuOpen = false"
-                            class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Pricing</button>
-
-                        <div class="h-px bg-white/5 my-2"></div>
-
-                        <template v-if="!user">
-                            <Link :href="route('login')"
-                                class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2">
-                                Log in
-                            </Link>
-                        </template>
-                    </div>
-                </transition>
             </div>
+
+            <!-- Mobile Navigation Menu -->
+            <transition enter-active-class="transition duration-200 ease-out"
+                enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 -translate-y-2">
+                <div v-if="isMobileMenuOpen"
+                    class="md:hidden absolute top-20 left-0 w-full bg-[#09090b]/95 backdrop-blur-xl border-b border-white/5 py-6 px-4 flex flex-col gap-4 shadow-2xl">
+                    <button @click="scrollTo('features'); isMobileMenuOpen = false"
+                        class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Features</button>
+                    <button @click="scrollTo('comparison'); isMobileMenuOpen = false"
+                        class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Comparison</button>
+                    <button @click="scrollTo('pricing'); isMobileMenuOpen = false"
+                        class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Pricing</button>
+
+                    <div class="h-px bg-white/5 my-2"></div>
+
+                    <template v-if="!user">
+                        <Link :href="route('login')"
+                            class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2">
+                            Log in
+                        </Link>
+                    </template>
+                </div>
+            </transition>
         </nav>
 
         <main class="relative z-10">
@@ -906,7 +906,7 @@ onUnmounted(() => {
                                         <template v-else>
                                             <span v-if="pkg.price === 0">Get Started Free</span>
                                             <span v-else>{{ paystackConfigured ? 'Purchase Package' : 'Unavailable'
-                                            }}</span>
+                                                }}</span>
                                         </template>
                                     </Button>
                                 </CardFooter>
@@ -964,7 +964,7 @@ onUnmounted(() => {
                                             <Loader2 v-if="processingPackage === pkg.id"
                                                 class="mr-2 h-4 w-4 animate-spin" />
                                             <template v-else>{{ paystackConfigured ? 'Buy Now' : 'Unavailable'
-                                                }}</template>
+                                            }}</template>
                                         </Button>
                                     </CardFooter>
                                 </Card>
