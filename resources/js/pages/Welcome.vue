@@ -588,7 +588,8 @@ onUnmounted(() => {
                 <div class="max-w-7xl mx-auto px-6">
                     <div class="text-center max-w-3xl mx-auto mb-20 gsap-fade-up">
                         <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white tracking-tight">Everything you need to
-                            <span class="text-zinc-500">succeed</span></h2>
+                            <span class="text-zinc-500">succeed</span>
+                        </h2>
                         <p class="text-zinc-400 text-lg">A consolidated workspace designed specifically for the academic
                             writing
                             workflow.</p>
@@ -819,7 +820,7 @@ onUnmounted(() => {
                         <AlertDescription>{{ flash.error }}</AlertDescription>
                     </Alert>
 
-                    <div v-if="packages">
+                    <div v-if="packages && (packages.projects.length > 0 || packages.topups.length > 0)">
                         <!-- Project Packages -->
                         <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-16">
                             <Card v-for="pkg in packages.projects" :key="pkg.id" :class="[
@@ -880,7 +881,7 @@ onUnmounted(() => {
                                         <template v-else>
                                             <span v-if="pkg.price === 0">Get Started Free</span>
                                             <span v-else>{{ paystackConfigured ? 'Purchase Package' : 'Unavailable'
-                                                }}</span>
+                                            }}</span>
                                         </template>
                                     </Button>
                                 </CardFooter>
@@ -938,7 +939,7 @@ onUnmounted(() => {
                                             <Loader2 v-if="processingPackage === pkg.id"
                                                 class="mr-2 h-4 w-4 animate-spin" />
                                             <template v-else>{{ paystackConfigured ? 'Buy Now' : 'Unavailable'
-                                                }}</template>
+                                            }}</template>
                                         </Button>
                                     </CardFooter>
                                 </Card>

@@ -23,14 +23,22 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function (\App\Services\PaystackService $paystackService) {
+    // Fetch packages safely
     try {
         $packages = \App\Models\WordPackage::getForPricingPage();
+    } catch (\Exception $e) {
+        $packages = ['projects' => [], 'topups' => []];
+        \Illuminate\Support\Facades\Log::error('Pricing page package fetch failed: ' . $e->getMessage());
+    }
+
+    // Check payment config safely
+    try {
         $paystackConfigured = $paystackService->isConfigured();
         $paystackPublicKey = $paystackService->getPublicKey();
     } catch (\Exception $e) {
-        $packages = ['projects' => [], 'topups' => []];
         $paystackConfigured = false;
         $paystackPublicKey = null;
+        \Illuminate\Support\Facades\Log::error('Pricing page payment config check failed: ' . $e->getMessage());
     }
 
     $user = auth()->user();
