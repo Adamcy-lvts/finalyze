@@ -232,13 +232,12 @@ const handleDeleteChapter = (chapterId: number, chapterSlug: string) => {
                     )">
                         <!-- Status Icon / Number -->
                         <div class="flex-shrink-0 mt-0.5">
-                            <div v-if="item.status === 'approved' || item.status === 'completed'"
-                                :class="cn(
-                                    'h-6 w-6 rounded-md flex items-center justify-center',
-                                    item.chapter_number === currentChapter.chapter_number
-                                        ? 'bg-green-500 text-white shadow-sm ring-2 ring-green-500/20'
-                                        : 'bg-green-500/10 text-green-600 border border-green-500/20'
-                                )">
+                            <div v-if="item.status === 'approved' || item.status === 'completed'" :class="cn(
+                                'h-6 w-6 rounded-md flex items-center justify-center',
+                                item.chapter_number === currentChapter.chapter_number
+                                    ? 'bg-green-500 text-white shadow-sm ring-2 ring-green-500/20'
+                                    : 'bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20'
+                            )">
                                 <CheckCircle class="h-3.5 w-3.5" />
                             </div>
                             <div v-else-if="item.chapter_number === currentChapter.chapter_number"
@@ -249,7 +248,8 @@ const handleDeleteChapter = (chapterId: number, chapterSlug: string) => {
                                 class="h-6 w-6 rounded-md bg-muted text-muted-foreground flex items-center justify-center border border-border">
                                 <span class="text-xs font-medium">{{ item.chapter_number }}</span>
                             </div>
-                            <div v-else class="h-6 w-6 rounded-md bg-muted/50 text-muted-foreground/30 flex items-center justify-center border border-border/50">
+                            <div v-else
+                                class="h-6 w-6 rounded-md bg-muted/50 text-muted-foreground/30 flex items-center justify-center border border-border/50">
                                 <Lock class="h-3 w-3" />
                             </div>
                         </div>
@@ -267,7 +267,8 @@ const handleDeleteChapter = (chapterId: number, chapterSlug: string) => {
                                     <Target class="h-3 w-3" />
                                     {{ item.target_word_count }} words
                                 </span>
-                                <Badge v-if="!item.exists" variant="outline" class="h-4 px-1 text-[9px] border-dashed text-muted-foreground/60">
+                                <Badge v-if="!item.exists" variant="outline"
+                                    class="h-4 px-1 text-[9px] border-dashed text-muted-foreground/60">
                                     Not Started
                                 </Badge>
                             </div>
@@ -316,8 +317,9 @@ const handleDeleteChapter = (chapterId: number, chapterSlug: string) => {
             </Button>
 
             <div v-else-if="nextChapter" class="flex gap-2">
-                <Button variant="outline" class="w-full justify-between bg-background hover:bg-accent/50 h-9 text-xs" size="sm"
-                    @click="handleGoToChapter(nextChapter.chapter_number)">
+                <Button variant="outline"
+                    class="w-full justify-between bg-background hover:bg-accent/50 h-9 text-xs text-zinc-700 dark:text-zinc-300"
+                    size="sm" @click="handleGoToChapter(nextChapter.chapter_number)">
                     <span class="truncate max-w-[120px]">Next: {{ nextChapter.title }}</span>
                     <ChevronRight class="h-3.5 w-3.5 ml-2 flex-shrink-0" />
                 </Button>

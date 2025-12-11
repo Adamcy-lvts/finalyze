@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2 } from 'lucide-vue-next';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2 } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -155,8 +155,29 @@ const chapterContent = ref(props.chapter.content || '');
 const showPreview = ref(true); // Default to preview/presentation mode
 
 
-// Appearance composable still imported for potential future use, but we don't control theme locally
-// Theme is managed globally by the system
+// Independent Dark Mode Logic - Local Class Strategy
+import { useAppearance } from '@/composables/useAppearance';
+const { isDark: globalIsDark } = useAppearance();
+const isEditorDark = ref(false);
+
+// Initialize chapter-specific theme
+const initChapterTheme = () => {
+    // Check local preference
+    const saved = localStorage.getItem(`chapter_theme_${props.project.id}`);
+    if (saved) {
+        isEditorDark.value = saved === 'dark';
+    } else {
+        // Default to global preference
+        isEditorDark.value = globalIsDark.value;
+    }
+};
+
+const toggleChapterTheme = () => {
+    isEditorDark.value = !isEditorDark.value;
+    const newMode = isEditorDark.value ? 'dark' : 'light';
+    localStorage.setItem(`chapter_theme_${props.project.id}`, newMode);
+    toast.success(`Switched to ${isEditorDark.value ? 'Dark' : 'Light'} Mode`);
+};
 
 // UI Enhancement states
 const isNativeFullscreen = ref(false);
@@ -1920,6 +1941,9 @@ onMounted(() => {
 
     // Check for auto-generation from URL parameters
     checkForAutoGeneration();
+
+    // Initialize custom theme
+    initChapterTheme();
 });
 
 // Auto-scroll functionality for streaming content
@@ -2111,8 +2135,6 @@ onUnmounted(() => {
     document.removeEventListener('fullscreenchange', handleFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.removeEventListener('msfullscreenchange', handleFullscreenChange);
-
-
 });
 
 // Watch for chapter prop changes (in case of navigation between chapters)
@@ -2560,11 +2582,12 @@ onMounted(async () => {
     <TooltipProvider>
         <!-- Chat Mode Layout -->
         <ChatModeLayout v-if="showChatMode" :project="memoizedProject" :chapter="memoizedChapter"
-            :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
-            :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
-            :writing-quality-score="writingQualityScore" :is-valid="isValid" :is-saving="isSaving"
-            :show-preview="showPreview" :is-generating="isGenerating" :generation-progress="generationProgress"
-            :history-index="historyIndex" :content-history-length="contentHistory.length" :selected-text="selectedText"
+            :class="{ 'dark': isEditorDark }" :chapter-title="chapterTitle" :chapter-content="chapterContent"
+            :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+            :progress-percentage="progressPercentage" :writing-quality-score="writingQualityScore" :is-valid="isValid"
+            :is-saving="isSaving" :show-preview="showPreview" :is-generating="isGenerating"
+            :generation-progress="generationProgress" :history-index="historyIndex"
+            :content-history-length="contentHistory.length" :selected-text="selectedText"
             @update:chapter-title="chapterTitle = $event" @update:chapter-content="chapterContent = $event"
             @update:selected-text="selectedText = $event" @update:show-preview="showPreview = $event"
             @save="(autoSave) => saveChapter(autoSave)" @undo="handleUndo" @redo="handleRedo"
@@ -2572,14 +2595,14 @@ onMounted(async () => {
 
         <!-- Citation Verification Layout -->
         <CitationVerificationLayout v-else-if="showCitationMode" :project="memoizedProject" :chapter="memoizedChapter"
-            :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
-            :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
-            @exit-citation-mode="exitCitationMode" />
+            :class="{ 'dark': isEditorDark }" :chapter-title="chapterTitle" :chapter-content="chapterContent"
+            :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+            :progress-percentage="progressPercentage" @exit-citation-mode="exitCitationMode" />
 
         <!-- Fullscreen Layout with Sidebars -->
         <!-- Fullscreen Layout with Sidebars -->
         <div v-else-if="isNativeFullscreen"
-            class="flex h-screen flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950 font-sans selection:bg-primary/20">
+            :class="['flex h-screen flex-col overflow-hidden bg-background dark:bg-background font-sans selection:bg-primary/20 transition-colors duration-300', { 'dark': isEditorDark }]">
             <!-- Ambient Background Effects -->
             <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
                 <div class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-500/5 blur-[120px]">
@@ -2660,7 +2683,18 @@ onMounted(async () => {
                             </TooltipContent>
                         </Tooltip>
 
-
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button @click="toggleChapterTheme" :variant="isEditorDark ? 'secondary' : 'ghost'"
+                                    size="icon" class="h-9 w-9 rounded-full transition-all hover:bg-muted">
+                                    <Moon v-if="isEditorDark" class="h-4.5 w-4.5 text-foreground" />
+                                    <Sun v-else class="h-4.5 w-4.5 text-muted-foreground" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Toggle Dark Mode</p>
+                            </TooltipContent>
+                        </Tooltip>
 
                         <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
                             :all-chapters="memoizedAllChapters" size="icon" variant="ghost"
@@ -2814,11 +2848,11 @@ onMounted(async () => {
                                     <div class="flex items-center justify-between">
                                         <div class="space-y-1">
                                             <Label for="chapter-title-fs"
-                                                class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chapter
+                                                class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Chapter
                                                 Title</Label>
                                             <Input id="chapter-title-fs" v-model="chapterTitle"
                                                 placeholder="Enter chapter title..."
-                                                class="h-auto p-0 border-0 bg-transparent text-2xl font-bold placeholder:text-muted-foreground/40 focus-visible:ring-0 px-0" />
+                                                class="h-auto p-0 border-0 bg-transparent text-2xl font-bold placeholder:text-muted-foreground/40 focus-visible:ring-0 px-0 text-foreground" />
                                         </div>
 
                                         <div class="flex items-center gap-2">
@@ -2847,7 +2881,7 @@ onMounted(async () => {
                                         <div class="flex items-center gap-2">
                                             <Button @click="togglePresentationMode"
                                                 :variant="showPresentationMode ? 'default' : 'ghost'" size="sm"
-                                                class="h-7 text-xs rounded-full">
+                                                class="h-7 text-xs rounded-full text-zinc-700 dark:text-zinc-300 hover:text-foreground">
                                                 <Eye class="mr-1.5 h-3.5 w-3.5" />
                                                 {{ showPresentationMode ? 'Edit' : 'Preview' }}
                                             </Button>
@@ -2891,7 +2925,8 @@ onMounted(async () => {
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <Button @click="save(false)" :disabled="!isValid || isSaving" size="sm"
-                                            variant="ghost" class="h-8 rounded-full">
+                                            variant="ghost"
+                                            class="h-8 rounded-full text-zinc-700 dark:text-zinc-300 hover:text-foreground">
                                             <Save class="mr-2 h-3.5 w-3.5" />
                                             Save Draft
                                         </Button>
@@ -2994,7 +3029,8 @@ onMounted(async () => {
         </div>
 
         <!-- Normal mode - render inside AppLayout -->
-        <AppLayout v-else class="h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+        <AppLayout v-else
+            :class="['h-screen overflow-hidden bg-background dark:bg-background transition-colors duration-300', { 'dark': isEditorDark }]">
             <div class="flex h-full w-full overflow-hidden relative">
                 <!-- Ambient Background Effects -->
                 <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -3010,7 +3046,7 @@ onMounted(async () => {
                 <aside v-show="!isLeftSidebarCollapsed"
                     class="hidden lg:flex w-80 flex-col border-r border-border/40 bg-background/60 backdrop-blur-xl z-20 transition-all duration-300">
                     <div class="h-14 flex items-center justify-between px-4 border-b border-border/40 shrink-0">
-                        <span class="text-sm font-semibold tracking-tight">Navigation</span>
+                        <span class="text-sm font-semibold tracking-tight text-foreground">Navigation</span>
                         <Badge variant="outline" class="text-[10px] h-5 px-1.5">{{ memoizedAllChapters.length }}
                             Chapters
                         </Badge>
@@ -3028,7 +3064,8 @@ onMounted(async () => {
                 </aside>
 
                 <!-- Center Workspace -->
-                <main class="flex-1 flex flex-col relative z-10 min-w-0 bg-background/30 transition-all duration-300">
+                <main
+                    class="flex-1 flex flex-col relative z-10 min-w-0 bg-background/30 dark:bg-background transition-all duration-300">
 
                     <!-- Header -->
                     <header
@@ -3077,7 +3114,7 @@ onMounted(async () => {
                                             <TooltipTrigger asChild>
                                                 <Button @click="showStatistics = !showStatistics"
                                                     :variant="showStatistics ? 'secondary' : 'ghost'" size="sm"
-                                                    class="h-7 px-3 text-xs gap-2">
+                                                    class="h-7 px-3 text-xs gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground">
                                                     <Target class="h-3.5 w-3.5" />
                                                     Stats
                                                 </Button>
@@ -3089,7 +3126,7 @@ onMounted(async () => {
                                             <TooltipTrigger asChild>
                                                 <Button @click="togglePresentationMode"
                                                     :variant="showPresentationMode ? 'secondary' : 'ghost'" size="sm"
-                                                    class="h-7 px-3 text-xs gap-2">
+                                                    class="h-7 px-3 text-xs gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground">
                                                     <Eye v-if="!showPresentationMode" class="h-3.5 w-3.5" />
                                                     <Edit2 v-else class="h-3.5 w-3.5" />
                                                     {{ showPresentationMode ? 'Edit' : 'Preview' }}
@@ -3101,9 +3138,9 @@ onMounted(async () => {
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <Button @click="toggleChatMode" variant="ghost" size="sm"
-                                                    class="h-7 px-3 text-xs gap-2">
+                                                    class="h-7 px-3 text-xs gap-2 text-muted-foreground hover:text-foreground">
                                                     <MessageSquare class="h-3.5 w-3.5 text-blue-500" />
-                                                    AI Chat
+                                                    <span class="text-foreground">AI Chat</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>Open AI Assistant Overlay</TooltipContent>
@@ -3112,7 +3149,7 @@ onMounted(async () => {
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <Button @click="toggleNativeFullscreen" variant="ghost" size="sm"
-                                                    class="h-7 px-3 text-xs gap-2"
+                                                    class="h-7 px-3 text-xs gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
                                                     :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
                                                     <Minimize2 v-if="isNativeFullscreen" class="h-3.5 w-3.5" />
                                                     <Maximize2 v-else class="h-3.5 w-3.5" />
@@ -3120,13 +3157,26 @@ onMounted(async () => {
                                             </TooltipTrigger>
                                             <TooltipContent>Toggle Full Screen</TooltipContent>
                                         </Tooltip>
+                                        <div class="w-px h-3 bg-border/50 mx-0.5"></div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button @click="toggleChapterTheme" variant="ghost" size="sm"
+                                                    class="h-7 px-3 text-xs gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground">
+                                                    <Moon v-if="isEditorDark" class="h-3.5 w-3.5 text-foreground" />
+                                                    <Sun v-else class="h-3.5 w-3.5" />
+                                                    {{ isEditorDark ? 'Dark' : 'Light' }}
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Toggle Dark Mode</TooltipContent>
+                                        </Tooltip>
                                     </div>
 
                                     <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
                                         :all-chapters="memoizedAllChapters" size="sm" variant="outline"
-                                        class="h-7 hidden md:flex" />
+                                        class="h-7 hidden md:flex text-zinc-700 dark:text-zinc-300" />
 
-                                    <Button variant="ghost" size="sm" class="hidden md:flex h-7 gap-2"
+                                    <Button variant="ghost" size="sm"
+                                        class="hidden md:flex h-7 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
                                         @click="goToBulkAnalysis" title="Open bulk analysis">
                                         <Brain class="w-4 h-4" />
                                         <span class="text-xs font-medium">Analyze</span>
@@ -3258,7 +3308,7 @@ onMounted(async () => {
                 <aside v-show="!isRightSidebarCollapsed"
                     class="hidden lg:flex w-96 flex-col border-l border-border/40 bg-background/60 backdrop-blur-xl z-20 transition-all duration-300">
                     <div class="h-14 flex items-center justify-between px-4 border-b border-border/40 shrink-0">
-                        <span class="text-sm font-semibold tracking-tight">Writing Assistant</span>
+                        <span class="text-sm font-semibold tracking-tight text-foreground">Writing Assistant</span>
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" class="h-7 w-7">

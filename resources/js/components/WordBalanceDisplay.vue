@@ -34,9 +34,10 @@ const props = withDefaults(defineProps<Props>(), {
     <div v-if="compact" class="flex items-center gap-2">
         <Popover>
             <PopoverTrigger as-child>
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
+                <div
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
                     <Coins class="w-4 h-4 text-primary" />
-                    <span class="font-medium text-sm">
+                    <span class="font-medium text-sm text-foreground">
                         {{ balance.formatted_balance }}
                     </span>
                     <span class="text-xs text-muted-foreground">credits</span>
@@ -48,7 +49,7 @@ const props = withDefaults(defineProps<Props>(), {
         </Popover>
 
         <Link v-if="showTopUp" :href="route('pricing')">
-            <Button variant="ghost" size="icon" class="h-8 w-8">
+            <Button variant="ghost" size="icon" class="h-8 w-8 text-foreground">
                 <Plus class="w-4 h-4" />
             </Button>
         </Link>

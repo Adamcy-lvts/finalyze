@@ -3,7 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { Head, router, usePage } from '@inertiajs/vue3'
 import { route } from 'ziggy-js'
 import { toast } from 'vue-sonner'
-import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle, Brain } from 'lucide-vue-next'
+import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle, Brain, Moon, Sun } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
@@ -23,6 +23,7 @@ import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggest
 import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
 import { useTextHistory } from '@/composables/useTextHistory'
 import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
+import { useAppearance } from '@/composables/useAppearance'
 import type { Project, Chapter, UserChapterSuggestion, ChapterContextAnalysis } from '@/types'
 
 interface ChatMessage {
@@ -203,6 +204,34 @@ onUnmounted(() => {
   document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
   document.removeEventListener('msfullscreenchange', handleFullscreenChange)
 })
+
+// Independent Dark Mode Logic - Local Class Strategy
+const { isDark: globalIsDark } = useAppearance();
+const isEditorDark = ref(false);
+
+// Initialize editor-specific theme
+const initEditorTheme = () => {
+  // Check local preference
+  const saved = localStorage.getItem(`manual_editor_theme_${props.project.id}`);
+  if (saved) {
+    isEditorDark.value = saved === 'dark';
+  } else {
+    // Default to global preference
+    isEditorDark.value = globalIsDark.value;
+  }
+};
+
+const toggleEditorTheme = () => {
+  isEditorDark.value = !isEditorDark.value;
+  const newMode = isEditorDark.value ? 'dark' : 'light';
+  localStorage.setItem(`manual_editor_theme_${props.project.id}`, newMode);
+  toast.success(`Switched to ${isEditorDark.value ? 'Dark' : 'Light'} Mode`);
+};
+
+// Initialize theme on mount
+onMounted(() => {
+  initEditorTheme();
+});
 
 const progressPercentage = computed(() => {
   const current = currentAnalysis.value?.word_count ?? props.chapter.word_count
@@ -459,13 +488,14 @@ const markAsComplete = async () => {
       @redo="handleRedo" @exit-chat-mode="toggleChatMode" />
   </Transition>
 
-  <div class="manual-editor h-screen flex flex-col bg-background">
+  <div class="manual-editor h-screen flex flex-col bg-background dark:bg-background transition-colors duration-300"
+    :class="{ 'dark': isEditorDark }">
     <!-- Header -->
     <header
       class="border-b h-14 md:h-16 px-3 md:px-6 flex justify-between items-center bg-background/80 backdrop-blur-md sticky top-0 z-50 transition-all duration-200">
       <div class="flex items-center gap-2 md:gap-6">
         <!-- Back Button -->
-        <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-foreground"
+        <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
           @click="router.visit(route('projects.show', project.slug))" title="Back to Project">
           <ArrowLeft class="w-4 h-4" />
         </Button>
@@ -481,7 +511,7 @@ const markAsComplete = async () => {
         <!-- Desktop Left Sidebar Toggle (Desktop Only) -->
         <Button @click="toggleLeftSidebar" variant="ghost" size="icon"
           class="h-8 w-8 transition-all duration-300 hidden lg:flex"
-          :class="showLeftSidebar ? 'text-primary' : 'text-muted-foreground hover:text-foreground'"
+          :class="showLeftSidebar ? 'text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
           title="Toggle Chapter Navigation">
           <PanelLeftClose v-if="showLeftSidebar" class="w-4 h-4" />
           <PanelLeftOpen v-else class="w-4 h-4" />
@@ -492,12 +522,8 @@ const markAsComplete = async () => {
         <!-- Project & Chapter Info -->
         <div class="flex flex-col justify-center min-w-0 flex-1">
           <div class="hidden md:flex items-center gap-2 text-xs font-medium text-muted-foreground mb-1">
-            <SafeHtmlText
-              as="span"
-              class="hover:text-foreground transition-colors cursor-pointer truncate"
-              :content="project.title"
-              @click="router.visit(route('projects.show', project.slug))"
-            />
+            <SafeHtmlText as="span" class="hover:text-foreground transition-colors cursor-pointer truncate"
+              :content="project.title" @click="router.visit(route('projects.show', project.slug))" />
             <!-- <ChevronRight class="w-3 h-3 opacity-50 flex-shrink-0" />
             <span class="truncate text-foreground/80">{{ project.topic || 'No Topic' }}</span> -->
           </div>
@@ -506,20 +532,20 @@ const markAsComplete = async () => {
             <!-- Chapter Title -->
             <div class="font-bold text-base md:text-xl text-foreground truncate">
               <span class="truncate">Ch. {{ chapter.chapter_number }}<span class="hidden sm:inline">: {{ chapter.title
-              }}</span></span>
+                  }}</span></span>
             </div>
 
             <!-- Quick Nav Buttons (Desktop Only) -->
             <div class="hidden lg:flex items-center gap-2">
               <Button v-if="prevChapter" variant="ghost" size="sm"
-                class="h-8 px-2 text-muted-foreground hover:text-foreground gap-1.5"
+                class="h-8 px-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground gap-1.5"
                 @click="goToChapter(prevChapter.chapter_number)" :title="`Previous: ${prevChapter.title}`">
                 <ChevronLeft class="w-4 h-4" />
                 <span class="hidden xl:inline text-xs font-medium">Prev: Chapter {{ prevChapter.chapter_number }}</span>
               </Button>
 
               <Button v-if="nextChapter" variant="ghost" size="sm"
-                class="h-8 px-2 text-muted-foreground hover:text-foreground gap-1.5"
+                class="h-8 px-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground gap-1.5"
                 @click="goToChapter(nextChapter.chapter_number)" :title="`Next: ${nextChapter.title}`">
                 <span class="hidden xl:inline text-xs font-medium">Next: Chapter {{ nextChapter.chapter_number }}</span>
                 <ChevronRight class="w-4 h-4" />
@@ -553,8 +579,9 @@ const markAsComplete = async () => {
         </div>
 
         <!-- Save Button (Desktop) -->
-        <Button variant="outline" size="sm" class="hidden md:flex h-9 gap-2" @click="handleManualSave"
-          :disabled="isSaving" title="Save (Ctrl+S)">
+        <Button variant="outline" size="sm"
+          class="hidden md:flex h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+          @click="handleManualSave" :disabled="isSaving" title="Save (Ctrl+S)">
           <Save class="w-4 h-4" />
           <span class="text-xs font-medium">{{ isSaving ? 'Saving...' : 'Save' }}</span>
         </Button>
@@ -569,8 +596,9 @@ const markAsComplete = async () => {
         <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
           variant="outline" class="h-9 hidden md:flex" />
 
-        <Button variant="ghost" size="sm" class="hidden md:flex h-9 gap-2" @click="goToBulkAnalysis"
-          title="Open bulk analysis">
+        <Button variant="ghost" size="sm"
+          class="hidden md:flex h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+          @click="goToBulkAnalysis" title="Open bulk analysis">
           <Brain class="w-4 h-4" />
           <span class="text-xs font-medium">Analyze</span>
         </Button>
@@ -585,22 +613,30 @@ const markAsComplete = async () => {
 
         <!-- View Controls (Desktop Only) -->
         <div class="hidden lg:flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/40">
-          <Button variant="ghost" size="icon" class="h-7 w-7 rounded-md" @click="toggleNativeFullscreen"
-            :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
+          <Button variant="ghost" size="icon"
+            class="h-7 w-7 rounded-md text-zinc-700 dark:text-zinc-300 hover:text-foreground" @click="toggleEditorTheme"
+            :title="isEditorDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+            <Moon v-if="isEditorDark" class="w-4 h-4" />
+            <Sun v-else class="w-4 h-4" />
+          </Button>
+
+          <Button variant="ghost" size="icon"
+            class="h-7 w-7 rounded-md text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+            @click="toggleNativeFullscreen" :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
             <Minimize2 v-if="isNativeFullscreen" class="w-4 h-4" />
             <Maximize2 v-else class="w-4 h-4" />
           </Button>
 
           <Button @click="toggleChatMode" variant="ghost" size="icon"
             class="h-7 w-7 rounded-md transition-all duration-300"
-            :class="showChatMode ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'"
+            :class="showChatMode ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
             title="Toggle AI Chat Mode">
             <MessageSquare class="w-4 h-4" />
           </Button>
 
           <Button @click="toggleRightSidebar" variant="ghost" size="icon"
             class="h-7 w-7 rounded-md transition-all duration-300"
-            :class="showRightSidebar ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'"
+            :class="showRightSidebar ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
             title="Toggle Tools Sidebar">
             <PanelRightClose v-if="showRightSidebar" class="w-4 h-4" />
             <PanelRightOpen v-else class="w-4 h-4" />
