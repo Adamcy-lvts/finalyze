@@ -15,6 +15,7 @@ use App\Services\FacultyStructureService;
 use App\Services\PaperCollectionService;
 use App\Services\ProjectOutlineService;
 use App\Services\ProjectTypeDetector;
+use App\Services\PromptSystem\PromptRouter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -38,7 +39,8 @@ class ChapterController extends Controller
         private ChapterReviewService $reviewService,
         private DocumentAnalysisService $documentService,
         private ProjectTypeDetector $projectTypeDetector,
-        private FacultyStructureService $facultyStructureService
+        private FacultyStructureService $facultyStructureService,
+        private PromptRouter $promptRouter
     ) {
         $this->aiGenerator = $aiGenerator;
         $this->paperService = $paperService;
@@ -1363,6 +1365,9 @@ ORIGINAL PROMPT CONTEXT:
 
         // Add context-aware content generation instructions based on project type
         $prompt .= $this->projectTypeDetector->getContextualInstructions($project, $chapterNumber);
+
+        // Add intelligent prompt system instructions (faculty-specific templates, tables, diagrams)
+        $prompt .= $this->promptRouter->buildPrompt($project, $chapterNumber);
 
         return $prompt;
     }

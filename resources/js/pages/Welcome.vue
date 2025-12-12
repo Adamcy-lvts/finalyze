@@ -443,6 +443,8 @@ onUnmounted(() => {
                 <!-- Desktop Links (Absolute Center) -->
                 <div
                     class="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-400 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <Link :href="route('project-topics.index')" class="hover:text-white transition-colors duration-300">
+                        Topic Library</Link>
                     <button @click="scrollTo('features')"
                         class="hover:text-white transition-colors duration-300">Features</button>
                     <button @click="scrollTo('comparison')"
@@ -498,6 +500,10 @@ onUnmounted(() => {
                 leave-to-class="opacity-0 -translate-y-2">
                 <div v-if="isMobileMenuOpen"
                     class="md:hidden absolute top-20 left-0 w-full bg-[#09090b]/95 backdrop-blur-xl border-b border-white/5 py-6 px-4 flex flex-col gap-4 shadow-2xl">
+                    <Link :href="route('project-topics.index')"
+                        class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">
+                        Topic Library
+                    </Link>
                     <button @click="scrollTo('features'); isMobileMenuOpen = false"
                         class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Features</button>
                     <button @click="scrollTo('comparison'); isMobileMenuOpen = false"
@@ -906,7 +912,7 @@ onUnmounted(() => {
                                         <template v-else>
                                             <span v-if="pkg.price === 0">Get Started Free</span>
                                             <span v-else>{{ paystackConfigured ? 'Purchase Package' : 'Unavailable'
-                                                }}</span>
+                                            }}</span>
                                         </template>
                                     </Button>
                                 </CardFooter>
@@ -964,7 +970,7 @@ onUnmounted(() => {
                                             <Loader2 v-if="processingPackage === pkg.id"
                                                 class="mr-2 h-4 w-4 animate-spin" />
                                             <template v-else>{{ paystackConfigured ? 'Buy Now' : 'Unavailable'
-                                            }}</template>
+                                                }}</template>
                                         </Button>
                                     </CardFooter>
                                 </Card>

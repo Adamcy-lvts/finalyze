@@ -408,16 +408,14 @@ const convertTextToHTML = (text: string): string => {
   }).join('')
 }
 
-// Initialize Tiptap editor
-const editor = useEditor({
-  content: convertTextToHTML(props.modelValue),
-  editable: !props.readonly,
-  extensions: [
+// Base extensions (deduped by name before initializing editor)
+const baseExtensions = [
     StarterKit.configure({
       heading: {
         levels: [1, 2, 3]
       },
       codeBlock: false, // Disable default code block to use our custom one
+      link: false, // Disable built-in Link to avoid duplicate with custom Link below
     }),
     CodeBlockLowlight.configure({
       lowlight,
@@ -454,7 +452,18 @@ const editor = useEditor({
     TextAlign.configure({
       types: ['heading', 'paragraph'],
     }),
-  ],
+]
+
+// Filter out any duplicate extension names to avoid tiptap warnings
+const extensions = baseExtensions.filter((ext, index, arr) =>
+  index === arr.findIndex(e => e.name === ext.name)
+)
+
+// Initialize Tiptap editor
+const editor = useEditor({
+  content: convertTextToHTML(props.modelValue),
+  editable: !props.readonly,
+  extensions,
   editorProps: {
     attributes: {
       class: `prose prose-sm dark:prose-invert max-w-none focus:outline-none`,

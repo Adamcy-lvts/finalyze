@@ -105,13 +105,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Data Collection Placeholder API
     Route::prefix('chapters')->name('api.chapters.data-collection.')->group(function () {
-        Route::get('{chapter}/detect', [DataCollectionController::class, 'detect'])
+        Route::get('{chapter:id}/detect', [DataCollectionController::class, 'detect'])
             ->name('detect');
-        Route::get('{chapter}/placeholder', [DataCollectionController::class, 'generatePlaceholder'])
+        Route::get('{chapter:id}/placeholder', [DataCollectionController::class, 'generatePlaceholder'])
             ->name('placeholder');
-        Route::get('{chapter}/suggestions', [DataCollectionController::class, 'getSuggestions'])
+        Route::get('{chapter:id}/suggestions', [DataCollectionController::class, 'getSuggestions'])
             ->name('suggestions');
-        Route::post('{chapter}/insert-template', [DataCollectionController::class, 'insertTemplate'])
+        Route::post('{chapter:id}/insert-template', [DataCollectionController::class, 'insertTemplate'])
             ->name('insert-template');
     });
 

@@ -41,14 +41,16 @@ interface Props {
     currentChapter: Chapter;
     allChapters: Chapter[];
     triggerElement?: 'button' | 'icon';
-    size?: 'sm' | 'default' | 'lg';
+    size?: 'sm' | 'default' | 'lg' | 'icon';
     variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'link';
+    buttonClass?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     triggerElement: 'button',
     size: 'default',
     variant: 'outline',
+    buttonClass: '',
 });
 
 // State for multi-chapter export
@@ -455,7 +457,7 @@ const exportCurrentChapterPdf = async () => {
                 <Button 
                     :variant="variant" 
                     :size="size" 
-                    class="gap-2"
+                    :class="['gap-2', buttonClass]"
                 >
                     <template v-if="triggerElement === 'button'">
                         <Download class="h-4 w-4" />

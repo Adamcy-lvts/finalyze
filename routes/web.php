@@ -28,7 +28,7 @@ Route::get('/', function (\App\Services\PaystackService $paystackService) {
         $packages = \App\Models\WordPackage::getForPricingPage();
     } catch (\Exception $e) {
         $packages = ['projects' => [], 'topups' => []];
-        \Illuminate\Support\Facades\Log::error('Pricing page package fetch failed: ' . $e->getMessage());
+        \Illuminate\Support\Facades\Log::error('Pricing page package fetch failed: '.$e->getMessage());
     }
 
     // Check payment config safely
@@ -38,7 +38,7 @@ Route::get('/', function (\App\Services\PaystackService $paystackService) {
     } catch (\Exception $e) {
         $paystackConfigured = false;
         $paystackPublicKey = null;
-        \Illuminate\Support\Facades\Log::error('Pricing page payment config check failed: ' . $e->getMessage());
+        \Illuminate\Support\Facades\Log::error('Pricing page payment config check failed: '.$e->getMessage());
     }
 
     $user = auth()->user();
@@ -55,13 +55,13 @@ Route::get('/', function (\App\Services\PaystackService $paystackService) {
         if ($latestPayment) {
             $activePackageId = $latestPayment->package_id;
         } elseif ($user->received_signup_bonus) {
-             $freePkg = \App\Models\WordPackage::where('slug', 'free-starter')->first();
-             if ($freePkg) {
-                 $activePackageId = $freePkg->id;
-             }
+            $freePkg = \App\Models\WordPackage::where('slug', 'free-starter')->first();
+            if ($freePkg) {
+                $activePackageId = $freePkg->id;
+            }
         }
     }
-    
+
     return Inertia::render('Welcome', [
         'packages' => $packages,
         'paystackConfigured' => $paystackConfigured,
@@ -70,6 +70,8 @@ Route::get('/', function (\App\Services\PaystackService $paystackService) {
         'activePackageId' => $activePackageId,
     ]);
 })->name('home');
+
+Route::get('/project-topics', [\App\Http\Controllers\PublicTopicController::class, 'index'])->name('project-topics.index');
 
 // Test broadcast route (for testing Reverb)
 Route::get('/test-broadcast', function () {

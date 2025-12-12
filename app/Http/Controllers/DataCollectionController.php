@@ -6,6 +6,7 @@ use App\Models\Chapter;
 use App\Services\DataCollectionDetector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class DataCollectionController extends Controller
 {
@@ -18,7 +19,7 @@ class DataCollectionController extends Controller
      */
     public function detect(Chapter $chapter): JsonResponse
     {
-        $this->authorize('view', $chapter);
+        $this->ensureChapterOwnership($chapter);
 
         $detection = $this->detector->detectDataCollectionNeeds($chapter);
 
@@ -33,7 +34,7 @@ class DataCollectionController extends Controller
      */
     public function generatePlaceholder(Chapter $chapter): JsonResponse
     {
-        $this->authorize('view', $chapter);
+        $this->ensureChapterOwnership($chapter);
 
         $placeholder = $this->detector->generatePlaceholder($chapter);
 
@@ -90,7 +91,7 @@ class DataCollectionController extends Controller
      */
     public function getSuggestions(Chapter $chapter): JsonResponse
     {
-        $this->authorize('view', $chapter);
+        $this->ensureChapterOwnership($chapter);
 
         $suggestions = $this->detector->suggestImprovements($chapter);
 
@@ -105,7 +106,7 @@ class DataCollectionController extends Controller
      */
     public function insertTemplate(Request $request, Chapter $chapter): JsonResponse
     {
-        $this->authorize('update', $chapter);
+        $this->ensureChapterOwnership($chapter);
 
         $request->validate([
             'type' => 'required|string',
@@ -148,5 +149,15 @@ class DataCollectionController extends Controller
             'template' => $template,
             'newContent' => $newContent,
         ]);
+    }
+
+    /**
+     * Ensure the authenticated user owns the chapter's project.
+     */
+    private function ensureChapterOwnership(Chapter $chapter): void
+    {
+        if (! $chapter->project || $chapter->project->user_id !== Auth::id()) {
+            abort(403);
+        }
     }
 }
