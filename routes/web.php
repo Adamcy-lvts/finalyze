@@ -18,6 +18,7 @@ use App\Http\Controllers\ProjectAnalysisController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
 use App\Http\Controllers\TopicController;
+use App\Http\Controllers\TopicLabController;
 use App\Http\Middleware\ProjectStateMiddleware;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -272,11 +273,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Topic management routes - also need state checking
         Route::post('/projects/{project}/topics/generate', [TopicController::class, 'generate'])->name('topics.generate');
         Route::get('/projects/{project}/topics/stream', [TopicController::class, 'stream'])->name('topics.stream');
-        Route::get('/projects/{project}/topics/lab', [TopicController::class, 'lab'])->name('topics.lab');
-        Route::post('/projects/{project}/topics/chat', [TopicController::class, 'chat'])->name('topics.chat');
-        Route::post('/projects/{project}/topics/chat/rename', [TopicController::class, 'renameSession'])->name('topics.chat.rename');
-        Route::post('/projects/{project}/topics/chat/save-topic', [TopicController::class, 'saveRefinedTopic'])->name('topics.chat.save-topic');
-        Route::delete('/projects/{project}/topics/chat/session', [TopicController::class, 'deleteSession'])->name('topics.chat.delete-session');
+        Route::get('/projects/{project}/topics/lab', [TopicLabController::class, 'lab'])->name('topics.lab');
+        Route::post('/projects/{project}/topics/chat', [TopicLabController::class, 'chat'])->name('topics.chat');
+        Route::post('/projects/{project}/topics/chat/rename', [TopicLabController::class, 'renameSession'])->name('topics.chat.rename');
+        Route::post('/projects/{project}/topics/chat/save-topic', [TopicLabController::class, 'saveRefinedTopic'])->name('topics.chat.save-topic');
+        Route::delete('/projects/{project}/topics/chat/session', [TopicLabController::class, 'deleteSession'])->name('topics.chat.delete-session');
         Route::post('/projects/{project}/topics/select', [TopicController::class, 'select'])->name('topics.select');
         Route::post('/projects/{project}/topics/approve', [TopicController::class, 'approve'])->name('topics.approve');
         Route::post('/projects/{project}/go-back-to-wizard', [ProjectController::class, 'goBackToWizard'])->name('projects.go-back-to-wizard');
