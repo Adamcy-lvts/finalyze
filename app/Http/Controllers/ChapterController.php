@@ -1147,6 +1147,105 @@ Focus on making this chapter comprehensive and academically rigorous according t
     }
 
     /**
+     * Generate chapter content with word count target and real-time progress callback.
+     *
+     * This method is designed for bulk generation jobs where we need to broadcast
+     * progress via WebSocket. It uses streaming internally and reports progress
+     * at regular intervals through the callback.
+     *
+     * @param  string  $prompt  The generation prompt
+     * @param  int  $targetWordCount  Target word count for the chapter
+     * @param  callable|null  $onProgress  Callback: fn(int $wordCount, int $progressPercent, string $description) => void
+     * @param  int  $progressIntervalWords  How often to report progress (in words)
+     * @return string The generated content
+     */
+    public function generateWithRealtimeProgress(
+        string $prompt,
+        int $targetWordCount,
+        ?callable $onProgress = null,
+        int $progressIntervalWords = 150
+    ): string {
+        $minWordCount = intval($targetWordCount * 0.9);
+
+        Log::info('Starting AI generation with real-time progress', [
+            'target_word_count' => $targetWordCount,
+            'min_word_count' => $minWordCount,
+            'progress_interval' => $progressIntervalWords,
+        ]);
+
+        // Wrap the progress callback to calculate percentage
+        $wrappedCallback = $onProgress ? function (int $wordCount, string $content) use ($targetWordCount, $onProgress) {
+            // Calculate progress percentage (20-80% range for content generation)
+            $rawPercent = min(($wordCount / max($targetWordCount, 1)) * 100, 100);
+            // Map 0-100% content progress to 20-80% overall chapter progress
+            $chapterPercent = intval(20 + ($rawPercent * 0.6));
+
+            $description = sprintf(
+                'Generating content... (%s / %s words)',
+                number_format($wordCount),
+                number_format($targetWordCount)
+            );
+
+            $onProgress($wordCount, $chapterPercent, $description);
+        } : null;
+
+        // Use the new streaming with progress method
+        $content = $this->aiGenerator->generateWithProgress(
+            $prompt,
+            [
+                'model' => 'gpt-4o',
+                'temperature' => 0.7,
+                'max_tokens' => 16000,
+            ],
+            $wrappedCallback,
+            $progressIntervalWords
+        );
+
+        $wordCount = str_word_count(strip_tags($content));
+
+        Log::info('AI generation with progress completed', [
+            'generated_word_count' => $wordCount,
+            'target_word_count' => $targetWordCount,
+            'meets_target' => $wordCount >= $minWordCount,
+        ]);
+
+        // If content is too short, try to extend it (single retry)
+        if ($wordCount < $minWordCount) {
+            Log::info('Content too short, attempting extension', [
+                'current' => $wordCount,
+                'target' => $targetWordCount,
+            ]);
+
+            $extensionPrompt = $this->buildExtensionPrompt($prompt, $content, $targetWordCount, $wordCount);
+
+            // Report extension phase
+            if ($onProgress) {
+                $onProgress($wordCount, 70, 'Extending content to meet word target...');
+            }
+
+            $extendedContent = $this->aiGenerator->generateWithProgress(
+                $extensionPrompt,
+                [
+                    'model' => 'gpt-4o',
+                    'temperature' => 0.7,
+                    'max_tokens' => 16000,
+                ],
+                $wrappedCallback,
+                $progressIntervalWords
+            );
+
+            $extendedWordCount = str_word_count(strip_tags($extendedContent));
+
+            if ($extendedWordCount > $wordCount) {
+                $content = $extendedContent;
+                $wordCount = $extendedWordCount;
+            }
+        }
+
+        return $content;
+    }
+
+    /**
      * Build prompt for extending short content to reach target word count
      */
     private function buildExtensionPrompt(string $originalPrompt, string $currentContent, int $targetWordCount, int $currentWordCount): string

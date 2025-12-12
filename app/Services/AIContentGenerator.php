@@ -679,4 +679,88 @@ Maintain formal academic tone throughout.";
 
         return false;
     }
+
+    /**
+     * Generate content with progress callback for bulk generation jobs.
+     *
+     * This method uses streaming internally but collects the content and
+     * calls the progress callback at regular intervals. Perfect for queue
+     * jobs that need to broadcast progress via WebSocket.
+     *
+     * @param  string  $prompt  The prompt to generate content from
+     * @param  array  $options  Generation options
+     * @param  callable|null  $onProgress  Callback function: fn(int $wordCount, string $partialContent) => void
+     * @param  int  $progressIntervalWords  How often to call progress callback (in words)
+     * @return string The complete generated content
+     */
+    public function generateWithProgress(
+        string $prompt,
+        array $options = [],
+        ?callable $onProgress = null,
+        int $progressIntervalWords = 200
+    ): string {
+        $this->ensureProviderSelected();
+
+        if (! $this->activeProvider) {
+            Log::warning('AI generation with progress attempted while offline');
+
+            return 'AI services are currently unavailable. Please check your internet connection and try again.';
+        }
+
+        $content = '';
+        $lastReportedWordCount = 0;
+
+        Log::info('AI Content Generation - Starting with progress callback', [
+            'provider' => $this->activeProvider->getName(),
+            'prompt_length' => strlen($prompt),
+            'progress_interval' => $progressIntervalWords,
+        ]);
+
+        try {
+            foreach ($this->streamGenerate($prompt, $options) as $chunk) {
+                $content .= $chunk;
+                $currentWordCount = str_word_count(strip_tags($content));
+
+                // Report progress at intervals
+                if ($onProgress && ($currentWordCount - $lastReportedWordCount) >= $progressIntervalWords) {
+                    try {
+                        $onProgress($currentWordCount, $content);
+                        $lastReportedWordCount = $currentWordCount;
+                    } catch (\Exception $e) {
+                        Log::warning('Progress callback failed', ['error' => $e->getMessage()]);
+                    }
+                }
+            }
+
+            // Final progress report
+            $finalWordCount = str_word_count(strip_tags($content));
+            if ($onProgress && $finalWordCount > $lastReportedWordCount) {
+                try {
+                    $onProgress($finalWordCount, $content);
+                } catch (\Exception $e) {
+                    Log::warning('Final progress callback failed', ['error' => $e->getMessage()]);
+                }
+            }
+
+            Log::info('AI Content Generation - Completed with progress', [
+                'provider' => $this->activeProvider->getName(),
+                'final_word_count' => $finalWordCount,
+            ]);
+
+            return $content;
+
+        } catch (\Exception $e) {
+            Log::error('AI Content Generation with progress failed', [
+                'error' => $e->getMessage(),
+                'content_so_far' => strlen($content),
+            ]);
+
+            // If we have partial content, return it
+            if (strlen($content) > 100) {
+                return $content;
+            }
+
+            throw $e;
+        }
+    }
 }

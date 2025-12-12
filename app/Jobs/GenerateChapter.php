@@ -151,10 +151,10 @@ class GenerateChapter implements ShouldQueue
     }
 
     /**
-     * Generate content with AI service
+     * Generate content with AI service and broadcast real-time progress via WebSocket.
      *
-     * Note: Progress animation is handled on the frontend for better UX.
-     * The frontend animates progress between chapter.started and chapter.completed events.
+     * Uses streaming AI generation to get actual word counts and broadcasts
+     * progress updates every ~150 words for real-time UI feedback.
      */
     private function generateWithProgressUpdates(
         ChapterController $controller,
@@ -163,8 +163,44 @@ class GenerateChapter implements ShouldQueue
         GenerationBroadcaster $broadcaster,
         int $totalChapters
     ): string {
-        // Generate content (blocking call - frontend handles progress animation)
-        return $controller->callAiServiceWithWordTarget($prompt, $targetWordCount);
+        $lastBroadcastTime = microtime(true);
+        $minBroadcastInterval = 1.0; // Minimum 1 second between broadcasts to avoid flooding
+
+        // Progress callback that broadcasts via WebSocket
+        $onProgress = function (int $wordCount, int $chapterProgress, string $description) use (
+            $broadcaster,
+            $targetWordCount,
+            $totalChapters,
+            &$lastBroadcastTime,
+            $minBroadcastInterval
+        ) {
+            $now = microtime(true);
+
+            // Throttle broadcasts to avoid overwhelming the WebSocket
+            if (($now - $lastBroadcastTime) < $minBroadcastInterval) {
+                return;
+            }
+
+            $broadcaster->chapterProgress(
+                $this->generation,
+                $this->chapterNumber,
+                $chapterProgress,
+                $wordCount,
+                $targetWordCount,
+                $totalChapters,
+                $description
+            );
+
+            $lastBroadcastTime = $now;
+        };
+
+        // Use the new streaming method with progress callback
+        return $controller->generateWithRealtimeProgress(
+            $prompt,
+            $targetWordCount,
+            $onProgress,
+            150 // Report progress every ~150 words
+        );
     }
 
     /**

@@ -322,11 +322,12 @@ export function useGenerationWebSocket(projectId: number) {
         if (stage) {
             stage.status = 'active'
             stage.progress = 0
-            stage.chapterProgress = 20 // Start at 20% (prompt building phase)
+            stage.chapterProgress = 10 // Start at 10% (initializing)
         }
 
-        // Start progress animation for smooth visual feedback
-        startProgressAnimation(chapterNum, 80)
+        // Start minimal fallback animation only if no real progress arrives
+        // This will be overridden by real progress events from WebSocket
+        startProgressAnimation(chapterNum, 30) // Only animate to 30% as fallback
 
         addToActivityLog({
             type: 'chapter_progress',
@@ -338,12 +339,16 @@ export function useGenerationWebSocket(projectId: number) {
     const handleChapterProgress = (event: GenerationEventPayload) => {
         const chapterNum = event.chapter_number!
 
+        // Stop fallback animation - we're receiving real progress data
+        stopProgressAnimation()
+
         state.value.progress = event.progress
         state.value.message = event.stage_description || event.message
 
         if (chapterNum > 0) {
             const stage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
             if (stage) {
+                // Use real progress data from WebSocket
                 stage.chapterProgress = event.chapter_progress
                 stage.wordCount = event.current_word_count
                 stage.description = event.stage_description || stage.description
@@ -354,6 +359,9 @@ export function useGenerationWebSocket(projectId: number) {
                 chapter_progress: event.chapter_progress,
                 current_word_count: event.current_word_count,
             }
+
+            // Log real progress for debugging
+            console.log(`📊 Real progress: Chapter ${chapterNum} - ${event.chapter_progress}% (${event.current_word_count} words)`)
         }
     }
 
@@ -679,7 +687,7 @@ export function useGenerationWebSocket(projectId: number) {
                         currentStage.chapterProgress = chapterProgress
                         currentStage.wordCount = currentWordCount ?? currentStage.wordCount
 
-                        startProgressAnimation(chapterNum, 80)
+                        startProgressAnimation(chapterNum, 30) // Minimal fallback
                     }
                 }
 
@@ -806,36 +814,42 @@ export function useGenerationWebSocket(projectId: number) {
         }
     }
 
-    // Start progress animation for smooth visual feedback during chapter generation
-    const startProgressAnimation = (chapterNum: number, targetProgress: number = 80) => {
+    // Minimal fallback animation - only runs if no real WebSocket progress arrives
+    // Real progress events will stop this animation and use actual word counts
+    const startProgressAnimation = (chapterNum: number, targetProgress: number = 30) => {
         stopProgressAnimation()
 
         const stage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
         if (!stage) return
 
-        const progressIncrement = 3 // Increment by 3% each tick
+        const progressIncrement = 1 // Slower increment - just a fallback
+        let tickCount = 0
+        const maxTicks = 15 // Stop after ~30 seconds if no real progress arrives
 
-        console.log(`🎬 Starting progress animation for Chapter ${chapterNum}`)
+        console.log(`🎬 Starting fallback animation for Chapter ${chapterNum} (will be overridden by real progress)`)
 
         progressAnimationInterval = setInterval(() => {
+            tickCount++
+
             const currentStage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
             if (!currentStage || currentStage.status !== 'active') {
                 stopProgressAnimation()
                 return
             }
 
-            // Gradually increase progress toward target
+            // Stop fallback after a while - real progress should have arrived by then
+            if (tickCount >= maxTicks) {
+                console.log(`⏹️ Fallback animation stopped - waiting for real WebSocket progress`)
+                stopProgressAnimation()
+                return
+            }
+
+            // Only animate if we haven't received real progress yet
+            // Real progress will have higher values due to actual word counts
             const current = currentStage.chapterProgress || 0
             if (current < targetProgress) {
                 currentStage.chapterProgress = Math.min(current + progressIncrement, targetProgress)
-
-                // Also simulate word count increase
-                if (currentStage.targetWordCount) {
-                    const estimatedWords = Math.floor(
-                        (currentStage.chapterProgress / 100) * currentStage.targetWordCount
-                    )
-                    currentStage.wordCount = estimatedWords
-                }
+                // Don't fake word counts - leave them as received from real events
             }
         }, PROGRESS_ANIMATION_MS)
     }
