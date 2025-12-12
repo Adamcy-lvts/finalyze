@@ -72,6 +72,7 @@ const {
 } = useWordBalance();
 
 const minimumTopicBalance = 300;
+const geographicFocus = ref<'nigeria_west_africa' | 'balanced' | 'global'>('balanced');
 
 onMounted(() => {
     // Debug: Log what data we received from the backend
@@ -168,7 +169,9 @@ const generateTopics = async () => {
         generationProgress.value = 'Connecting to AI service...';
 
         // Start Server-Sent Events connection for real-time progress
-        const streamUrl = route('topics.stream', props.project.slug) + '?regenerate=true';
+        const streamUrl =
+            route('topics.stream', props.project.slug) +
+            `?regenerate=true&geographic_focus=${encodeURIComponent(geographicFocus.value)}`;
         console.log('📡 TOPIC GENERATION - Connecting to stream:', streamUrl);
 
         const eventSource = new EventSource(streamUrl);
@@ -350,6 +353,7 @@ const generateTopicsWithFallback = async () => {
             },
             body: JSON.stringify({
                 regenerate: true,
+                geographic_focus: geographicFocus.value,
             }),
             signal: controller.signal,
         });
@@ -890,11 +894,20 @@ const goBackToWizard = async () => {
                                             </CardDescription>
                                         </div>
 
-                                        <div class="flex items-center gap-3">
-                                            <Button @click="generateTopics" :disabled="isGenerating"
-                                                :variant="generatedTopics.length > 0 ? 'outline' : 'default'"
-                                                class="h-10 transition-all"
-                                                :class="generatedTopics.length === 0 ? 'shadow-lg shadow-primary/20 hover:shadow-primary/30' : ''">
+	                                        <div class="flex items-center gap-3">
+	                                            <div class="flex items-center gap-2 bg-background/50 p-1 rounded-lg border border-border/50">
+	                                                <span class="text-xs font-medium px-2 text-muted-foreground">Focus</span>
+	                                                <select v-model="geographicFocus"
+	                                                    class="h-8 rounded-md border-0 bg-transparent text-xs font-medium focus:ring-0 cursor-pointer hover:bg-muted/50 transition-colors">
+	                                                    <option value="balanced">Balanced</option>
+	                                                    <option value="nigeria_west_africa">Nigeria / West Africa</option>
+	                                                    <option value="global">Global</option>
+	                                                </select>
+	                                            </div>
+	                                            <Button @click="generateTopics" :disabled="isGenerating"
+	                                                :variant="generatedTopics.length > 0 ? 'outline' : 'default'"
+	                                                class="h-10 transition-all"
+	                                                :class="generatedTopics.length === 0 ? 'shadow-lg shadow-primary/20 hover:shadow-primary/30' : ''">
                                                 <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
                                                 <RefreshCw v-else-if="generatedTopics.length > 0"
                                                     class="mr-2 h-4 w-4" />

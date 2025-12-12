@@ -155,6 +155,7 @@ class TopicController extends Controller
     {
         // Load the category relationship
         $project->load('category');
+        $geographicFocus = $request->input('geographic_focus') ?: 'balanced';
 
         $user = $request->user();
         if (! $user) {
@@ -194,11 +195,11 @@ class TopicController extends Controller
         set_time_limit(300); // 5 minutes
 
         try {
-            $result = $this->topicGenerationService->generateTopicsWithAI($project);
+            $result = $this->topicGenerationService->generateTopicsWithAI($project, $geographicFocus);
             $topics = $result['topics'] ?? [];
 
             // Add metadata to topics
-            $enrichedTopics = $this->topicEnrichmentService->enrich($topics, $project);
+            $enrichedTopics = $this->topicEnrichmentService->enrich($topics, $project, $geographicFocus);
 
             // Deduct word balance when we actually generated fresh topics
             if (empty($result['from_cache']) && count($enrichedTopics) > 0) {
@@ -241,6 +242,7 @@ class TopicController extends Controller
         ];
 
         $user = $request->user();
+        $geographicFocus = $request->input('geographic_focus') ?: 'balanced';
 
         if (! $user) {
             return response()->stream(function () {
@@ -284,7 +286,7 @@ class TopicController extends Controller
             set_time_limit(300); // 5 minutes
             ini_set('max_execution_time', 300);
 
-            $streamingResponse = response()->stream(function () use ($project, $request) {
+            $streamingResponse = response()->stream(function () use ($project, $request, $geographicFocus) {
                 // Disable output buffering
                 if (ob_get_level() > 0) {
                     ob_end_clean();
@@ -308,8 +310,8 @@ class TopicController extends Controller
 
                 try {
                     // Check for cached topics first
-                    $cachedTopics = $this->topicCacheService->getCachedTopicsForAcademicContext($project);
-                    $recentTopicRequest = $this->topicCacheService->hasRecentTopicRequest($project);
+                    $cachedTopics = $this->topicCacheService->getCachedTopicsForAcademicContext($project, $geographicFocus);
+                    $recentTopicRequest = $this->topicCacheService->hasRecentTopicRequest($project, $geographicFocus);
 
                     if (! $recentTopicRequest && count($cachedTopics) >= 8 && ! $request->boolean('regenerate')) {
                         // Convert cached topics to enriched format (preserve stored metadata when available)
@@ -409,15 +411,15 @@ class TopicController extends Controller
                     ]);
 
                     // Build academic context for intelligent model selection
-                    $academicContext = $this->topicCacheService->getProjectAcademicContext($project);
+                    $academicContext = $this->topicCacheService->getProjectAcademicContext($project, $geographicFocus);
 
                     $this->sendSSEMessage('progress', [
                         'message' => 'Using intelligent model selection based on your academic context...',
                         'context' => $academicContext,
                     ]);
 
-                    $systemPrompt = $this->topicPromptBuilder->buildSystemPrompt($project);
-                    $userPrompt = $this->topicPromptBuilder->buildContextualPrompt($project);
+                    $systemPrompt = $this->topicPromptBuilder->buildSystemPrompt($project, $geographicFocus);
+                    $userPrompt = $this->topicPromptBuilder->buildContextualPrompt($project, $geographicFocus);
                     $fullPrompt = $systemPrompt."\n\n".$userPrompt;
 
                     // Stream the AI generation
@@ -450,7 +452,7 @@ class TopicController extends Controller
                     $totalTopics = count($topics);
 
                     // Enrich topics while streaming heartbeat progress to keep the SSE connection alive
-                    $enrichedTopics = $this->topicEnrichmentService->enrich($topics, $project, function (array $progress) use ($totalTopics) {
+                    $enrichedTopics = $this->topicEnrichmentService->enrich($topics, $project, $geographicFocus, function (array $progress) use ($totalTopics) {
                         $current = $progress['current'] ?? 0;
                         $title = $progress['title'] ?? 'Topic';
 
@@ -462,8 +464,8 @@ class TopicController extends Controller
                     });
 
                     // Cache the generated topics
-                    $this->topicCacheService->storeTopicsInDatabase($topics, $project);
-                    $this->topicCacheService->trackTopicRequest($project);
+                    $this->topicCacheService->storeTopicsInDatabase($topics, $project, $geographicFocus);
+                    $this->topicCacheService->trackTopicRequest($project, $geographicFocus);
 
                     if ($wordCount > 0) {
                         $this->deductTopicGenerationWords(

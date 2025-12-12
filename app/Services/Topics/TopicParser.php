@@ -56,12 +56,21 @@ class TopicParser
             'Cloud Computing Solutions for {field} Data Management in Resource-Constrained Environments',
             'Artificial Intelligence-Powered {field} Decision Support System Development',
             'Cybersecurity Framework Development for {field} Information Systems in Nigerian Institutions',
+            'Predictive Analytics for {field} Outcomes Using Public Data Sources in Nigeria',
+            'User-Centered Design of a {field} Tool for Low-Connectivity Environments',
+            'Policy and Regulatory Implications of Emerging {field} Technologies in Nigeria',
+            'Evaluation of Open-Source Tools for {field} Workflows in Nigerian Universities',
+            'Privacy-Preserving Data Collection Framework for {field} Studies in West Africa',
+            'Sustainable and Low-Cost Innovation Model for {field} Solutions in Nigeria',
         ];
 
         $technologies = ['AI-Powered', 'Cloud-Based', 'Mobile-First', 'IoT-Enabled', 'Blockchain-Secured'];
 
         $topics = [];
-        foreach (array_slice($templates, 0, 8) as $template) {
+        $shuffledTemplates = $templates;
+        shuffle($shuffledTemplates);
+
+        foreach (array_slice($shuffledTemplates, 0, 10) as $template) {
             $topic = str_replace(
                 ['{field}', '{university}', '{technology}'],
                 [$field, $university, $technologies[array_rand($technologies)]],

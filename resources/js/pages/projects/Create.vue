@@ -16,6 +16,7 @@ import { toTypedSchema } from '@vee-validate/zod';
 import { BookOpen, Check, ChevronsUpDown, FileText, GraduationCap, School } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import { route } from 'ziggy-js';
 import * as z from 'zod';
 
 // Props

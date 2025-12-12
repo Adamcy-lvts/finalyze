@@ -15,19 +15,22 @@ class TopicCacheService
         //
     }
 
-    public function getCachedTopicsForAcademicContext(Project $project): array
+    public function getCachedTopicsForAcademicContext(Project $project, ?string $geographicFocus = null): array
     {
-        $context = $this->getProjectAcademicContext($project);
+        $geographicFocus = $geographicFocus ?: 'balanced';
+        $context = $this->getProjectAcademicContext($project, $geographicFocus);
         $faculty = $context['faculty'];
         $department = $context['department'];
 
-        $cachedTopics = ProjectTopic::where('course', $context['course'])
+        $candidateTopics = ProjectTopic::where('course', $context['course'])
             ->where('academic_level', $context['academic_level'])
             ->where('university', $context['university'])
+            ->where('geographic_focus', $geographicFocus)
             ->when($faculty, fn ($q) => $q->where('faculty', $faculty))
             ->when($department, fn ($q) => $q->where('department', $department))
             ->when($context['field_of_study'], fn ($q) => $q->where('field_of_study', $context['field_of_study']))
-            ->limit(10)
+            ->orderByDesc('created_at')
+            ->limit(50)
             ->get()
             ->map(function ($topic) {
                 return [
@@ -42,6 +45,12 @@ class TopicCacheService
                     'research_type' => $topic->research_type,
                 ];
             })
+            ->values();
+
+        $cachedTopics = $candidateTopics
+            ->shuffle()
+            ->take(10)
+            ->values()
             ->toArray();
 
         Log::info('Retrieved cached topics for academic context', [
@@ -56,10 +65,11 @@ class TopicCacheService
         return $cachedTopics;
     }
 
-    public function storeTopicsInDatabase(array $topics, Project $project): void
+    public function storeTopicsInDatabase(array $topics, Project $project, ?string $geographicFocus = null): void
     {
         try {
-            $context = $this->getProjectAcademicContext($project);
+            $geographicFocus = $geographicFocus ?: 'balanced';
+            $context = $this->getProjectAcademicContext($project, $geographicFocus);
             $requiredContextFields = ['faculty', 'department', 'course', 'university', 'academic_level'];
             $missingFields = array_filter($requiredContextFields, fn ($field) => empty($context[$field]));
 
@@ -109,6 +119,7 @@ class TopicCacheService
                 $existingTopic = ProjectTopic::where('title', $titleHtml)
                     ->where('course', $context['course'])
                     ->where('academic_level', $context['academic_level'])
+                    ->where('geographic_focus', $geographicFocus)
                     ->first();
 
                 if (! $existingTopic) {
@@ -124,6 +135,7 @@ class TopicCacheService
                         'course' => $context['course'],
                         'university' => $context['university'],
                         'academic_level' => $context['academic_level'],
+                        'geographic_focus' => $geographicFocus,
                         'title' => $titleHtml,
                         'description' => $descriptionHtml,
                         'difficulty' => $difficulty,
@@ -154,8 +166,9 @@ class TopicCacheService
         }
     }
 
-    public function hasRecentTopicRequest(Project $project): bool
+    public function hasRecentTopicRequest(Project $project, ?string $geographicFocus = null): bool
     {
+        $geographicFocus = $geographicFocus ?: 'balanced';
         $userId = auth()->id();
         if (! $userId) {
             Log::info('No authenticated user for recent request check');
@@ -163,7 +176,7 @@ class TopicCacheService
             return false;
         }
 
-        $academicContextHash = $this->generateAcademicContextHash($project);
+        $academicContextHash = $this->generateAcademicContextHash($project, $geographicFocus);
         $now = now();
         $fiveMinutesAgo = $now->copy()->subMinutes(5);
         $ninetySecondsAgo = $now->copy()->subSeconds(90);
@@ -203,14 +216,15 @@ class TopicCacheService
         return $hasRecentRequest;
     }
 
-    public function trackTopicRequest(Project $project): void
+    public function trackTopicRequest(Project $project, ?string $geographicFocus = null): void
     {
+        $geographicFocus = $geographicFocus ?: 'balanced';
         $userId = auth()->id();
         if (! $userId) {
             return;
         }
 
-        $academicContextHash = $this->generateAcademicContextHash($project);
+        $academicContextHash = $this->generateAcademicContextHash($project, $geographicFocus);
 
         DB::table('user_topic_requests')->insert([
             'user_id' => $userId,
@@ -221,6 +235,7 @@ class TopicCacheService
                 'university' => $project->universityRelation?->name,
                 'academic_level' => $project->type,
                 'field_of_study' => $project->field_of_study,
+                'geographic_focus' => $geographicFocus,
             ]),
             'created_at' => now(),
             'updated_at' => now(),
@@ -233,8 +248,9 @@ class TopicCacheService
         ]);
     }
 
-    public function getProjectAcademicContext(Project $project): array
+    public function getProjectAcademicContext(Project $project, ?string $geographicFocus = null): array
     {
+        $geographicFocus = $geographicFocus ?: 'balanced';
         $university = $project->universityRelation?->name ?? $project->university;
         $faculty = $project->facultyRelation?->name ?? $project->faculty;
         $department = $project->departmentRelation?->name ?? $project->settings['department'] ?? null;
@@ -246,12 +262,13 @@ class TopicCacheService
             'university' => $university,
             'faculty' => $faculty,
             'department' => $department,
+            'geographic_focus' => $geographicFocus,
         ];
     }
 
-    private function generateAcademicContextHash(Project $project): string
+    private function generateAcademicContextHash(Project $project, ?string $geographicFocus = null): string
     {
-        $contextData = $this->getProjectAcademicContext($project);
+        $contextData = $this->getProjectAcademicContext($project, $geographicFocus);
 
         return hash('sha256', json_encode($contextData));
     }

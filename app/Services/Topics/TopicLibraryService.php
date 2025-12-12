@@ -11,13 +11,6 @@ class TopicLibraryService
 {
     public function getSavedTopicsForProject(Project $project, int $limit = 10): Collection
     {
-        $course = $project->course;
-        $academicLevel = (string) $project->type;
-        $university = $project->universityRelation?->name;
-        $faculty = $project->facultyRelation?->name;
-        $department = $project->departmentRelation?->name;
-        $fieldOfStudy = $project->field_of_study;
-
         $query = ProjectTopic::query()
             ->select([
                 'id',
@@ -35,9 +28,10 @@ class TopicLibraryService
                 'academic_level',
             ]);
 
-
         return $query
-            ->latest()
+            ->where('user_id', $project->user_id)
+            ->where('project_id', $project->id)
+            ->orderByDesc('created_at')
             ->limit($limit)
             ->get();
     }

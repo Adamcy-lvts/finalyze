@@ -18,6 +18,7 @@ class GenerateTopicsRequest extends FormRequest
     {
         return [
             'regenerate' => 'sometimes|boolean',
+            'geographic_focus' => 'sometimes|in:nigeria_west_africa,balanced,global',
         ];
     }
 }

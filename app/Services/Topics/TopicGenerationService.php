@@ -21,10 +21,12 @@ class TopicGenerationService
      * Generate raw topic strings with caching/fallback.
      * Returns array with keys: topics, from_cache, word_count.
      */
-    public function generateTopicsWithAI(Project $project): array
+    public function generateTopicsWithAI(Project $project, ?string $geographicFocus = null): array
     {
-        $cachedTopics = $this->cacheService->getCachedTopicsForAcademicContext($project);
-        $recentTopicRequest = $this->cacheService->hasRecentTopicRequest($project);
+        $geographicFocus = $geographicFocus ?: 'balanced';
+
+        $cachedTopics = $this->cacheService->getCachedTopicsForAcademicContext($project, $geographicFocus);
+        $recentTopicRequest = $this->cacheService->hasRecentTopicRequest($project, $geographicFocus);
 
         if (! $recentTopicRequest && count($cachedTopics) >= 8) {
             Log::info('Using cached topics for academic context', [
@@ -32,9 +34,10 @@ class TopicGenerationService
                 'course' => $project->course,
                 'university' => $project->universityRelation?->name,
                 'cached_count' => count($cachedTopics),
+                'geographic_focus' => $geographicFocus,
             ]);
 
-            $this->cacheService->trackTopicRequest($project);
+            $this->cacheService->trackTopicRequest($project, $geographicFocus);
 
             return [
                 'topics' => collect($cachedTopics)->pluck('topic')->toArray(),
@@ -43,7 +46,7 @@ class TopicGenerationService
             ];
         }
 
-        $academicContext = $this->cacheService->getProjectAcademicContext($project);
+        $academicContext = $this->cacheService->getProjectAcademicContext($project, $geographicFocus);
 
         if (! $this->aiGenerator->isAvailable()) {
             Log::warning('AI unavailable - skipping new topic generation', [
@@ -71,9 +74,10 @@ class TopicGenerationService
             'project_id' => $project->id,
             'reason' => $recentTopicRequest ? 'Recent request detected - user wants fresh ideas' : 'Insufficient cached topics',
             'cached_count' => count($cachedTopics),
+            'geographic_focus' => $geographicFocus,
         ]);
 
-        $this->cacheService->trackTopicRequest($project);
+        $this->cacheService->trackTopicRequest($project, $geographicFocus);
 
         try {
             $startTime = microtime(true);
@@ -84,8 +88,8 @@ class TopicGenerationService
                 'timestamp' => now()->toDateTimeString(),
             ]);
 
-            $systemPrompt = $this->promptBuilder->buildSystemPrompt($project);
-            $userPrompt = $this->promptBuilder->buildContextualPrompt($project);
+            $systemPrompt = $this->promptBuilder->buildSystemPrompt($project, $geographicFocus);
+            $userPrompt = $this->promptBuilder->buildContextualPrompt($project, $geographicFocus);
             $fullPrompt = $systemPrompt."\n\n".$userPrompt;
 
             $aiStartTime = microtime(true);
@@ -125,7 +129,7 @@ class TopicGenerationService
             $wordCount = str_word_count(strip_tags($generatedContent));
 
             $dbStartTime = microtime(true);
-            $this->cacheService->storeTopicsInDatabase($newTopics, $project);
+            $this->cacheService->storeTopicsInDatabase($newTopics, $project, $geographicFocus);
             $dbDuration = (microtime(true) - $dbStartTime) * 1000;
 
             $totalDuration = (microtime(true) - $startTime) * 1000;

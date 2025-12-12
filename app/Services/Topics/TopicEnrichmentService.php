@@ -19,8 +19,9 @@ class TopicEnrichmentService
         //
     }
 
-    public function enrich(array $topics, Project $project, ?callable $progressCallback = null): array
+    public function enrich(array $topics, Project $project, ?string $geographicFocus = null, ?callable $progressCallback = null): array
     {
+        $geographicFocus = $geographicFocus ?: 'balanced';
         $enrichedTopics = [];
 
         foreach ($topics as $index => $topic) {
@@ -49,7 +50,7 @@ class TopicEnrichmentService
             }
         }
 
-        $this->cacheService->storeTopicsInDatabase($enrichedTopics, $project);
+        $this->cacheService->storeTopicsInDatabase($enrichedTopics, $project, $geographicFocus);
 
         return $enrichedTopics;
     }

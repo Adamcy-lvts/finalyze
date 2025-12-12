@@ -18,6 +18,7 @@ class StreamTopicsRequest extends FormRequest
     {
         return [
             'regenerate' => 'nullable|in:true,false,1,0',
+            'geographic_focus' => 'nullable|in:nigeria_west_africa,balanced,global',
         ];
     }
 }

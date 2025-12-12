@@ -18,6 +18,7 @@ class ProjectTopic extends Model
         'course',
         'university',
         'academic_level',
+        'geographic_focus',
         'title',
         'description',
         'difficulty',

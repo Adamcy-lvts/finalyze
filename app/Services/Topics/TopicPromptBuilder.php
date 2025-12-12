@@ -6,24 +6,27 @@ use App\Models\Project;
 
 class TopicPromptBuilder
 {
-    public function buildSystemPrompt(Project $project): string
+    public function buildSystemPrompt(Project $project, ?string $geographicFocus = null): string
     {
         $categoryName = $project->category->name ?? 'Final Year Project';
         $academicLevel = $this->getAcademicLevelDescription($project->type);
+        $geographicFocus = $geographicFocus ?: 'balanced';
 
-        return "You are an expert academic advisor specializing in research topic generation for Nigerian university students.
+        [$audience, $geoLine, $geoRequirement] = $this->getGeographicFocusPromptParts($geographicFocus);
+
+        return "You are an expert academic advisor specializing in research topic generation for {$audience}.
 
 CONTEXT:
 - Academic Level: {$academicLevel}
 - Project Type: {$categoryName}
 - Institution: {$project->universityRelation?->name}
-- Geographic Focus: Nigeria/West Africa
+{$geoLine}
 
 REQUIREMENTS:
 1. Generate EXACTLY 10 unique, high-quality research topics (no duplicates or near-duplicates)
 2. Each topic must include a clear problem, application/domain, and context (avoid vague statements)
 3. Align rigor/scope to the academic level and project type; ensure feasibility with typical university resources
-4. At least half the topics should embed a Nigerian/West African angle (data, policy, infrastructure, constraints)
+4. {$geoRequirement}
 5. Keep language concise and avoid buzzwords or vendor/product names unless essential
 
 FORMAT:
@@ -34,9 +37,12 @@ Return ONLY a numbered list of 10 topics, one per line:
 10. [Topic title]";
     }
 
-    public function buildContextualPrompt(Project $project): string
+    public function buildContextualPrompt(Project $project, ?string $geographicFocus = null): string
     {
         $requirements = $this->getProjectRequirements($project);
+        $geographicFocus = $geographicFocus ?: 'balanced';
+
+        [$focusAreasLine, $focusReminder] = $this->getGeographicFocusContextParts($geographicFocus);
 
         $categoryName = $project->category->name ?? 'Final Year Project';
         $department = $project->departmentRelation?->name
@@ -59,7 +65,7 @@ PROJECT TYPE: {$categoryName}
 FOCUS AREAS:
 - Current industry trends and challenges in {$fieldOfStudy}
 - Emerging technologies applicable to {$fieldOfStudy}
-- Nigerian/African context and local problems to solve
+- {$focusAreasLine}
 - Practical applications and real-world impact
 - Interdisciplinary approaches where relevant
 
@@ -71,8 +77,47 @@ Generate topics that are:
 ✓ Feasible with standard university resources
 ✓ Relevant to current industry needs
 ✓ Appropriate for the academic level
-✓ Aligned with Nigerian educational and economic priorities
+✓ {$focusReminder}
 ✓ Free from repetitive angles or duplicate approaches";
+    }
+
+    private function getGeographicFocusPromptParts(string $geographicFocus): array
+    {
+        return match ($geographicFocus) {
+            'nigeria_west_africa' => [
+                'Nigerian/West African university students',
+                '- Geographic Focus: Nigeria/West Africa',
+                'Ensure most topics (at least 8/10) embed a Nigerian/West African angle (data, policy, infrastructure, constraints).',
+            ],
+            'global' => [
+                'university students',
+                '- Geographic Focus: Global (do not force a Nigeria-specific angle)',
+                'Ensure topics are globally relevant; do not force a Nigerian/West African angle unless it naturally fits the field.',
+            ],
+            default => [
+                'university students (with awareness of Nigerian/West African contexts)',
+                '- Geographic Focus: Balanced (Nigeria/West Africa + Global)',
+                'Ensure at least half the topics (5/10) embed a Nigerian/West African angle (data, policy, infrastructure, constraints), and the rest are globally relevant.',
+            ],
+        };
+    }
+
+    private function getGeographicFocusContextParts(string $geographicFocus): array
+    {
+        return match ($geographicFocus) {
+            'nigeria_west_africa' => [
+                'Nigerian/West African context and local problems to solve',
+                'Aligned with Nigerian educational and economic priorities',
+            ],
+            'global' => [
+                'Global context, widely applicable datasets, and international best practices',
+                'Aligned with global research standards and industry needs',
+            ],
+            default => [
+                'A balanced mix of Nigerian/West African context and globally relevant problems',
+                'Aligned with Nigerian priorities where relevant, without sacrificing global relevance',
+            ],
+        };
     }
 
     private function getProjectRequirements(Project $project): string
