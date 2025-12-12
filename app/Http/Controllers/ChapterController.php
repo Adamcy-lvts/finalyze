@@ -1153,6 +1153,12 @@ Focus on making this chapter comprehensive and academically rigorous according t
      * progress via WebSocket. It uses streaming internally and reports progress
      * at regular intervals through the callback.
      *
+     * Key features:
+     * - Tracks "high water mark" to never report word count decreases
+     * - Uses streaming for initial generation (real-time progress)
+     * - Uses blocking calls for extension attempts (no progress drops)
+     * - Up to 3 attempts to reach 90% of target word count
+     *
      * @param  string  $prompt  The generation prompt
      * @param  int  $targetWordCount  Target word count for the chapter
      * @param  callable|null  $onProgress  Callback: fn(int $wordCount, int $progressPercent, string $description) => void
@@ -1166,81 +1172,173 @@ Focus on making this chapter comprehensive and academically rigorous according t
         int $progressIntervalWords = 150
     ): string {
         $minWordCount = intval($targetWordCount * 0.9);
+        $maxAttempts = 3;
+        $attempt = 1;
+
+        // Track peak values to never report decreases (high water mark)
+        $peakWordCount = 0;
+        $peakChapterPercent = 20;
 
         Log::info('Starting AI generation with real-time progress', [
             'target_word_count' => $targetWordCount,
             'min_word_count' => $minWordCount,
+            'max_attempts' => $maxAttempts,
             'progress_interval' => $progressIntervalWords,
         ]);
 
-        // Wrap the progress callback to calculate percentage
-        $wrappedCallback = $onProgress ? function (int $wordCount, string $content) use ($targetWordCount, $onProgress) {
+        // Helper to report progress while respecting high water mark
+        $reportProgress = function (int $wordCount, string $phase = 'Generating') use ($targetWordCount, $onProgress, &$peakWordCount, &$peakChapterPercent) {
+            if (! $onProgress) {
+                return;
+            }
+
+            // Never report a decrease in word count
+            if ($wordCount <= $peakWordCount) {
+                return;
+            }
+
+            $peakWordCount = $wordCount;
+
             // Calculate progress percentage (20-80% range for content generation)
             $rawPercent = min(($wordCount / max($targetWordCount, 1)) * 100, 100);
-            // Map 0-100% content progress to 20-80% overall chapter progress
             $chapterPercent = intval(20 + ($rawPercent * 0.6));
 
+            // Never decrease chapter percent
+            if ($chapterPercent > $peakChapterPercent) {
+                $peakChapterPercent = $chapterPercent;
+            } else {
+                $chapterPercent = $peakChapterPercent;
+            }
+
             $description = sprintf(
-                'Generating content... (%s / %s words)',
-                number_format($wordCount),
+                '%s content... (%s / %s words)',
+                $phase,
+                number_format($peakWordCount),
                 number_format($targetWordCount)
             );
 
-            $onProgress($wordCount, $chapterPercent, $description);
+            $onProgress($peakWordCount, $chapterPercent, $description);
+        };
+
+        // Create streaming callback that respects high water mark
+        $streamingCallback = $onProgress ? function (int $wordCount, string $content) use ($reportProgress) {
+            $reportProgress($wordCount, 'Generating');
         } : null;
 
-        // Use the new streaming with progress method
-        $content = $this->aiGenerator->generateWithProgress(
-            $prompt,
-            [
-                'model' => 'gpt-4o',
-                'temperature' => 0.7,
-                'max_tokens' => 16000,
-            ],
-            $wrappedCallback,
-            $progressIntervalWords
-        );
+        $content = '';
+        $wordCount = 0;
 
-        $wordCount = str_word_count(strip_tags($content));
+        while ($attempt <= $maxAttempts) {
+            try {
+                Log::info("AI generation attempt {$attempt}", [
+                    'target_word_count' => $targetWordCount,
+                    'current_word_count' => $wordCount,
+                    'peak_word_count' => $peakWordCount,
+                ]);
 
-        Log::info('AI generation with progress completed', [
-            'generated_word_count' => $wordCount,
-            'target_word_count' => $targetWordCount,
-            'meets_target' => $wordCount >= $minWordCount,
-        ]);
+                if ($attempt === 1) {
+                    // First attempt: use streaming for real-time progress
+                    $content = $this->aiGenerator->generateWithProgress(
+                        $prompt,
+                        [
+                            'model' => 'gpt-4o',
+                            'temperature' => 0.7,
+                            'max_tokens' => 16000,
+                        ],
+                        $streamingCallback,
+                        $progressIntervalWords
+                    );
+                } else {
+                    // Extension attempts: use BLOCKING call to avoid progress drops
+                    // The extension prompt asks AI to return complete expanded content
+                    $extensionPrompt = $this->buildExtensionPrompt($prompt, $content, $targetWordCount, $wordCount);
 
-        // If content is too short, try to extend it (single retry)
-        if ($wordCount < $minWordCount) {
-            Log::info('Content too short, attempting extension', [
-                'current' => $wordCount,
-                'target' => $targetWordCount,
-            ]);
+                    // Report that we're extending (without dropping progress)
+                    if ($onProgress) {
+                        $onProgress($peakWordCount, $peakChapterPercent, 'Extending content to meet word target...');
+                    }
 
-            $extensionPrompt = $this->buildExtensionPrompt($prompt, $content, $targetWordCount, $wordCount);
+                    Log::info("Extension attempt {$attempt}: using blocking generation", [
+                        'current_word_count' => $wordCount,
+                        'target' => $targetWordCount,
+                    ]);
 
-            // Report extension phase
-            if ($onProgress) {
-                $onProgress($wordCount, 70, 'Extending content to meet word target...');
-            }
+                    // Use blocking generate() - no streaming, no progress drops
+                    $extendedContent = $this->aiGenerator->generate(
+                        $extensionPrompt,
+                        [
+                            'model' => 'gpt-4o',
+                            'temperature' => 0.7,
+                            'max_tokens' => 16000,
+                        ]
+                    );
 
-            $extendedContent = $this->aiGenerator->generateWithProgress(
-                $extensionPrompt,
-                [
-                    'model' => 'gpt-4o',
-                    'temperature' => 0.7,
-                    'max_tokens' => 16000,
-                ],
-                $wrappedCallback,
-                $progressIntervalWords
-            );
+                    $extendedWordCount = str_word_count(strip_tags($extendedContent));
 
-            $extendedWordCount = str_word_count(strip_tags($extendedContent));
+                    Log::info("Extension attempt {$attempt} result", [
+                        'previous_word_count' => $wordCount,
+                        'extended_word_count' => $extendedWordCount,
+                        'improvement' => $extendedWordCount - $wordCount,
+                    ]);
 
-            if ($extendedWordCount > $wordCount) {
-                $content = $extendedContent;
-                $wordCount = $extendedWordCount;
+                    // Only use extended content if it's actually longer
+                    if ($extendedWordCount > $wordCount) {
+                        $content = $extendedContent;
+
+                        // Report the improved word count
+                        $reportProgress($extendedWordCount, 'Extended');
+                    }
+                }
+
+                $wordCount = str_word_count(strip_tags($content));
+
+                Log::info("AI generation attempt {$attempt} completed", [
+                    'generated_word_count' => $wordCount,
+                    'target_word_count' => $targetWordCount,
+                    'min_required' => $minWordCount,
+                    'meets_target' => $wordCount >= $minWordCount,
+                ]);
+
+                // If we've reached at least 90% of target, we're done
+                if ($wordCount >= $minWordCount) {
+                    Log::info('Target word count achieved', [
+                        'final_word_count' => $wordCount,
+                        'target_percentage' => round(($wordCount / $targetWordCount) * 100, 1).'%',
+                    ]);
+
+                    return $content;
+                }
+
+                // Content too short, try extension on next attempt
+                $attempt++;
+
+            } catch (\Exception $e) {
+                Log::error("AI generation attempt {$attempt} failed", [
+                    'error' => $e->getMessage(),
+                    'attempt' => $attempt,
+                ]);
+
+                if ($attempt >= $maxAttempts) {
+                    // If we have any content, return it rather than failing
+                    if (strlen($content) > 100) {
+                        Log::warning('Returning partial content after failed attempts', [
+                            'word_count' => str_word_count(strip_tags($content)),
+                        ]);
+
+                        return $content;
+                    }
+                    throw $e;
+                }
+                $attempt++;
             }
         }
+
+        // Return whatever we have after all attempts
+        Log::warning('Failed to reach target word count after all attempts', [
+            'final_word_count' => $wordCount,
+            'target_word_count' => $targetWordCount,
+            'attempts' => $maxAttempts,
+        ]);
 
         return $content;
     }
