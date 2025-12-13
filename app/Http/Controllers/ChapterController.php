@@ -572,6 +572,116 @@ class ChapterController extends Controller
         ]);
     }
 
+    /**
+     * Quick action (non-stream): rephrase selected text.
+     * Uses POST body to avoid URL length limits and returns JSON.
+     */
+    public function rephraseQuickAction(Request $request, Project $project, int $chapterNumber)
+    {
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $validated = $request->validate([
+            'text' => 'required|string|max:2000',
+            'style' => 'sometimes|string|max:100',
+        ]);
+
+        $style = $validated['style'] ?? 'Academic Formal';
+
+        $chapter = Chapter::firstOrCreate(
+            [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+            ],
+            [
+                'title' => $this->getDefaultChapterTitle($chapterNumber),
+                'content' => '',
+                'word_count' => 0,
+                'status' => 'draft',
+            ]
+        );
+
+        try {
+            $prompt = $this->buildRephrasePrompt($project, $validated['text'], $style);
+            $text = trim($this->aiGenerator->generate($prompt, [
+                'temperature' => 0.8,
+                'max_tokens' => 900,
+            ]));
+
+            return response()->json([
+                'success' => true,
+                'text' => $text,
+                'word_count' => str_word_count(strip_tags($text)),
+                'style' => $style,
+                'chapter_id' => $chapter->id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Quick action rephrase failed', [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+                'chapter_id' => $chapter->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to rephrase text. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Quick action (non-stream): expand selected text.
+     * Uses POST body to avoid URL length limits and returns JSON.
+     */
+    public function expandQuickAction(Request $request, Project $project, int $chapterNumber)
+    {
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $validated = $request->validate([
+            'text' => 'required|string|max:2000',
+        ]);
+
+        $chapter = Chapter::firstOrCreate(
+            [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+            ],
+            [
+                'title' => $this->getDefaultChapterTitle($chapterNumber),
+                'content' => '',
+                'word_count' => 0,
+                'status' => 'draft',
+            ]
+        );
+
+        try {
+            $prompt = $this->buildExpandPrompt($project, $validated['text'], $chapter);
+            $text = trim($this->aiGenerator->generate($prompt, [
+                'temperature' => 0.7,
+                'max_tokens' => 1100,
+            ]));
+
+            return response()->json([
+                'success' => true,
+                'text' => $text,
+                'word_count' => str_word_count(strip_tags($text)),
+                'chapter_id' => $chapter->id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Quick action expand failed', [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+                'chapter_id' => $chapter->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to expand text. Please try again.',
+            ], 500);
+        }
+    }
+
     private function sendSSEMessage($data)
     {
         echo 'data: '.json_encode($data)."\n\n";

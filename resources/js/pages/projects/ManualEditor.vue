@@ -5,6 +5,7 @@ import { route } from 'ziggy-js'
 import { toast } from 'vue-sonner'
 import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle, Brain, Moon, Sun } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue'
@@ -24,6 +25,8 @@ import { useManualEditor } from '@/composables/useManualEditor'
 import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggestions'
 import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
 import { useTextHistory } from '@/composables/useTextHistory'
+import PurchaseModal from '@/components/PurchaseModal.vue'
+import { recordWordUsage, useWordBalance } from '@/composables/useWordBalance'
 // ChatModeLayout DISABLED - causes dark mode issues
 // import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
 import { useAppearance } from '@/composables/useAppearance'
@@ -55,23 +58,32 @@ watch(
   () => page.props?.flash,
   (flash: any) => {
     if (!flash) return
-    console.log('🔔 Flash message received:', flash)
     if (flash.success) {
-      console.log('✅ Showing success toast:', flash.success)
       toast.success(flash.success)
     }
     if (flash.error) {
-      console.log('❌ Showing error toast:', flash.error)
       toast.error(flash.error)
     }
   },
   { deep: true, immediate: true }
 )
 
+const {
+  balance,
+  showPurchaseModal,
+  requiredWordsForModal,
+  actionDescriptionForModal,
+  checkAndPrompt,
+  closePurchaseModal,
+  refreshBalance,
+} = useWordBalance()
+
 const { content, isDirty, isSaving, lastSaved, updateContent, manualSave } = useManualEditor(props.chapter, props.project.slug)
 
 const { currentSuggestion, currentAnalysis, isAnalyzing, saveSuggestion, clearSuggestion, applySuggestion } =
-  useManualEditorSuggestions(props.chapter, props.currentSuggestion, content)
+  useManualEditorSuggestions(props.chapter, props.project.slug, props.currentSuggestion, content, {
+    onUsageRecorded: () => refreshBalance(),
+  })
 
 const { contentHistory, historyIndex, addToHistory, undo, redo, canUndo, canRedo } = useTextHistory(props.chapter.content || '');
 
@@ -136,6 +148,9 @@ const isMobile = ref(getInitialMobileState())
 const showLeftSidebar = ref(loadSidebarState('manualEditor_showLeftSidebar', !isMobile.value))
 const showRightSidebar = ref(loadSidebarState('manualEditor_showRightSidebar', !isMobile.value))
 const selectedText = ref('')
+const selectionRange = ref<{ from: number; to: number } | null>(null)
+const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null)
+const citationSuggestions = ref<string>('')
 
 // Defense preparation state
 const showDefensePrep = ref(false)
@@ -332,35 +347,74 @@ watch(
 
 // Handle quick action results (placeholder - would integrate with editor)
 const handleTextImproved = (text: string) => {
-  console.log('Improved text:', text)
-  // TODO: Replace selected text or show in modal
+  handleContentUpdate(text)
+  toast.success('Applied improved text')
 }
 
 const handleTextExpanded = (text: string) => {
-  console.log('Expanded text:', text)
-  // TODO: Replace selected text or show in modal
+  const ok = editorRef.value?.replaceSelection(text, selectionRange.value || undefined) ?? false
+  if (ok) {
+    toast.success('Expanded selection')
+    return
+  }
+  handleContentUpdate(`${content.value}\n\n${text}`)
+  toast.success('Added expanded text')
 }
 
 const handleCitationsSuggested = (suggestions: string) => {
-  console.log('Citation suggestions:', suggestions)
-  // TODO: Show in modal or panel
+  citationSuggestions.value = suggestions
+  showCitationHelper.value = true
+  try {
+    navigator.clipboard?.writeText(suggestions)
+  } catch {
+    // ignore
+  }
+  toast.success('Citation suggestions ready')
 }
 
 const handleTextRephrased = (alternatives: string) => {
-  console.log('Alternative phrasings:', alternatives)
-  // TODO: Show in modal for selection
+  const ok = editorRef.value?.replaceSelection(alternatives, selectionRange.value || undefined) ?? false
+  if (ok) {
+    toast.success('Applied rephrased text')
+    return
+  }
+  handleContentUpdate(`${content.value}\n\n${alternatives}`)
+  toast.success('Added rephrased text')
+}
+
+const ensureQuickActionBalance = (requiredWords: number, action: string) => checkAndPrompt(requiredWords, action)
+
+const recordManualUsage = async (wordsUsed: number, description: string) => {
+  const normalized = Math.max(0, Math.round(wordsUsed || 0))
+  if (!normalized) return
+  await recordWordUsage(normalized, description, 'chapter', props.chapter.id)
+  await refreshBalance()
+}
+
+const copyCitationSuggestions = async () => {
+  if (!citationSuggestions.value) return
+  try {
+    await navigator.clipboard.writeText(citationSuggestions.value)
+    toast.success('Copied citation suggestions')
+  } catch {
+    toast.error('Could not copy citation suggestions')
+  }
 }
 
 const prevChapter = computed(() => props.allChapters.find(c => c.chapter_number === props.chapter.chapter_number - 1))
 const nextChapter = computed(() => props.allChapters.find(c => c.chapter_number === props.chapter.chapter_number + 1))
 
 const handleInsertCitation = (citation: string) => {
-  // Append citation to content or insert at cursor if possible
-  // Since we don't have direct cursor access easily without Tiptap instance,
-  // we'll append it for now or rely on the user copying it.
-  // But wait, we can try to append it to the content.
-  const newContent = content.value + ` ${citation}`
-  updateContent(newContent)
+  const cursor = editorRef.value?.getCursorPosition?.()
+  if (typeof cursor === 'number') {
+    const ok = editorRef.value?.replaceTextAt?.({ from: cursor, to: cursor }, ` ${citation} `) ?? false
+    if (ok) {
+      toast.success('Citation inserted')
+      return
+    }
+  }
+
+  handleContentUpdate(`${content.value} ${citation}`)
   toast.success('Citation appended to content')
 }
 
@@ -604,6 +658,11 @@ const markAsComplete = async () => {
           </div>
         </div>
 
+        <!-- Center: Editor Toolbar -->
+        <div class="flex-1 px-4 min-w-0">
+          <div id="manual-editor-toolbar" class="mx-auto max-w-[950px]"></div>
+        </div>
+
         <!-- Right: Actions -->
         <div class="flex items-center gap-3">
           <!-- View Controls -->
@@ -694,13 +753,19 @@ const markAsComplete = async () => {
       </Transition>
 
       <!-- Writing Area -->
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <!-- Editor -->
-        <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
-          <RichTextEditor :modelValue="content" @update:modelValue="updateContent" :manual-mode="true"
-            class="min-h-full" />
-        </div>
-      </div>
+	    <div class="flex-1 flex flex-col overflow-hidden">
+	        <!-- Editor -->
+	        <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
+	          <RichTextEditor
+	            ref="editorRef"
+	            :modelValue="content"
+	            @update:modelValue="handleContentUpdate"
+	            @update:selectedText="selectedText = $event"
+	            @update:selectionRange="selectionRange = $event"
+	            :manual-mode="true"
+	            :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''" class="min-h-full" />
+	        </div>
+	      </div>
 
       <!-- Right Sidebar (Tools & Guidance) -->
       <Transition enter-active-class="transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)"
@@ -724,11 +789,24 @@ const markAsComplete = async () => {
 
             <!-- Quick Actions Panel -->
             <QuickActionsPanel :project-slug="project.slug" :chapter-number="chapter.chapter_number"
-              :selected-text="selectedText" :is-processing="isAnalyzing || isSaving" @text-improved="handleTextImproved"
+              :selected-text="selectedText" :chapter-content="content" :is-processing="isAnalyzing || isSaving"
+              :ensure-balance="ensureQuickActionBalance" :on-usage="recordManualUsage"
+              @text-improved="handleTextImproved"
               @text-expanded="handleTextExpanded" @citations-suggested="handleCitationsSuggested"
               @text-rephrased="handleTextRephrased" />
 
             <Separator class="bg-border/50" />
+
+            <div v-if="citationSuggestions" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-foreground">Citation Suggestions</h3>
+                <Button size="sm" variant="outline" @click="copyCitationSuggestions">
+                  Copy
+                </Button>
+              </div>
+              <pre class="text-xs whitespace-pre-wrap rounded-lg border border-border/50 bg-muted/30 p-3">{{ citationSuggestions }}</pre>
+              <Separator class="bg-border/50" />
+            </div>
 
             <!-- Citation Helper -->
             <div class="space-y-2">
@@ -764,6 +842,7 @@ const markAsComplete = async () => {
         :selected-text="selectedText" :is-analyzing="isAnalyzing" :is-saving="isSaving"
         :current-suggestion="currentSuggestion" :current-analysis="currentAnalysis" :guidance="guidance"
         :is-loading-guidance="isLoadingGuidance" :chapter-content="content" :show-citation-helper="showCitationHelper"
+        :ensure-balance="ensureQuickActionBalance" :on-usage="recordManualUsage"
         @update:show-left-sidebar="showLeftSidebar = $event" @update:show-right-sidebar="showRightSidebar = $event"
         @update:show-citation-helper="showCitationHelper = $event" @go-to-chapter="goToChapter"
         @generate-next-chapter="generateNextChapter" @delete-chapter="deleteChapter" @save-suggestion="saveSuggestion"
@@ -815,6 +894,8 @@ const markAsComplete = async () => {
     </footer>
 
     <!-- Toast Notifications -->
+    <PurchaseModal :open="showPurchaseModal" :current-balance="balance" :required-words="requiredWordsForModal"
+      :action="actionDescriptionForModal" @update:open="(v) => showPurchaseModal = v" @close="closePurchaseModal" />
     <Toaster position="top-center" />
   </div>
 </template>

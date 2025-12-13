@@ -325,8 +325,10 @@ export function useChapterGeneration({
     };
 
     const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'improve') => {
-        const requiredWords = estimates.chapter(targetWordCount.value || 0);
-        if (!ensureBalance(requiredWords, 'generate this chapter with AI')) {
+        // Quick action guard: for "improve", only require a minimum balance threshold
+        const requiredWords = type === 'improve' ? 300 : estimates.chapter(targetWordCount.value || 0);
+        const actionLabel = type === 'improve' ? 'improve this chapter' : 'generate this chapter with AI';
+        if (!ensureBalance(requiredWords, actionLabel)) {
             return;
         }
 
@@ -759,11 +761,10 @@ export function useChapterGeneration({
 
     const handleSelectionGeneration = async (selectedTextValue: string, action: 'rephrase' | 'expand', style?: string) => {
         const selectedWordCount = selectedTextValue.split(/\s+/).length;
-        const requiredWords = action === 'rephrase'
-            ? Math.max(selectedWordCount, estimates.rephrase())
-            : Math.max(selectedWordCount * 2, estimates.expand());
+        // Quick action guard: only require a minimum balance threshold for selection actions
+        const requiredWords = 300;
 
-        if (!ensureBalance(requiredWords, `${action} about ${selectedWordCount} words`)) {
+        if (!ensureBalance(requiredWords, `${action} selected text`)) {
             return;
         }
 
@@ -772,7 +773,7 @@ export function useChapterGeneration({
         streamWordCount.value = 0;
         generationPercentage.value = 10;
         generationPhase.value = action === 'rephrase' ? 'Rephrasing' : 'Expanding';
-        generationProgress.value = `Preparing to ${action} selected text...`;
+        generationProgress.value = `${action === 'rephrase' ? 'Rephrasing' : 'Expanding'} selected text...`;
         estimatedTotalWords.value = Math.max(selectedWordCount * (action === 'expand' ? 2 : 1), 100);
         const activeEditor = richTextEditorFullscreen.value || richTextEditor.value;
         const selectionRange = activeEditor?.getSelectionRange();
@@ -787,105 +788,88 @@ export function useChapterGeneration({
         showPresentationMode.value = true;
 
         try {
-            const streamType = action === 'rephrase' ? 'rephrase' : 'expand';
-            const url = route('chapters.stream', {
-                project: props.project.slug,
-                chapter: props.chapter.chapter_number,
+            const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
+            if (!csrfToken) {
+                throw new Error('CSRF token not found - please refresh the page');
+            }
+
+            const endpoint =
+                action === 'rephrase'
+                    ? route('chapters.quick-actions.rephrase', { project: props.project.slug, chapter: props.chapter.chapter_number })
+                    : route('chapters.quick-actions.expand', { project: props.project.slug, chapter: props.chapter.chapter_number });
+
+            generationPercentage.value = 35;
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    text: selectedTextValue,
+                    ...(action === 'rephrase' ? { style: context.style } : {}),
+                }),
             });
-            const payload = action === 'rephrase'
-                ? `${url}?generation_type=rephrase&selected_text=${encodeURIComponent(selectedTextValue)}&style=${encodeURIComponent(style || 'Academic Formal')}`
-                : `${url}?generation_type=expand&selected_text=${encodeURIComponent(selectedTextValue)}`;
 
-            eventSource.value = new EventSource(payload);
-
-            eventSource.value.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                switch (data.type) {
-                    case 'start':
-                        generationPhase.value = action === 'rephrase' ? 'Rephrasing Text' : 'Expanding Text';
-                        generationPercentage.value = action === 'rephrase' ? 30 : 20;
-                        generationProgress.value = `${action === 'rephrase' ? 'Rephrasing' : 'Expanding'} text...`;
-                        break;
-
-                    case 'content':
-                        streamBuffer.value += data.content;
-                        streamWordCount.value = data.word_count || countWords(streamBuffer.value);
-                        const progress = Math.min((streamWordCount.value / estimatedTotalWords.value) * 60, 60);
-                        generationPercentage.value = Math.max(action === 'rephrase' ? 30 : 25, (action === 'rephrase' ? 30 : 25) + progress);
-                        generationProgress.value = `${action === 'rephrase' ? 'Rephrasing' : 'Expanding'}... (${streamWordCount.value} words)`;
-                        break;
-
-                    case 'complete':
-                        generationPercentage.value = 100;
-                        generationPhase.value = 'Complete';
-                        generationProgress.value = `✓ Text ${action === 'rephrase' ? 'rephrased' : 'expanded'} successfully (${streamWordCount.value} words)`;
-
-                        if (context.range && streamBuffer.value.trim()) {
-                            const success = activeEditor?.replaceSelection(streamBuffer.value.trim(), context.range);
-                            if (success) {
-                                setTimeout(() => {
-                                    const newContent = activeEditor?.getHTML() || chapterContent.value;
-                                    chapterContent.value = newContent;
-                                }, 100);
-                            } else {
-                                toast.warning('Please manually replace the selected text', {
-                                    description: 'The generated text is ready but could not be automatically inserted.',
-                                });
-                            }
-                        }
-
-                        save(true);
-
-                        toast.success(`✅ Text ${action === 'rephrase' ? 'Rephrased' : 'Expanded'} Successfully`, {
-                            description: `${action === 'rephrase' ? 'Rephrased' : 'Expanded'} ${selectedWordCount} words.`,
-                        });
-
-                        recordWordUsage(
-                            streamWordCount.value || (action === 'expand' ? selectedWordCount * 2 : selectedWordCount),
-                            action === 'rephrase' ? `Rephrase (${context.style})` : 'Expand text',
-                            'chapter',
-                            props.chapter.id,
-                        ).catch((err) => console.error(`Failed to record word usage (${action}):`, err));
-
-                        isGenerating.value = false;
-                        eventSource.value?.close();
-                        break;
-
-                    case 'error':
-                        console.error(`${action} generation error:`, data.message);
-                        isGenerating.value = false;
-                        generationPhase.value = 'Error';
-                        generationProgress.value = `❌ Text ${action === 'rephrase' ? 'rephrasing' : 'expansion'} failed`;
-                        toast.error(`❌ ${action === 'rephrase' ? 'Rephrasing' : 'Expansion'} Failed`, {
-                            description: data.message || 'Please try again.',
-                        });
-                        eventSource.value?.close();
-                        break;
-
-                    case 'heartbeat':
-                        if (generationPercentage.value < 95) {
-                            generationPercentage.value += 0.5;
-                        }
-                        break;
+            if (!response.ok) {
+                let message = `Request failed (${response.status})`;
+                try {
+                    const err = await response.json();
+                    message = err?.message || err?.error || err?.data?.message || message;
+                } catch {
+                    // ignore
                 }
-            };
+                throw new Error(message);
+            }
 
-            eventSource.value.onerror = () => {
-                isGenerating.value = false;
-                generationPhase.value = 'Error';
-                generationProgress.value = `❌ Text ${action === 'rephrase' ? 'rephrasing' : 'expansion'} failed`;
-                toast.error(`❌ ${action === 'rephrase' ? 'Rephrasing' : 'Expansion'} Failed`, {
-                    description: 'Unable to process the request. Please check your connection and try again.',
-                });
-                eventSource.value?.close();
-            };
+            const data = await response.json();
+            const resultText = String(data?.text || '').trim();
+            if (!resultText) throw new Error('Empty response from AI service');
+
+            generationPercentage.value = 100;
+            generationPhase.value = 'Complete';
+            generationProgress.value = `✓ Text ${action === 'rephrase' ? 'rephrased' : 'expanded'} successfully`;
+
+            if (context.range) {
+                const success = activeEditor?.replaceSelection(resultText, context.range);
+                if (success) {
+                    setTimeout(() => {
+                        const newContent = activeEditor?.getHTML() || chapterContent.value;
+                        chapterContent.value = newContent;
+                    }, 50);
+                } else {
+                    toast.warning('Please manually replace the selected text', {
+                        description: 'The generated text is ready but could not be automatically inserted.',
+                    });
+                }
+            }
+
+            save(true);
+
+            toast.success(`✅ Text ${action === 'rephrase' ? 'Rephrased' : 'Expanded'} Successfully`, {
+                description: `${action === 'rephrase' ? 'Rephrased' : 'Expanded'} selection (${selectedWordCount} words).`,
+            });
+
+            const used = Number(data?.word_count) || countWords(resultText) || (action === 'expand' ? selectedWordCount * 2 : selectedWordCount);
+            recordWordUsage(
+                used,
+                action === 'rephrase' ? `Rephrase (${context.style})` : 'Expand text',
+                'chapter',
+                props.chapter.id,
+            ).catch((err) => console.error(`Failed to record word usage (${action}):`, err));
+
+            isGenerating.value = false;
         } catch (error) {
             console.error('Selection generation failed:', error);
             isGenerating.value = false;
             generationPhase.value = 'Error';
             generationProgress.value = `❌ Text ${action === 'rephrase' ? 'rephrasing' : 'expansion'} error`;
             toast.error(`❌ ${action === 'rephrase' ? 'Rephrasing' : 'Expansion'} Failed`, {
-                description: 'Text generation encountered an error.',
+                description: error instanceof Error ? error.message : 'Text generation encountered an error.',
             });
         }
     };

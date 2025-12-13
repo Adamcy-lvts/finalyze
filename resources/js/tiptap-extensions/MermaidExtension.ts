@@ -1,6 +1,8 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import MermaidNodeView from './MermaidNodeView.vue'
+import { Plugin } from '@tiptap/pm/state'
+import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model'
 
 export interface MermaidOptions {
   HTMLAttributes: Record<string, unknown>
@@ -137,9 +139,9 @@ export const Mermaid = Node.create<MermaidOptions>({
           const defaultCode =
             code ||
             `flowchart TD
-    A[Start] --> B{Decision}
-    B -->|Yes| C[Result 1]
-    B -->|No| D[Result 2]`
+	    A[Start] --> B{Decision}
+	    B -->|Yes| C[Result 1]
+	    B -->|No| D[Result 2]`
 
           return commands.insertContent({
             type: this.name,
@@ -187,10 +189,68 @@ export const Mermaid = Node.create<MermaidOptions>({
     }
   },
 
+  addProseMirrorPlugins() {
+    const mermaidNodeType = this.name
+    const defaultCode = `flowchart TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Result 1]
+    B -->|No| D[Result 2]`
+
+    const createMermaidNode = (schema: Schema, code: string): ProseMirrorNode | null => {
+      const type = schema.nodes[mermaidNodeType]
+      if (!type) return null
+
+      const normalizedCode = code.trim() || defaultCode
+      return type.create({
+        code: normalizedCode,
+        viewMode: 'diagram',
+        diagramType: detectDiagramType(normalizedCode),
+        error: null,
+        scale: 100,
+      })
+    }
+
+    return [
+      new Plugin({
+        appendTransaction: (transactions, _oldState, newState) => {
+          if (!transactions.some((tr) => tr.docChanged)) return null
+
+          const matches: Array<{ from: number; to: number; code: string }> = []
+
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name !== 'codeBlock') return
+
+            const language = (node.attrs as any)?.language
+            if (String(language || '').toLowerCase() !== 'mermaid') return
+
+            matches.push({
+              from: pos,
+              to: pos + node.nodeSize,
+              code: node.textContent,
+            })
+          })
+
+          if (matches.length === 0) return null
+
+          const tr = newState.tr
+          for (const match of matches.sort((a, b) => b.from - a.from)) {
+            const mermaidNode = createMermaidNode(newState.schema, match.code)
+            if (!mermaidNode) continue
+            tr.replaceWith(match.from, match.to, mermaidNode)
+          }
+
+          return tr.docChanged ? tr : null
+        },
+      }),
+    ]
+  },
+
   addKeyboardShortcuts() {
     return {
       // Insert mermaid diagram with Mod+Shift+M
       'Mod-Shift-m': () => this.editor.commands.insertMermaid(),
+      // Fallback shortcut (Ctrl/Cmd+Alt+M) for browsers that reserve Ctrl+Shift+M
+      'Mod-Alt-m': () => this.editor.commands.insertMermaid(),
     }
   },
 })

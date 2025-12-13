@@ -1,6 +1,8 @@
 import { ref, watch } from 'vue'
-import { router } from '@inertiajs/vue3'
 import { debounce } from 'lodash'
+import { route } from 'ziggy-js'
+import { countWords } from '@/utils/wordCount'
+import { recordWordUsage } from '@/composables/useWordBalance'
 
 export interface ProgressiveStep {
     id: string
@@ -27,6 +29,7 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
     const guidance = ref<ProgressiveGuidanceData | null>(null)
     const isLoadingGuidance = ref(false)
     const lastRequestTime = ref<number>(0)
+    const lastChargedFingerprint = ref<string>('')
 
     /**
      * Request progressive guidance from backend
@@ -73,6 +76,26 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
 
                 // Load completed steps from localStorage
                 loadCompletedSteps()
+
+                const fingerprint = JSON.stringify({
+                    stage: data?.stage,
+                    completion: data?.completion_percentage,
+                    tip: data?.contextual_tip,
+                    steps: (data?.next_steps || []).map((s: any) => s?.text),
+                })
+                if (fingerprint && fingerprint !== lastChargedFingerprint.value) {
+                    lastChargedFingerprint.value = fingerprint
+                    const wordsUsed =
+                        countWords(data?.contextual_tip || '') +
+                        countWords(data?.stage_label || '') +
+                        countWords((data?.next_steps || []).map((s: any) => s?.text).join(' ')) +
+                        countWords((data?.writing_milestones || []).map((m: any) => m?.label).join(' '))
+
+                    if (wordsUsed > 0) {
+                        recordWordUsage(wordsUsed, 'Manual editor: Progressive guidance', 'chapter')
+                            .catch((err) => console.error('Failed to record word usage (progressive guidance):', err))
+                    }
+                }
             }
         } catch (error) {
             console.error('Failed to load progressive guidance:', error)

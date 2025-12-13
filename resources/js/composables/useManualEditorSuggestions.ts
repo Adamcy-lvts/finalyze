@@ -2,22 +2,32 @@ import { ref, watch, type Ref } from 'vue'
 import { ContentAnalyzer, type ContentAnalysis } from '@/utils/contentAnalyzer'
 import { useDebounceFn } from '@vueuse/core'
 import { toast } from 'vue-sonner'
+import axios from 'axios'
+import { route } from 'ziggy-js'
+import { countWords } from '@/utils/wordCount'
+import { recordWordUsage } from '@/composables/useWordBalance'
 import type { Chapter, UserChapterSuggestion, ChapterContextAnalysis } from '@/types'
 
 export function useManualEditorSuggestions(
   chapter: Chapter,
+  projectSlug: string,
   initialSuggestion: UserChapterSuggestion | null,
   editorContent: Ref<string>,
+  options?: {
+    onUsageRecorded?: () => void | Promise<void>
+  },
 ) {
   const currentSuggestion = ref<UserChapterSuggestion | null>(initialSuggestion)
   const currentAnalysis = ref<ContentAnalysis | null>(null)
   const isAnalyzing = ref(false)
+  const chargedSuggestionIds = ref<Set<number>>(new Set<number>())
 
   /**
    * Analyze content on frontend and send to backend for AI suggestion
    */
   const analyzeAndRequestSuggestion = async () => {
     if (editorContent.value.length < 100) return // Too early
+    if (!projectSlug || !chapter?.chapter_number) return
 
     isAnalyzing.value = true
 
@@ -35,14 +45,25 @@ export function useManualEditorSuggestions(
       // Send to backend for AI suggestion generation
       const response = await axios.post(
         route('projects.manual-editor.analyze', {
-          project: chapter.project.slug,
-          chapter: chapter.id,
+          project: projectSlug,
+          chapter: chapter.chapter_number,
         }),
         { analysis },
       )
 
       if (response.data.suggestion) {
         currentSuggestion.value = response.data.suggestion
+
+        const suggestionId = Number(response.data.suggestion?.id)
+        if (suggestionId && !chargedSuggestionIds.value.has(suggestionId)) {
+          const wordsUsed = countWords(response.data.suggestion?.suggestion_content || '')
+          if (wordsUsed > 0) {
+            chargedSuggestionIds.value.add(suggestionId)
+            recordWordUsage(wordsUsed, 'Manual editor: Smart suggestion', 'chapter', chapter.id)
+              .then(() => options?.onUsageRecorded?.())
+              .catch((err) => console.error('Failed to record word usage (manual suggestion):', err))
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to analyze and request suggestion:', error)
@@ -67,12 +88,13 @@ export function useManualEditorSuggestions(
 
   const saveSuggestion = async () => {
     if (!currentSuggestion.value) return
+    if (!projectSlug || !chapter?.chapter_number) return
 
     try {
       await axios.post(
         route('projects.manual-editor.suggestion.save', {
-          project: chapter.project.slug,
-          chapter: chapter.id,
+          project: projectSlug,
+          chapter: chapter.chapter_number,
           suggestion: currentSuggestion.value.id,
         }),
       )
@@ -89,12 +111,13 @@ export function useManualEditorSuggestions(
 
   const clearSuggestion = async () => {
     if (!currentSuggestion.value) return
+    if (!projectSlug || !chapter?.chapter_number) return
 
     try {
       await axios.post(
         route('projects.manual-editor.suggestion.clear', {
-          project: chapter.project.slug,
-          chapter: chapter.id,
+          project: projectSlug,
+          chapter: chapter.chapter_number,
           suggestion: currentSuggestion.value.id,
         }),
       )
@@ -109,12 +132,13 @@ export function useManualEditorSuggestions(
 
   const applySuggestion = async () => {
     if (!currentSuggestion.value) return
+    if (!projectSlug || !chapter?.chapter_number) return
 
     try {
       await axios.post(
         route('projects.manual-editor.suggestion.apply', {
-          project: chapter.project.slug,
-          chapter: chapter.id,
+          project: projectSlug,
+          chapter: chapter.chapter_number,
           suggestion: currentSuggestion.value.id,
         }),
       )

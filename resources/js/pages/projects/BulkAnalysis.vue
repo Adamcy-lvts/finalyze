@@ -14,6 +14,7 @@ import axios from 'axios';
 import { ArrowLeft, Brain, CheckCircle2, Loader2, Play, RefreshCcw, ShieldAlert } from 'lucide-vue-next';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
+import { route } from 'ziggy-js';
 import PurchaseModal from '@/components/PurchaseModal.vue';
 import { recordWordUsage, useWordBalance } from '@/composables/useWordBalance';
 

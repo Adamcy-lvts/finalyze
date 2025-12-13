@@ -43,7 +43,7 @@ const props = defineProps<{
 const { appearance, updateAppearance, isDark, toggle } = useAppearance()
 const { content, isDirty, isSaving, lastSaved, updateContent, manualSave } = useManualEditor(props.chapter, props.project.slug)
 const { currentSuggestion, currentAnalysis, isAnalyzing, clearSuggestion } =
-    useManualEditorSuggestions(props.chapter, props.currentSuggestion ?? null, content)
+    useManualEditorSuggestions(props.chapter, props.project.slug, props.currentSuggestion ?? null, content)
 const { undo, redo, canUndo, canRedo } = useTextHistory(props.chapter.content || '')
 
 const page = usePage()
@@ -66,6 +66,7 @@ const isMobile = ref(false)
 const isFullscreen = ref(false)
 const selectedText = ref('')
 const selectionRange = ref<{ from: number; to: number } | null>(null)
+const showCitationHelper = ref(true)
 
 if (typeof window !== 'undefined') {
     isMobile.value = window.innerWidth < 768
@@ -194,10 +195,19 @@ const handleContentInsert = (text: string, position?: { from: number; to: number
             <aside v-if="showRightSidebar && !isMobile"
                 class="w-[400px] border-l bg-background/80 backdrop-blur-xl overflow-y-auto flex flex-col">
                 <div class="p-4 space-y-4">
-                    <QuickActionsPanel :project="project" :chapter="chapter" :selected-text="selectedText"
-                        :selection-range="selectionRange" @content-insert="handleContentInsert" />
+                    <QuickActionsPanel
+                        :project-slug="project.slug"
+                        :chapter-number="chapter.chapter_number"
+                        :selected-text="selectedText"
+                        :chapter-content="content"
+                        @text-improved="handleApplySuggestion"
+                        @text-expanded="(t) => handleContentInsert(t)"
+                        @citations-suggested="(t) => { showCitationHelper = true; handleContentInsert(t) }"
+                        @text-rephrased="(t) => handleContentInsert(t)"
+                    />
 
-                    <CitationHelper :project="project" :chapter="chapter" @insert-citation="handleContentInsert" />
+                    <CitationHelper v-model:show-citation-helper="showCitationHelper" :chapter-content="content"
+                        @insert-citation="(c) => handleContentInsert(c)" />
 
                     <ProgressiveGuidancePanel :project="project" :chapter="chapter"
                         :current-analysis="currentAnalysis" />

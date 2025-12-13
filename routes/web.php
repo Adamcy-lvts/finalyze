@@ -402,6 +402,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/projects/{project}/chapters/{chapter}/stream', [ChapterController::class, 'stream'])
             ->middleware(['prevent.duplicate:30', 'check.words'])
             ->name('chapters.stream');
+        Route::post('/projects/{project}/chapters/{chapter}/quick-actions/rephrase', [ChapterController::class, 'rephraseQuickAction'])
+            ->middleware(['prevent.duplicate:10', 'check.words:300'])
+            ->name('chapters.quick-actions.rephrase');
+        Route::post('/projects/{project}/chapters/{chapter}/quick-actions/expand', [ChapterController::class, 'expandQuickAction'])
+            ->middleware(['prevent.duplicate:10', 'check.words:300'])
+            ->name('chapters.quick-actions.expand');
         Route::post('/projects/{project}/chapters/{chapter}/mark-complete', [ChapterController::class, 'markComplete'])
             ->name('chapters.mark-complete');
         Route::post('/projects/{project}/chapters/save', [ChapterController::class, 'save'])->name('chapters.save');

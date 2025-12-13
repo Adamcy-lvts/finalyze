@@ -3,6 +3,8 @@ import { ref } from 'vue'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { route } from 'ziggy-js'
+import { countWords } from '@/utils/wordCount'
 import {
     Sparkles,
     AlignLeft,
@@ -12,13 +14,15 @@ import {
     Wand2,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { router } from '@inertiajs/vue3'
 
 interface Props {
     projectSlug: string
     chapterNumber: number
     selectedText: string
+    chapterContent: string
     isProcessing?: boolean
+    ensureBalance?: (requiredWords: number, action: string) => boolean
+    onUsage?: (wordsUsed: number, description: string) => void | Promise<void>
 }
 
 const props = defineProps<Props>()
@@ -39,10 +43,38 @@ const actionLoadingStates = ref({
     rephrase: false,
 })
 
+const getBodyTextForAction = (action: 'improve' | 'expand' | 'cite' | 'rephrase') => {
+    const selection = props.selectedText?.trim() || ''
+    const content = props.chapterContent?.trim() || ''
+
+    if (action === 'expand' || action === 'rephrase') return selection
+    return content || selection
+}
+
+const readErrorMessage = async (response: Response): Promise<string> => {
+    try {
+        const data = await response.json()
+        return data?.message || data?.error || `HTTP ${response.status}`
+    } catch {
+        return `HTTP ${response.status}`
+    }
+}
+
 /**
  * Handle quick action button click
  */
 const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephrase') => {
+    if (props.ensureBalance && !props.ensureBalance(300, 'use quick actions')) {
+        return
+    }
+
+    const bodyText = getBodyTextForAction(action)
+
+    if (!bodyText) {
+        toast.error(action === 'expand' || action === 'rephrase' ? 'Please select some text first' : 'Please add some content first')
+        return
+    }
+
     if (!props.selectedText && (action === 'expand' || action === 'rephrase')) {
         toast.error('Please select some text first')
         return
@@ -73,25 +105,19 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
                 break
         }
 
-        const response = await fetch(
-            route(routeName, {
-                project: props.projectSlug,
-                chapter: props.chapterNumber,
-            }),
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
-                },
-                body: JSON.stringify({
-                    text: props.selectedText,
-                }),
-            }
-        )
+        const response = await fetch(route(routeName, { project: props.projectSlug, chapter: props.chapterNumber }), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({ text: bodyText }),
+        })
 
         if (!response.ok) {
-            throw new Error('Failed to process request')
+            const message = await readErrorMessage(response)
+            throw new Error(message)
         }
 
         const data = await response.json()
@@ -99,20 +125,25 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
         // Emit the result
         if (action === 'improve' && data.improvedText) {
             emit('textImproved', data.improvedText)
+            await props.onUsage?.(countWords(data.improvedText), 'Manual editor: Improve')
             toast.success('Text improved successfully!')
         } else if (action === 'expand' && data.expandedText) {
             emit('textExpanded', data.expandedText)
+            await props.onUsage?.(countWords(data.expandedText), 'Manual editor: Expand')
             toast.success('Text expanded successfully!')
         } else if (action === 'cite' && data.suggestions) {
             emit('citationsSuggested', data.suggestions)
+            await props.onUsage?.(countWords(data.suggestions), 'Manual editor: Citation suggestions')
             toast.success('Citation suggestions generated!')
         } else if (action === 'rephrase' && data.alternatives) {
             emit('textRephrased', data.alternatives)
+            await props.onUsage?.(countWords(data.alternatives), 'Manual editor: Rephrase')
             toast.success('Alternative phrasings generated!')
         }
     } catch (error) {
         console.error(`Failed to ${action} text:`, error)
-        toast.error(`Failed to ${action} text. Please try again.`)
+        const message = error instanceof Error ? error.message : ''
+        toast.error(`Failed to ${action} text. Please try again.`, message ? { description: message } : undefined)
     } finally {
         actionLoadingStates.value[action] = false
     }

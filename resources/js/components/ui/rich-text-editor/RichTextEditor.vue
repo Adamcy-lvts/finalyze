@@ -88,6 +88,7 @@ interface Props {
   readonly?: boolean
   minHeight?: string
   showToolbar?: boolean
+  toolbarTeleportTarget?: string
   isGenerating?: boolean
   generationProgress?: string
   generationPercentage?: number
@@ -101,6 +102,7 @@ const props = withDefaults(defineProps<Props>(), {
   readonly: false,
   minHeight: '200px',
   showToolbar: true,
+  toolbarTeleportTarget: '',
   isGenerating: false,
   generationProgress: '',
   generationPercentage: 0,
@@ -667,6 +669,8 @@ onBeforeUnmount(() => {
   if (editor.value) {
     editor.value.destroy()
   }
+
+  stopTeleportObserver()
 })
 
 // Toolbar actions
@@ -674,6 +678,80 @@ const toggleBold = () => editor.value?.chain().focus().toggleBold().run()
 const toggleItalic = () => editor.value?.chain().focus().toggleItalic().run()
 const toggleStrike = () => editor.value?.chain().focus().toggleStrike().run()
 const toggleCode = () => editor.value?.chain().focus().toggleCode().run()
+const insertMermaidDiagram = () => {
+  editor.value?.chain().focus().insertMermaid().run()
+}
+
+const teleportTargetExists = ref(false)
+let teleportObserver: MutationObserver | null = null
+
+const stopTeleportObserver = () => {
+  if (teleportObserver) {
+    teleportObserver.disconnect()
+    teleportObserver = null
+  }
+}
+
+const refreshTeleportTarget = () => {
+  if (typeof document === 'undefined') {
+    teleportTargetExists.value = false
+    return
+  }
+
+  teleportTargetExists.value = !!(props.toolbarTeleportTarget && document.querySelector(props.toolbarTeleportTarget))
+}
+
+if (typeof document !== 'undefined') {
+  refreshTeleportTarget()
+}
+
+const teleportDisabled = computed(() => !props.toolbarTeleportTarget || !teleportTargetExists.value)
+// Backwards-compatible alias (older HMR builds referenced this name).
+const teleportEnabled = computed(() => !teleportDisabled.value)
+const teleportTo = computed(() => (teleportDisabled.value ? 'body' : (props.toolbarTeleportTarget || 'body')))
+
+const toolbarWrapperClass = computed(() => {
+  const base =
+    'z-20 flex items-center gap-1 border-border/40 bg-background/95 p-1.5 shadow-sm backdrop-blur-md transition-all duration-200 supports-[backdrop-filter]:bg-background/80 overflow-x-auto no-scrollbar mask-gradient-right'
+
+  if (!teleportDisabled.value) {
+    return `w-full ${base} rounded-lg border`
+  }
+
+  return `sticky top-0 mx-0 sm:mx-2 md:mx-4 mt-0 sm:mt-1 md:mt-2 mb-2 md:mb-4 rounded-none sm:rounded-lg md:rounded-xl border-y sm:border ${base}`
+})
+
+watch(
+  () => props.toolbarTeleportTarget,
+  async () => {
+    await nextTick()
+    refreshTeleportTarget()
+  },
+  { flush: 'post' }
+)
+
+onMounted(async () => {
+  await nextTick()
+  refreshTeleportTarget()
+
+  if (
+    !teleportTargetExists.value &&
+    props.toolbarTeleportTarget &&
+    typeof MutationObserver !== 'undefined' &&
+    typeof document !== 'undefined' &&
+    document.body
+  ) {
+    stopTeleportObserver()
+    teleportObserver = new MutationObserver(() => {
+      refreshTeleportTarget()
+      if (teleportTargetExists.value) {
+        stopTeleportObserver()
+      }
+    })
+
+    teleportObserver.observe(document.body, { childList: true, subtree: true })
+  }
+})
 const toggleUnderline = () => editor.value?.chain().focus().toggleUnderline().run()
 const toggleHeading1 = () => editor.value?.chain().focus().toggleHeading({ level: 1 }).run()
 const toggleHeading2 = () => editor.value?.chain().focus().toggleHeading({ level: 2 }).run()
@@ -1056,25 +1134,25 @@ defineExpose({
 })
 </script>
 
-<template>
-  <div class="relative flex flex-col w-full h-full group bg-background">
-    <!-- Floating Toolbar - Responsive & Scrollable -->
-    <div v-if="showToolbar && !readonly"
-      class="sticky top-0 z-20 mx-0 sm:mx-2 md:mx-4 mt-0 sm:mt-1 md:mt-2 mb-2 md:mb-4 flex items-center gap-1 rounded-none sm:rounded-lg md:rounded-xl border-y sm:border border-border/40 bg-background/95 p-1.5 shadow-sm backdrop-blur-md transition-all duration-200 supports-[backdrop-filter]:bg-background/80 overflow-x-auto no-scrollbar mask-gradient-right">
+	<template>
+	  <div class="relative flex flex-col w-full h-full group bg-background">
+	    <!-- Floating Toolbar - Responsive & Scrollable -->
+			    <Teleport v-if="showToolbar && !readonly" :to="teleportTo" :disabled="teleportDisabled">
+		      <div :class="toolbarWrapperClass">
 
-      <!-- History Controls -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-          @click="undo" :disabled="!editor?.can().undo()">
-          <Undo class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-          @click="redo" :disabled="!editor?.can().redo()">
-          <Redo class="h-4 w-4" />
-        </Button>
-      </div>
+	        <!-- History Controls -->
+	        <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
+	          <Button variant="ghost" size="icon"
+	            class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+	            @click="undo" :disabled="!editor?.can().undo()">
+	            <Undo class="h-4 w-4" />
+	          </Button>
+	          <Button variant="ghost" size="icon"
+	            class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+	            @click="redo" :disabled="!editor?.can().redo()">
+	            <Redo class="h-4 w-4" />
+	          </Button>
+	        </div>
 
       <!-- Text Style -->
       <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
@@ -1211,6 +1289,13 @@ defineExpose({
       <div class="flex items-center gap-0.5 flex-shrink-0">
         <Button variant="ghost" size="icon"
           class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+          title="Insert Mermaid diagram (Ctrl/Cmd+Alt+M)"
+          @click="insertMermaidDiagram">
+          <span class="text-[11px] font-semibold">M</span>
+        </Button>
+
+        <Button variant="ghost" size="icon"
+          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
           :class="{ 'bg-primary/10 text-primary': editor?.isActive('link') }" @click="openLinkDialog">
           <LinkIcon class="h-4 w-4" />
         </Button>
@@ -1250,12 +1335,13 @@ defineExpose({
           :class="{ 'bg-primary/10 text-primary': editor?.getAttributes('textStyle').color }" @click="openColorDialog">
           <Palette class="h-4 w-4" />
         </Button>
-      </div>
-    </div>
+		      </div>
+	      </div>
+		    </Teleport>
 
-    <!-- Editor Content -->
-    <div class="relative flex-1 min-h-0">
-      <EditorContent :editor="editor" class="h-full w-full outline-none" />
+	    <!-- Editor Content -->
+	    <div class="relative flex-1 min-h-0">
+	      <EditorContent :editor="editor" class="h-full w-full outline-none" />
 
       <!-- AI Generation Overlay -->
       <div v-if="isGenerating"

@@ -32,6 +32,8 @@ interface Props {
   isLoadingGuidance: boolean
   chapterContent: string
   showCitationHelper: boolean
+  ensureBalance?: (requiredWords: number, action: string) => boolean
+  onUsage?: (wordsUsed: number, description: string) => void | Promise<void>
 }
 
 const props = defineProps<Props>()
@@ -204,7 +206,10 @@ const handleInsertCitation = (citation: string) => emit('insertCitation', citati
                 :project-slug="project.slug"
                 :chapter-number="currentChapter.chapter_number"
                 :selected-text="selectedText"
+                :chapter-content="chapterContent"
                 :is-processing="isAnalyzing || isSaving"
+                :ensure-balance="ensureBalance"
+                :on-usage="onUsage"
                 @text-improved="$emit('textImproved', $event)"
                 @text-expanded="$emit('textExpanded', $event)"
                 @citations-suggested="$emit('citationsSuggested', $event)"

@@ -250,6 +250,8 @@ import {
 import mermaid from 'mermaid'
 
 let mermaidInitialized = false
+let mermaidThemeKey: string | null = null
+let themeObserver: MutationObserver | null = null
 
 const props = defineProps({
   node: {
@@ -349,30 +351,19 @@ const diagramTypeBadgeClass = computed(() => {
 // This avoids re-initializing on theme toggle (which caused flicker) while still
 // allowing the rendered SVG to adapt via `var(--*)`.
 const initMermaid = () => {
-  if (mermaidInitialized) return
+  const themeVariables = getMermaidThemeVariables()
+  const nextThemeKey = JSON.stringify(themeVariables)
+  if (mermaidInitialized && mermaidThemeKey === nextThemeKey) return
+
   mermaidInitialized = true
+  mermaidThemeKey = nextThemeKey
 
   mermaid.initialize({
     startOnLoad: false,
     theme: 'base',
     securityLevel: 'loose',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-    themeVariables: {
-      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-      background: 'hsl(var(--background))',
-      textColor: 'hsl(var(--foreground))',
-      mainBkg: 'hsl(var(--card))',
-      lineColor: 'hsl(var(--border))',
-      nodeBorder: 'hsl(var(--border))',
-      clusterBkg: 'hsl(var(--muted))',
-      clusterBorder: 'hsl(var(--border))',
-      titleColor: 'hsl(var(--foreground))',
-      primaryColor: 'hsl(var(--primary))',
-      primaryTextColor: 'hsl(var(--primary-foreground))',
-      secondaryColor: 'hsl(var(--secondary))',
-      tertiaryColor: 'hsl(var(--muted))',
-      edgeLabelBackground: 'hsl(var(--background))',
-    },
+    themeVariables,
     flowchart: {
       useMaxWidth: true,
       htmlLabels: true,
@@ -388,8 +379,53 @@ const initMermaid = () => {
   })
 }
 
+const resolveCssColor = (cssColor: string): string => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return cssColor
+  if (!document.body) return cssColor
+
+  const el = document.createElement('span')
+  el.style.color = cssColor
+  el.style.position = 'absolute'
+  el.style.left = '-9999px'
+  el.style.top = '-9999px'
+  document.body.appendChild(el)
+  const resolved = window.getComputedStyle(el).color
+  document.body.removeChild(el)
+  return resolved || cssColor
+}
+
+const getMermaidThemeVariables = () => {
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+
+  // Mermaid does not understand CSS variables inside color functions (e.g. `hsl(var(--primary))`).
+  // Resolve them to computed RGB strings so Mermaid's color parser can handle them.
+  //
+  // Additionally, shadcn-style themes often set `--primary` to a near-white color in dark mode
+  // (for button contrast). Mermaid uses `mainBkg`/`textColor`/`nodeTextColor` for flowchart nodes,
+  // so we choose stable surface colors for nodes to keep labels readable in both themes.
+  return {
+    fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+    background: resolveCssColor('hsl(var(--background))'),
+    textColor: resolveCssColor('hsl(var(--foreground))'),
+    nodeTextColor: resolveCssColor('hsl(var(--foreground))'),
+    mainBkg: isDark ? resolveCssColor('hsl(var(--muted))') : resolveCssColor('hsl(var(--card))'),
+    lineColor: resolveCssColor('hsl(var(--border))'),
+    nodeBorder: resolveCssColor('hsl(var(--border))'),
+    clusterBkg: isDark ? resolveCssColor('hsl(var(--background))') : resolveCssColor('hsl(var(--muted))'),
+    clusterBorder: resolveCssColor('hsl(var(--border))'),
+    titleColor: resolveCssColor('hsl(var(--foreground))'),
+    primaryColor: resolveCssColor('hsl(var(--primary))'),
+    primaryTextColor: resolveCssColor('hsl(var(--primary-foreground))'),
+    secondaryColor: resolveCssColor('hsl(var(--secondary))'),
+    tertiaryColor: resolveCssColor('hsl(var(--muted))'),
+    edgeLabelBackground: resolveCssColor('hsl(var(--background))'),
+  }
+}
+
 // Render the mermaid diagram
 const renderDiagram = async () => {
+  initMermaid()
+
   if (!localCode.value.trim()) {
     hasError.value = true
     errorMessage.value = 'No diagram code provided'
@@ -764,11 +800,47 @@ onMounted(() => {
   if (!isCodeView.value) {
     renderDiagram()
   }
+
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    let rerenderTimer: ReturnType<typeof setTimeout> | null = null
+    let lastIsDark = document.documentElement.classList.contains('dark')
+
+    const scheduleRerender = () => {
+      if (rerenderTimer) clearTimeout(rerenderTimer)
+      rerenderTimer = setTimeout(() => {
+        if (!isCodeView.value) {
+          renderDiagram()
+        }
+      }, 50)
+    }
+
+    themeObserver = new MutationObserver((mutations) => {
+      // Only react to actual dark-mode toggles to avoid unnecessary work and
+      // ensure we never interfere with other html class changes.
+      for (const mutation of mutations) {
+        if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') continue
+        const isDarkNow = document.documentElement.classList.contains('dark')
+        if (isDarkNow !== lastIsDark) {
+          lastIsDark = isDarkNow
+          scheduleRerender()
+        }
+      }
+    })
+
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+  }
 })
 
 onUnmounted(() => {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
+  }
+  if (themeObserver) {
+    themeObserver.disconnect()
+    themeObserver = null
   }
 })
 </script>
