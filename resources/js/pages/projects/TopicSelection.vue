@@ -12,6 +12,7 @@ import { router } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle, FileText, GraduationCap, Lightbulb, Loader2, MessageSquare, RefreshCw, School } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
+import { route } from 'ziggy-js';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue';
 import PurchaseModal from '@/components/PurchaseModal.vue';
