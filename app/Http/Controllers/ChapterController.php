@@ -758,6 +758,90 @@ class ChapterController extends Controller
     }
 
     /**
+     * CHAPTER AI GENERATION EDITOR (AUTO MODE)
+     * Clean editor surface to migrate generation UI incrementally.
+     */
+    public function aiGenerate(Project $project, int $chapterNumber)
+    {
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        // Redirect to manual editor for manual mode projects
+        if ($project->mode === 'manual') {
+            $chapter = Chapter::firstOrCreate([
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+            ], [
+                'title' => $this->getDefaultChapterTitle($chapterNumber),
+                'content' => '',
+                'word_count' => 0,
+                'target_word_count' => $this->getChapterWordCount($project, $chapterNumber),
+                'status' => 'draft',
+            ]);
+
+            return redirect()->route('projects.manual-editor.show', [
+                'project' => $project->slug,
+                'chapter' => $chapter->id,
+            ]);
+        }
+
+        $chapter = Chapter::firstOrCreate([
+            'project_id' => $project->id,
+            'chapter_number' => $chapterNumber,
+        ], [
+            'title' => $this->getDefaultChapterTitle($chapterNumber),
+            'content' => '',
+            'word_count' => 0,
+            'target_word_count' => $this->getChapterWordCount($project, $chapterNumber),
+            'status' => 'draft',
+        ]);
+
+        $allChapters = $project->chapters()->orderBy('chapter_number')->get();
+        $outlines = $project->load(['outlines.sections'])->outlines->map(function ($outline) {
+            return [
+                'id' => $outline->id,
+                'chapter_number' => $outline->chapter_number,
+                'chapter_title' => $outline->chapter_title,
+                'target_word_count' => $outline->target_word_count,
+                'completion_threshold' => $outline->completion_threshold,
+                'description' => $outline->description,
+                'sections' => $outline->sections->map(function ($section) {
+                    return [
+                        'id' => $section->id,
+                        'section_number' => $section->section_number,
+                        'section_title' => $section->section_title,
+                        'section_description' => $section->section_description,
+                        'target_word_count' => $section->target_word_count,
+                        'current_word_count' => $section->current_word_count,
+                        'is_completed' => $section->is_completed,
+                        'is_required' => $section->is_required,
+                    ];
+                }),
+            ];
+        });
+
+        return Inertia::render('projects/ChapterAIGenerationEditor', [
+            'project' => [
+                'id' => $project->id,
+                'slug' => $project->slug,
+                'title' => $project->title,
+                'topic' => $project->topic,
+                'type' => $project->type,
+                'status' => $project->status,
+                'mode' => $project->mode,
+                'field_of_study' => $project->field_of_study,
+                'university' => $project->universityRelation?->name,
+                'course' => $project->course,
+                'outlines' => $outlines,
+            ],
+            'chapter' => $chapter,
+            'allChapters' => $allChapters,
+            'facultyChapters' => $this->facultyStructureService->getChapterStructure($project),
+            'mode' => 'edit',
+        ]);
+    }
+
+    /**
      * SAVE CHAPTER CONTENT
      * Auto-save functionality for both auto and manual modes
      */

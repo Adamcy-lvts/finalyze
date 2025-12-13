@@ -1,12 +1,12 @@
 import '../css/app.css';
-import 'vue-sonner/style.css';
+// import 'vue-sonner/style.css';
 
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from 'ziggy-js';
-import { initializeTheme } from './composables/useAppearance';
+import { initializeTheme } from '@/composables/useAppearance';
 import axios from 'axios';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
@@ -74,19 +74,68 @@ function updateCsrfToken(token?: string) {
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
+// createInertiaApp({
+//     title: (title) => (title ? `${title} - ${appName}` : appName),
+//     resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>('./pages/**/*.vue')),
+//     setup({ el, App, props, plugin }) {
+//         updateCsrfToken((props.initialPage.props as any)?.csrf_token);
+
+//         router.on('navigate', (event) => {
+//             updateCsrfToken((event.detail.page.props as any)?.csrf_token);
+//         });
+
+//         // Apply theme as early as possible during initial mount.
+//         initializeTheme();
+
+//         // Re-apply theme after each Inertia navigation to avoid stale DOM theme state.
+//         router.on('finish', () => {
+//             initializeTheme();
+//         });
+
+//         createApp({ render: () => h(App, props) })
+//             .use(plugin)
+//             .use(ZiggyVue)
+//             .mount(el);
+//     },
+//     progress: {
+//         color: '#4B5563',
+//     },
+// });
+
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
-    resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>('./pages/**/*.vue')),
+    resolve: (name) =>
+        resolvePageComponent(
+            `./pages/${name}.vue`,
+            import.meta.glob<DefineComponent>('./pages/**/*.vue'),
+        ),
     setup({ el, App, props, plugin }) {
+        // Set up Ziggy routes globally for direct imports
+        const ziggyConfig = (props.initialPage.props as any).ziggy;
+        if (typeof window !== 'undefined') {
+            (window as any).Ziggy = ziggyConfig;
+        }
+
         updateCsrfToken((props.initialPage.props as any)?.csrf_token);
 
         router.on('navigate', (event) => {
             updateCsrfToken((event.detail.page.props as any)?.csrf_token);
+            // Update Ziggy routes on navigation
+            const newZiggyConfig = (event.detail.page.props as any)?.ziggy;
+            if (newZiggyConfig && typeof window !== 'undefined') {
+                (window as any).Ziggy = newZiggyConfig;
+            }
         });
+
+        // Re-apply theme after each Inertia navigation to avoid stale DOM theme state
+        router.on('finish', () => {
+            initializeTheme();
+        });
+
 
         createApp({ render: () => h(App, props) })
             .use(plugin)
-            .use(ZiggyVue)
+            .use(ZiggyVue, ziggyConfig)
             .mount(el);
     },
     progress: {

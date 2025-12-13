@@ -746,18 +746,18 @@ const stopGeneration = () => {
 
 :deep(.chat-message-ai strong) {
     font-weight: 600;
-    color: hsl(var(--foreground));
+    color: var(--foreground);
 }
 
 :deep(.chat-message-ai em) {
     font-style: italic;
-    color: hsl(var(--muted-foreground));
+    color: var(--muted-foreground);
 }
 
 :deep(.chat-message-ai code) {
     font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
     font-size: 0.8rem;
-    background: hsl(var(--muted));
+    background: var(--muted);
     padding: 0.125rem 0.25rem;
     border-radius: 0.25rem;
     font-weight: 500;
@@ -825,18 +825,16 @@ const stopGeneration = () => {
     font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif !important;
     font-size: 0.875rem !important;
     font-weight: 400 !important;
-    color: hsl(var(--muted-foreground)) !important;
+    color: var(--muted-foreground) !important;
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-    :deep(.chat-message-ai) {
-        color: hsl(var(--foreground));
-    }
+/* Dark mode adjustments (follow app theme, not OS preference) */
+:global(html.dark) :deep(.chat-message-ai) {
+    color: var(--foreground);
+}
 
-    :deep(.chat-message-user) {
-        color: hsl(var(--primary-foreground));
-    }
+:global(html.dark) :deep(.chat-message-user) {
+    color: var(--primary-foreground);
 }
 
 /* Smooth Transitions for Chat Mode Changes */

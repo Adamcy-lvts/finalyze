@@ -1,36 +1,38 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}"  @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
+         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        {{-- Inline script to detect stored preference and apply it immediately (before styles load) --}}
+        {{-- Critical: Apply theme BEFORE any content renders to prevent flash --}}
         <script>
             (function() {
-                const fromServer = '{{ $appearance ?? "system" }}';
-
-                const getCookie = (name) => {
-                    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-                    return match ? match[2] : null;
-                };
-
-                const stored = (() => {
-                    try {
-                        return localStorage.getItem('appearance');
-                    } catch (e) {
-                        return null;
-                    }
-                })();
-
-                const cookieAppearance = getCookie('appearance');
-                const appearance = stored || cookieAppearance || fromServer || 'system';
-
-                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                const resolved = appearance === 'system' ? (prefersDark ? 'dark' : 'light') : appearance;
-
-                document.documentElement.classList.toggle('dark', resolved === 'dark');
-                document.documentElement.style.colorScheme = resolved === 'dark' ? 'dark' : 'light';
+                // Priority: localStorage (client preference) > cookie (SSR) > system
+                const stored = localStorage.getItem('appearance');
+                const serverAppearance = '{{ $appearance ?? "system" }}';
+                const appearance = stored || serverAppearance;
+                
+                let shouldBeDark = false;
+                
+                if (appearance === 'dark') {
+                    shouldBeDark = true;
+                } else if (appearance === 'system' || !appearance) {
+                    shouldBeDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                }
+                // 'light' = false, already set
+                
+                // Apply or remove dark class synchronously
+                if (shouldBeDark) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+                
+                // Sync localStorage if it differs from what we applied
+                if (!stored && serverAppearance) {
+                    localStorage.setItem('appearance', serverAppearance);
+                }
             })();
         </script>
 
@@ -51,11 +53,9 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
 
-        @routes
         @vite(['resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead
         <script src="https://js.paystack.co/v1/inline.js"></script>

@@ -311,7 +311,7 @@ watch(
                         <!-- Generation Controls -->
                         <div class="space-y-3">
                             <!-- Analyze / Start Button -->
-                            <Button v-if="shouldShowAnalyzeButton" @click="analyzeChapter"
+                            <!-- <Button v-if="shouldShowAnalyzeButton" @click="analyzeChapter"
                                 :disabled="isGenerating || isLoadingAISuggestions"
                                 class="w-full h-auto flex-col gap-1.5 p-4 rounded-xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/10 hover:border-primary/30 text-primary hover:from-primary/15 transition-all duration-300 shadow-sm">
                                 <div class="flex items-center gap-2">
@@ -324,7 +324,7 @@ watch(
                                 <span class="text-[10px] opacity-70 font-normal">
                                     {{ isEmptyChapter ? 'Get AI suggestions to begin' : 'Generate next steps & suggestions' }}
                                 </span>
-                            </Button>
+                            </Button> -->
 
                             <!-- Next Section Generator -->
                             <Transition enter-active-class="transition-all duration-300 ease-out"
@@ -355,7 +355,7 @@ watch(
                                             </div>
                                             <div class="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
                                                 {{ aiChapterAnalysis?.section.description ||
-                                                getSectionInfo(nextSection).description }}
+                                                    getSectionInfo(nextSection).description }}
                                             </div>
                                         </div>
                                     </Button>

@@ -249,6 +249,8 @@ import {
 } from 'lucide-vue-next'
 import mermaid from 'mermaid'
 
+let mermaidInitialized = false
+
 const props = defineProps({
   node: {
     type: Object,
@@ -343,13 +345,34 @@ const diagramTypeBadgeClass = computed(() => {
   return 'bg-primary/10 text-primary'
 })
 
-// Initialize mermaid with proper configuration
+// Initialize mermaid once with theme variables that follow the app's CSS variables.
+// This avoids re-initializing on theme toggle (which caused flicker) while still
+// allowing the rendered SVG to adapt via `var(--*)`.
 const initMermaid = () => {
+  if (mermaidInitialized) return
+  mermaidInitialized = true
+
   mermaid.initialize({
     startOnLoad: false,
-    theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
+    theme: 'base',
     securityLevel: 'loose',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+    themeVariables: {
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      background: 'hsl(var(--background))',
+      textColor: 'hsl(var(--foreground))',
+      mainBkg: 'hsl(var(--card))',
+      lineColor: 'hsl(var(--border))',
+      nodeBorder: 'hsl(var(--border))',
+      clusterBkg: 'hsl(var(--muted))',
+      clusterBorder: 'hsl(var(--border))',
+      titleColor: 'hsl(var(--foreground))',
+      primaryColor: 'hsl(var(--primary))',
+      primaryTextColor: 'hsl(var(--primary-foreground))',
+      secondaryColor: 'hsl(var(--secondary))',
+      tertiaryColor: 'hsl(var(--muted))',
+      edgeLabelBackground: 'hsl(var(--background))',
+    },
     flowchart: {
       useMaxWidth: true,
       htmlLabels: true,
@@ -388,7 +411,7 @@ const renderDiagram = async () => {
     const id = `mermaid-${Date.now()}-${currentRender}`
 
     // Render the diagram
-    const { svg } = await mermaid.render(id, localCode.value)
+    const { svg } = await mermaid.render(id, localCode.value, diagramContainer.value ?? undefined)
 
     // Only update if this is still the latest render request
     if (currentRender === renderCounter.value) {
@@ -730,8 +753,9 @@ watch(
   }
 )
 
-// Watch for dark mode changes
-const darkModeObserver = ref<MutationObserver | null>(null)
+// NOTE: We intentionally do NOT observe dark mode class changes here.
+// Mermaid is configured with CSS-variable based theme variables, so the SVG
+// adapts automatically without re-initialization.
 
 onMounted(() => {
   initMermaid()
@@ -740,31 +764,11 @@ onMounted(() => {
   if (!isCodeView.value) {
     renderDiagram()
   }
-
-  // Watch for dark mode changes
-  darkModeObserver.value = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.attributeName === 'class') {
-        initMermaid()
-        if (!isCodeView.value) {
-          renderDiagram()
-        }
-      }
-    })
-  })
-
-  darkModeObserver.value.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class'],
-  })
 })
 
 onUnmounted(() => {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
-  }
-  if (darkModeObserver.value) {
-    darkModeObserver.value.disconnect()
   }
 })
 </script>
@@ -797,12 +801,4 @@ textarea {
   user-select: text;
 }
 
-/* Dark mode styles for mermaid diagrams */
-:global(.dark) .mermaid-diagram :deep(svg) {
-  filter: invert(0.9) hue-rotate(180deg);
-}
-
-:global(.dark) .mermaid-diagram :deep(svg text) {
-  filter: invert(1) hue-rotate(180deg);
-}
 </style>

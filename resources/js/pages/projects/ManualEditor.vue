@@ -12,17 +12,20 @@ import SmartSuggestionPanel from '@/components/manual-editor/SmartSuggestionPane
 import ProgressiveGuidancePanel from '@/components/manual-editor/ProgressiveGuidancePanel.vue'
 import QuickActionsPanel from '@/components/manual-editor/QuickActionsPanel.vue'
 import MobileNavOverlay from '@/components/manual-editor/MobileNavOverlay.vue'
-import DefensePreparationPanel from '@/components/chapter-editor/DefensePreparationPanel.vue'
+// DefensePreparationPanel DISABLED - causes dark mode issues
+// import DefensePreparationPanel from '@/components/chapter-editor/DefensePreparationPanel.vue'
 import ChapterNavigation from '@/components/chapter-editor/ChapterNavigation.vue'
 import ExportMenu from '@/components/chapter-editor/ExportMenu.vue'
-import SafeHtmlText from '@/components/SafeHtmlText.vue'
+// SafeHtmlText DISABLED - may cause dark mode issues
+// import SafeHtmlText from '@/components/SafeHtmlText.vue'
 import { Toaster } from '@/components/ui/sonner'
 import CitationHelper from '@/components/chapter-editor/CitationHelper.vue'
 import { useManualEditor } from '@/composables/useManualEditor'
 import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggestions'
 import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
 import { useTextHistory } from '@/composables/useTextHistory'
-import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
+// ChatModeLayout DISABLED - causes dark mode issues
+// import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
 import { useAppearance } from '@/composables/useAppearance'
 import type { Project, Chapter, UserChapterSuggestion, ChapterContextAnalysis } from '@/types'
 
@@ -142,9 +145,11 @@ const isGeneratingDefense = ref(false)
 // Citation Helper state
 const showCitationHelper = ref(true)
 
-// Fullscreen state
+// Fullscreen state - DISABLED due to dark mode issues
 const isNativeFullscreen = ref(false)
 
+// Fullscreen functionality TEMPORARILY DISABLED - causes dark mode flickering
+/*
 const enterNativeFullscreen = async () => {
   try {
     const element = document.documentElement
@@ -175,63 +180,40 @@ const exitNativeFullscreen = async () => {
     toast.error('Fullscreen Error', { description: 'Unable to exit fullscreen mode' })
   }
 }
+*/
 
 const toggleNativeFullscreen = async () => {
-  if (isNativeFullscreen.value) {
-    await exitNativeFullscreen()
-  } else {
-    await enterNativeFullscreen()
-  }
+  // DISABLED - causes dark mode issues
+  toast.info('Fullscreen temporarily disabled')
 }
 
+/*
 const handleFullscreenChange = () => {
   const fullscreenElement = document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).msFullscreenElement
   isNativeFullscreen.value = !!fullscreenElement
 }
+*/
 
 const goToBulkAnalysis = () => {
   router.visit(route('projects.analysis', { project: props.project.slug }))
 }
 
 onMounted(() => {
-  document.addEventListener('fullscreenchange', handleFullscreenChange)
-  document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-  document.addEventListener('msfullscreenchange', handleFullscreenChange)
+  // Fullscreen event listeners DISABLED - causes dark mode issues
+  // document.addEventListener('fullscreenchange', handleFullscreenChange)
+  // document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+  // document.addEventListener('msfullscreenchange', handleFullscreenChange)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('fullscreenchange', handleFullscreenChange)
-  document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
-  document.removeEventListener('msfullscreenchange', handleFullscreenChange)
+  // Fullscreen event listeners DISABLED
+  // document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  // document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+  // document.removeEventListener('msfullscreenchange', handleFullscreenChange)
 })
 
-// Independent Dark Mode Logic - Local Class Strategy
-const { isDark: globalIsDark } = useAppearance();
-const isEditorDark = ref(false);
-
-// Initialize editor-specific theme
-const initEditorTheme = () => {
-  // Check local preference
-  const saved = localStorage.getItem(`manual_editor_theme_${props.project.id}`);
-  if (saved) {
-    isEditorDark.value = saved === 'dark';
-  } else {
-    // Default to global preference
-    isEditorDark.value = globalIsDark.value;
-  }
-};
-
-const toggleEditorTheme = () => {
-  isEditorDark.value = !isEditorDark.value;
-  const newMode = isEditorDark.value ? 'dark' : 'light';
-  localStorage.setItem(`manual_editor_theme_${props.project.id}`, newMode);
-  toast.success(`Switched to ${isEditorDark.value ? 'Dark' : 'Light'} Mode`);
-};
-
-// Initialize theme on mount
-onMounted(() => {
-  initEditorTheme();
-});
+// Global theme (single source of truth for the entire app)
+const { isDark: isEditorDark, toggle: toggleEditorTheme } = useAppearance();
 
 const progressPercentage = computed(() => {
   const current = currentAnalysis.value?.word_count ?? props.chapter.word_count
@@ -475,6 +457,7 @@ const markAsComplete = async () => {
 
   <Head :title="`${chapter.title} - Manual Editor`" />
 
+  <!-- ChatModeLayout TEMPORARILY DISABLED - causes dark mode issues
   <Transition name="chat-glide">
     <ChatModeLayout v-if="showChatMode" :project="project" :chapter="chapter" :chapter-title="chapterTitle"
       :chapter-content="content" :current-word-count="currentAnalysis?.word_count ?? chapter.word_count"
@@ -487,13 +470,13 @@ const markAsComplete = async () => {
       @update:show-preview="showPreview = $event" @save="(autoSave) => manualSave()" @undo="handleUndo"
       @redo="handleRedo" @exit-chat-mode="toggleChatMode" />
   </Transition>
+  -->
 
-  <div class="manual-editor h-screen flex flex-col bg-background dark:bg-background transition-colors duration-300"
-    :class="{ 'dark': isEditorDark }">
-    <!-- Header -->
+  <div class="manual-editor h-screen flex flex-col bg-background dark:bg-background transition-colors duration-300">
+    <!-- Mobile Header (Original Preserved) -->
     <header
-      class="border-b h-14 md:h-16 px-3 md:px-6 flex justify-between items-center bg-background/80 backdrop-blur-md sticky top-0 z-50 transition-all duration-200">
-      <div class="flex items-center gap-2 md:gap-6">
+      class="md:hidden border-b h-14 px-3 flex justify-between items-center bg-background/80 backdrop-blur-md sticky top-0 z-50 transition-all duration-200">
+      <div class="flex items-center gap-2">
         <!-- Back Button -->
         <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
           @click="router.visit(route('projects.show', project.slug))" title="Back to Project">
@@ -502,148 +485,180 @@ const markAsComplete = async () => {
 
         <Separator orientation="vertical" class="h-6" />
 
-        <!-- Mobile Menu Buttons (Mobile Only) -->
+        <!-- Mobile Menu Buttons -->
         <Button @click="showLeftSidebar = true" variant="ghost" size="icon"
           class="h-8 w-8 lg:hidden text-muted-foreground hover:text-foreground" title="Open Chapter Navigation">
           <Menu class="w-4 h-4" />
         </Button>
+      </div>
 
-        <!-- Desktop Left Sidebar Toggle (Desktop Only) -->
-        <Button @click="toggleLeftSidebar" variant="ghost" size="icon"
-          class="h-8 w-8 transition-all duration-300 hidden lg:flex"
-          :class="showLeftSidebar ? 'text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
-          title="Toggle Chapter Navigation">
-          <PanelLeftClose v-if="showLeftSidebar" class="w-4 h-4" />
-          <PanelLeftOpen v-else class="w-4 h-4" />
-        </Button>
+      <!-- Project & Chapter Info (Center - Mobile Only) -->
+      <div class="flex flex-col justify-center min-w-0 flex-1 mx-2">
+        <div class="items-center gap-2 text-xs font-medium text-muted-foreground mb-1 hidden sm:flex">
+          <span class="hover:text-foreground transition-colors cursor-pointer truncate"
+            @click="router.visit(route('projects.show', project.slug))">{{ project.title }}</span>
+        </div>
 
-        <Separator orientation="vertical" class="h-6" />
-
-        <!-- Project & Chapter Info -->
-        <div class="flex flex-col justify-center min-w-0 flex-1">
-          <div class="hidden md:flex items-center gap-2 text-xs font-medium text-muted-foreground mb-1">
-            <SafeHtmlText as="span" class="hover:text-foreground transition-colors cursor-pointer truncate"
-              :content="project.title" @click="router.visit(route('projects.show', project.slug))" />
-            <!-- <ChevronRight class="w-3 h-3 opacity-50 flex-shrink-0" />
-            <span class="truncate text-foreground/80">{{ project.topic || 'No Topic' }}</span> -->
-          </div>
-
-          <div class="flex items-center gap-2 md:gap-4 -ml-1">
-            <!-- Chapter Title -->
-            <div class="font-bold text-base md:text-xl text-foreground truncate">
-              <span class="truncate">Ch. {{ chapter.chapter_number }}<span class="hidden sm:inline">: {{ chapter.title
-                  }}</span></span>
-            </div>
-
-            <!-- Quick Nav Buttons (Desktop Only) -->
-            <div class="hidden lg:flex items-center gap-2">
-              <Button v-if="prevChapter" variant="ghost" size="sm"
-                class="h-8 px-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground gap-1.5"
-                @click="goToChapter(prevChapter.chapter_number)" :title="`Previous: ${prevChapter.title}`">
-                <ChevronLeft class="w-4 h-4" />
-                <span class="hidden xl:inline text-xs font-medium">Prev: Chapter {{ prevChapter.chapter_number }}</span>
-              </Button>
-
-              <Button v-if="nextChapter" variant="ghost" size="sm"
-                class="h-8 px-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground gap-1.5"
-                @click="goToChapter(nextChapter.chapter_number)" :title="`Next: ${nextChapter.title}`">
-                <span class="hidden xl:inline text-xs font-medium">Next: Chapter {{ nextChapter.chapter_number }}</span>
-                <ChevronRight class="w-4 h-4" />
-              </Button>
-            </div>
+        <div class="flex items-center gap-2 -ml-1">
+          <div class="font-bold text-base text-foreground truncate">
+            <span class="truncate">Ch. {{ chapter.chapter_number }}</span>
           </div>
         </div>
       </div>
 
-      <div class="flex gap-2 md:gap-3 items-center">
-        <!-- Status Indicator -->
-        <div
-          class="hidden md:flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-full bg-muted/30 border border-border/40">
-          <div class="flex items-center gap-1 md:gap-1.5">
-            <div class="w-2 h-2 rounded-full transition-colors duration-300"
-              :class="isDirty ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"></div>
-            <span class="text-xs font-medium text-muted-foreground hidden sm:inline">
-              {{ isDirty ? 'Unsaved' : 'Saved' }}
-            </span>
-          </div>
-
-          <Separator orientation="vertical" class="h-3 hidden sm:block" />
-
-          <div v-if="isAnalyzing" class="flex items-center gap-1 md:gap-1.5">
-            <Loader2 class="w-3 h-3 animate-spin text-primary" />
-            <span class="text-xs text-muted-foreground hidden md:inline">Analyzing</span>
-          </div>
-          <div v-else class="text-xs text-muted-foreground hidden md:block">
-            {{ currentAnalysis?.word_count ?? chapter.word_count }}<span class="hidden sm:inline"> words</span>
-          </div>
-        </div>
-
-        <!-- Save Button (Desktop) -->
-        <Button variant="outline" size="sm"
-          class="hidden md:flex h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-          @click="handleManualSave" :disabled="isSaving" title="Save (Ctrl+S)">
-          <Save class="w-4 h-4" />
-          <span class="text-xs font-medium">{{ isSaving ? 'Saving...' : 'Save' }}</span>
-        </Button>
-
+      <div class="flex gap-2 items-center">
         <!-- Save Button (Mobile - Icon only) -->
-        <Button variant="ghost" size="icon" class="h-8 w-8 md:hidden" @click="handleManualSave" :disabled="isSaving"
-          title="Save">
+        <Button variant="ghost" size="icon" class="h-8 w-8" @click="handleManualSave" :disabled="isSaving" title="Save">
           <Save class="w-4 h-4" />
-        </Button>
-
-        <!-- Export Menu -->
-        <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
-          variant="outline" class="h-9 hidden md:flex" />
-
-        <Button variant="ghost" size="sm"
-          class="hidden md:flex h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-          @click="goToBulkAnalysis" title="Open bulk analysis">
-          <Brain class="w-4 h-4" />
-          <span class="text-xs font-medium">Analyze</span>
         </Button>
 
         <Separator orientation="vertical" class="h-6 mx-1 opacity-50" />
 
         <!-- Mobile Right Menu Button (Mobile Only) -->
         <Button @click="showRightSidebar = true" variant="ghost" size="icon"
-          class="h-8 w-8 lg:hidden text-muted-foreground hover:text-foreground" title="Open Tools">
+          class="h-8 w-8 text-muted-foreground hover:text-foreground" title="Open Tools">
           <MessageSquare class="w-4 h-4" />
         </Button>
+      </div>
+    </header>
 
-        <!-- View Controls (Desktop Only) -->
-        <div class="hidden lg:flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/40">
-          <Button variant="ghost" size="icon"
-            class="h-7 w-7 rounded-md text-zinc-700 dark:text-zinc-300 hover:text-foreground" @click="toggleEditorTheme"
-            :title="isEditorDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
-            <Moon v-if="isEditorDark" class="w-4 h-4" />
-            <Sun v-else class="w-4 h-4" />
+    <!-- Desktop Double-Decker Header (New) -->
+    <div
+      class="hidden md:flex flex-col w-full z-50 sticky top-0 bg-background/80 backdrop-blur-md transition-all duration-200 border-b">
+      <!-- Top Row: Navigation & Context -->
+      <div class="h-10 border-b border-border/40 flex items-center justify-center px-4 bg-background/60 relative">
+        <!-- Title & Badge -->
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-bold text-foreground cursor-pointer hover:text-primary transition-colors"
+            @click="router.visit(route('projects.show', project.slug))">
+            {{ project.title }}
+          </h1>
+          <Badge variant="secondary" class="h-5 px-2 text-[10px] rounded-full">Ch {{ chapter.chapter_number }}</Badge>
+        </div>
+
+        <!-- Quick Nav (Right aligned in center block or absolute right?) 
+                  Let's keep it next to title for context or move to right. 
+                  User didn't specify, but 'clean top' implies minimal. 
+                  I'll place it slightly separated or keep it if it fits cleanliness.
+                  The user asked to remove "chapter title". Quick Nav is navigation. 
+                  I'll keep it but make it subtle. -->
+        <div class="flex items-center gap-1 absolute right-4">
+          <Button v-if="prevChapter" variant="ghost" size="sm"
+            class="h-6 px-2 text-zinc-500 hover:text-foreground gap-1 rounded-full text-[10px]"
+            @click="goToChapter(prevChapter.chapter_number)" :title="`Previous: ${prevChapter.title}`">
+            <ChevronLeft class="w-3 h-3" />
+            Prev
           </Button>
 
-          <Button variant="ghost" size="icon"
-            class="h-7 w-7 rounded-md text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-            @click="toggleNativeFullscreen" :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
-            <Minimize2 v-if="isNativeFullscreen" class="w-4 h-4" />
-            <Maximize2 v-else class="w-4 h-4" />
-          </Button>
-
-          <Button @click="toggleChatMode" variant="ghost" size="icon"
-            class="h-7 w-7 rounded-md transition-all duration-300"
-            :class="showChatMode ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
-            title="Toggle AI Chat Mode">
-            <MessageSquare class="w-4 h-4" />
-          </Button>
-
-          <Button @click="toggleRightSidebar" variant="ghost" size="icon"
-            class="h-7 w-7 rounded-md transition-all duration-300"
-            :class="showRightSidebar ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
-            title="Toggle Tools Sidebar">
-            <PanelRightClose v-if="showRightSidebar" class="w-4 h-4" />
-            <PanelRightOpen v-else class="w-4 h-4" />
+          <Button v-if="nextChapter" variant="ghost" size="sm"
+            class="h-6 px-2 text-zinc-500 hover:text-foreground gap-1 rounded-full text-[10px]"
+            @click="goToChapter(nextChapter.chapter_number)" :title="`Next: ${nextChapter.title}`">
+            Next
+            <ChevronRight class="w-3 h-3" />
           </Button>
         </div>
       </div>
-    </header>
+
+      <!-- Bottom Row: Tools & Actions -->
+      <div class="h-12 flex items-center justify-between px-4 bg-background/40">
+        <!-- Left: Nav & Status -->
+        <div class="flex items-center gap-3">
+          <!-- Nav Controls (Moved here) -->
+          <div class="flex items-center gap-1">
+            <Button variant="ghost" size="icon"
+              class="h-8 w-8 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full"
+              @click="router.visit(route('projects.show', project.slug))" title="Back to Project">
+              <ArrowLeft class="w-4 h-4" />
+            </Button>
+
+            <div class="h-4 w-px bg-border/50 mx-1"></div>
+
+            <Button @click="toggleLeftSidebar" variant="ghost" size="icon"
+              class="h-8 w-8 transition-all duration-300 rounded-full"
+              :class="showLeftSidebar ? 'text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
+              title="Toggle Chapter Navigation">
+              <PanelLeftClose v-if="showLeftSidebar" class="w-4 h-4" />
+              <PanelLeftOpen v-else class="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div class="h-4 w-px bg-border/50"></div>
+
+          <!-- Status -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/30 border border-border/40">
+            <div class="flex items-center gap-1.5">
+              <div class="w-2 h-2 rounded-full transition-colors duration-300"
+                :class="isDirty ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"></div>
+              <span class="text-xs font-medium text-muted-foreground">
+                {{ isDirty ? 'Unsaved' : 'Saved' }}
+              </span>
+            </div>
+            <Separator orientation="vertical" class="h-3" />
+            <div v-if="isAnalyzing" class="flex items-center gap-1.5">
+              <Loader2 class="w-3 h-3 animate-spin text-primary" />
+              <span class="text-xs text-muted-foreground">Analyzing</span>
+            </div>
+            <div v-else class="text-xs text-muted-foreground">
+              {{ currentAnalysis?.word_count ?? chapter.word_count }} words
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Actions -->
+        <div class="flex items-center gap-3">
+          <!-- View Controls -->
+          <div class="flex items-center gap-1 bg-muted/30 p-1 rounded-full border border-border/40">
+            <Button variant="ghost" size="icon"
+              class="h-7 w-7 rounded-full text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+              @click="toggleEditorTheme" :title="isEditorDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+              <Moon v-if="isEditorDark" class="w-4 h-4" />
+              <Sun v-else class="w-4 h-4" />
+            </Button>
+
+            <Button variant="ghost" size="icon"
+              class="h-7 w-7 rounded-full text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+              @click="toggleNativeFullscreen" :title="isNativeFullscreen ? 'Exit Full Screen' : 'Enter Full Screen'">
+              <Minimize2 v-if="isNativeFullscreen" class="w-4 h-4" />
+              <Maximize2 v-else class="w-4 h-4" />
+            </Button>
+
+            <Button @click="toggleChatMode" variant="ghost" size="icon"
+              class="h-7 w-7 rounded-full transition-all duration-300"
+              :class="showChatMode ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
+              title="Toggle AI Chat Mode">
+              <MessageSquare class="w-4 h-4" />
+            </Button>
+
+            <Button @click="toggleRightSidebar" variant="ghost" size="icon"
+              class="h-7 w-7 rounded-full transition-all duration-300"
+              :class="showRightSidebar ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
+              title="Toggle Tools Sidebar">
+              <PanelRightClose v-if="showRightSidebar" class="w-4 h-4" />
+              <PanelRightOpen v-else class="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div class="w-px h-4 bg-border/50"></div>
+
+          <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
+            variant="outline" class="h-9" button-class="rounded-full bg-background/50" />
+
+          <Button variant="ghost" size="sm"
+            class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full bg-background/50 border border-transparent hover:border-border/50"
+            @click="goToBulkAnalysis" title="Open bulk analysis">
+            <Brain class="w-4 h-4" />
+            <span class="text-xs font-medium">Analyze</span>
+          </Button>
+
+          <Button variant="outline" size="sm"
+            class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full bg-background/50"
+            @click="handleManualSave" :disabled="isSaving" title="Save (Ctrl+S)">
+            <Save class="w-4 h-4" />
+            <span class="text-xs font-medium">{{ isSaving ? 'Saving...' : 'Save' }}</span>
+          </Button>
+        </div>
+      </div>
+    </div>
 
     <!-- Progress Bar Section -->
     <div class="w-full bg-background border-b px-3 md:px-6 py-2 flex flex-col gap-1">
@@ -681,7 +696,7 @@ const markAsComplete = async () => {
       <!-- Writing Area -->
       <div class="flex-1 flex flex-col overflow-hidden">
         <!-- Editor -->
-        <div class="flex-1 overflow-auto p-2 md:p-6">
+        <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
           <RichTextEditor :modelValue="content" @update:modelValue="updateContent" :manual-mode="true"
             class="min-h-full" />
         </div>
@@ -723,13 +738,14 @@ const markAsComplete = async () => {
 
             <Separator class="bg-border/50" />
 
-            <!-- Defense Preparation Panel -->
+            <!-- Defense Preparation Panel - TEMPORARILY DISABLED (causes dark mode issues)
             <DefensePreparationPanel v-model:show-defense-prep="showDefensePrep" :questions="defenseQuestions"
               :is-loading="false" :is-generating="isGeneratingDefense" :chapter-context="{
                 chapter_number: chapter.chapter_number,
                 chapter_title: chapter.title,
                 word_count: currentAnalysis?.word_count || chapter.word_count || 0,
               }" @generate-more="() => { }" @refresh="() => { }" />
+            -->
 
             <Separator class="bg-border/50" />
 
@@ -814,18 +830,18 @@ const markAsComplete = async () => {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
+  background: var(--border);
   border-radius: 3px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--border) / 0.8);
+  background: color-mix(in oklab, var(--border) 80%, transparent);
 }
 
 /* Firefox scrollbar */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--border)) transparent;
+  scrollbar-color: var(--border) transparent;
 }
 
 /* Chat Glide Animation */

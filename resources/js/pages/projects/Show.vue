@@ -58,6 +58,19 @@ const getChapterStatusText = (status: string) => {
 };
 
 const startWriting = (chapterNumber: number) => {
+    if (props.project.mode === 'manual') {
+        const chapter = props.project.chapters.find((c) => c.number === chapterNumber);
+        if (!chapter) return;
+
+        router.visit(
+            route('projects.manual-editor.show', {
+                project: props.project.slug,
+                chapter: chapter.id,
+            }),
+        );
+        return;
+    }
+
     router.visit(route('chapters.write', { project: props.project.id, chapter: chapterNumber }));
 };
 

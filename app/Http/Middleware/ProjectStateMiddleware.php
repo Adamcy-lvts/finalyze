@@ -130,6 +130,16 @@ class ProjectStateMiddleware
             return $next($request);
         }
 
+        // Skip theme test route (for debugging)
+        if ($request->is('projects/*/theme-test') || $request->route()?->getName() === 'projects.theme-test') {
+            return $next($request);
+        }
+
+        // Skip manual editor debug route (for debugging)
+        if ($request->is('projects/*/manual-editor-debug/*') || $request->route()?->getName() === 'projects.manual-editor-debug') {
+            return $next($request);
+        }
+
         // Skip manual complete action
         if ($request->is('projects/*/complete') || $request->route()?->getName() === 'projects.complete') {
             return $next($request);
@@ -188,7 +198,7 @@ class ProjectStateMiddleware
         $topicStatus = $project->topic_status instanceof \BackedEnum ? $project->topic_status->value : $project->topic_status;
 
         $allowedRoutes = [
-            'chapters.write', 'chapters.edit', 'chapters.stream', 'chapters.save', 'chapters.generate',
+            'chapters.write', 'chapters.edit', 'chapters.ai-generate', 'chapters.stream', 'chapters.save', 'chapters.generate',
             'chapters.chat', 'chapters.chat-history', 'chapters.chat-stream',
             'chapters.chat-upload', 'chapters.chat-files', 'chapters.chat-file-delete',
             'chapters.chat-search', 'chapters.chat-sessions', 'chapters.chat-session-delete',

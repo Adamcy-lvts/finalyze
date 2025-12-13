@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue';
+import { computed } from 'vue';
+import { useAppearance } from '@/composables/useAppearance';
 
 defineOptions({
     inheritAttrs: false,
@@ -7,11 +9,21 @@ defineOptions({
 
 interface Props {
     className?: HTMLAttributes['class'];
+    variant?: 'auto' | 'light' | 'dark';
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+    variant: 'auto',
+});
+
+const { isDark } = useAppearance();
+
+const src = computed(() => {
+    const mode = props.variant === 'auto' ? (isDark.value ? 'dark' : 'light') : props.variant;
+    return mode === 'dark' ? '/img/logo-negative-space.png' : '/img/logo-traceable.png';
+});
 </script>
 
 <template>
-    <img src="/img/logo-negative-space.png" alt="Finalyze Logo" :class="className" v-bind="$attrs" />
+    <img :src="src" alt="Finalyze Logo" :class="className" v-bind="$attrs" />
 </template>

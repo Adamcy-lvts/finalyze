@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div>
+  <div class="bg-background">
     <!-- Font Size Controls -->
 
 
@@ -387,6 +387,8 @@ onBeforeUnmount(() => {
   outline: none !important;
   border: none !important;
   padding: 0;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 :deep(.ProseMirror h1) {
@@ -395,7 +397,7 @@ onBeforeUnmount(() => {
   line-height: 1.3;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
   page-break-after: avoid;
 }
 
@@ -405,7 +407,7 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   margin-top: 1.25rem;
   margin-bottom: 0.625rem;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
   page-break-after: avoid;
 }
 
@@ -415,7 +417,7 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
   page-break-after: avoid;
 }
 
@@ -425,7 +427,7 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   margin-top: 0.875rem;
   margin-bottom: 0.375rem;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
   page-break-after: avoid;
 }
 
@@ -448,14 +450,14 @@ onBeforeUnmount(() => {
 }
 
 :deep(.ProseMirror blockquote) {
-  border-left: 4px solid hsl(var(--border));
+  border-left: 4px solid var(--border);
   padding-left: 1rem;
   margin: 1rem 0;
   font-style: italic;
 }
 
 :deep(.ProseMirror code) {
-  background: hsl(var(--muted));
+  background: var(--muted);
   padding: 0.25rem 0.375rem;
   border-radius: 0.375rem;
   font-size: 0.875rem;
@@ -463,7 +465,7 @@ onBeforeUnmount(() => {
 }
 
 :deep(.ProseMirror pre) {
-  background: hsl(var(--muted));
+  background: var(--muted);
   border-radius: 0.5rem;
   padding: 1rem;
   margin: 1rem 0;
@@ -543,21 +545,21 @@ onBeforeUnmount(() => {
   width: 100%;
   margin: 0;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  background-color: hsl(var(--background));
+  border: 1px solid var(--border);
+  background-color: var(--background);
 }
 
 :deep(.ProseMirror table td),
 :deep(.ProseMirror table th) {
   min-width: 1em;
-  border-right: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--border));
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 10px 14px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 :deep(.ProseMirror table td:last-child),
@@ -570,18 +572,18 @@ onBeforeUnmount(() => {
 }
 
 :deep(.ProseMirror table th) {
-  background-color: hsl(var(--muted));
+  background-color: var(--muted);
   font-weight: 600;
   text-align: left;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
 }
 
 /* Mermaid diagram container styles */
 :deep(.mermaid-container) {
   margin: 1.5rem 0;
   padding: 1rem;
-  background: hsl(var(--muted));
-  border: 1px solid hsl(var(--border));
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   overflow-x: auto;
   display: flex;
@@ -595,9 +597,9 @@ onBeforeUnmount(() => {
 }
 
 :deep(.mermaid-error) {
-  background: hsl(var(--destructive) / 0.1);
-  border: 1px solid hsl(var(--destructive) / 0.3);
-  color: hsl(var(--destructive));
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--destructive) 30%, transparent);
+  color: var(--destructive);
   padding: 1rem;
   border-radius: 0.5rem;
   margin: 1rem 0;
@@ -605,8 +607,8 @@ onBeforeUnmount(() => {
 
 /* Code block syntax highlighting styles */
 :deep(.ProseMirror .code-block-highlighted) {
-  background: hsl(var(--muted));
-  border: 1px solid hsl(var(--border));
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 1rem;
   margin: 1rem 0;
@@ -620,20 +622,20 @@ onBeforeUnmount(() => {
   background: none;
   padding: 0;
   border-radius: 0;
-  color: hsl(var(--foreground));
+  color: var(--foreground);
 }
 
 /* Syntax highlighting colors - using theme-aware colors */
 :deep(.ProseMirror .hljs-comment),
 :deep(.ProseMirror .hljs-quote) {
-  color: hsl(var(--muted-foreground));
+  color: var(--muted-foreground);
   font-style: italic;
 }
 
 :deep(.ProseMirror .hljs-keyword),
 :deep(.ProseMirror .hljs-selector-tag),
 :deep(.ProseMirror .hljs-subst) {
-  color: hsl(var(--destructive));
+  color: var(--destructive);
   font-weight: 600;
 }
 
@@ -642,24 +644,24 @@ onBeforeUnmount(() => {
 :deep(.ProseMirror .hljs-title),
 :deep(.ProseMirror .hljs-section),
 :deep(.ProseMirror .hljs-selector-id) {
-  color: hsl(var(--primary));
+  color: var(--primary);
 }
 
 :deep(.ProseMirror .hljs-function),
 :deep(.ProseMirror .hljs-class),
 :deep(.ProseMirror .hljs-title) {
-  color: hsl(var(--ring));
+  color: var(--ring);
 }
 
 :deep(.ProseMirror .hljs-number),
 :deep(.ProseMirror .hljs-literal),
 :deep(.ProseMirror .hljs-variable),
 :deep(.ProseMirror .hljs-template-variable) {
-  color: hsl(var(--chart-1));
+  color: var(--chart-1);
 }
 
 :deep(.ProseMirror .hljs-meta),
 :deep(.ProseMirror .hljs-meta-string) {
-  color: hsl(var(--chart-4));
+  color: var(--chart-4);
 }
 </style>

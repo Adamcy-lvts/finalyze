@@ -289,24 +289,22 @@ onUnmounted(() => {
   border-color: rgb(253 224 71);
 }
 
-@media (prefers-color-scheme: dark) {
-  .citation-verified .citation-text {
-    background-color: rgb(20 83 45);
-    color: rgb(187 247 208);
-    border-color: rgb(21 128 61);
-  }
+:global(html.dark) .citation-verified .citation-text {
+  background-color: rgb(20 83 45);
+  color: rgb(187 247 208);
+  border-color: rgb(21 128 61);
+}
 
-  .citation-unverified .citation-text {
-    background-color: rgb(127 29 29);
-    color: rgb(254 202 202);
-    border-color: rgb(185 28 28);
-  }
+:global(html.dark) .citation-unverified .citation-text {
+  background-color: rgb(127 29 29);
+  color: rgb(254 202 202);
+  border-color: rgb(185 28 28);
+}
 
-  .citation-pending .citation-text {
-    background-color: rgb(133 77 14);
-    color: rgb(254 240 138);
-    border-color: rgb(180 83 9);
-  }
+:global(html.dark) .citation-pending .citation-text {
+  background-color: rgb(133 77 14);
+  color: rgb(254 240 138);
+  border-color: rgb(180 83 9);
 }
 
 @keyframes pulse {

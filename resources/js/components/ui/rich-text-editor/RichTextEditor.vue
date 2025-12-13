@@ -410,48 +410,48 @@ const convertTextToHTML = (text: string): string => {
 
 // Base extensions (deduped by name before initializing editor)
 const baseExtensions = [
-    StarterKit.configure({
-      heading: {
-        levels: [1, 2, 3]
-      },
-      codeBlock: false, // Disable default code block to use our custom one
-      link: false, // Disable built-in Link to avoid duplicate with custom Link below
-    }),
-    CodeBlockLowlight.configure({
-      lowlight,
-      HTMLAttributes: {
-        class: 'code-block-highlighted',
-      },
-    }),
-    Placeholder.configure({
-      placeholder: props.placeholder
-    }),
-    Typography,
-    TextStyle,
-    FontSize,
-    Color,
-    Highlight.configure({
-      multicolor: true
-    }),
-    Link.configure({
-      openOnClick: false,
-      HTMLAttributes: {
-        class: 'prose-link text-primary hover:text-primary/80 underline decoration-primary/50'
-      }
-    }),
-    // Gapcursor, // Removed duplicate
-    Table.configure({
-      resizable: true,
-    }),
-    TableRow,
-    TableHeader,
-    TableCell,
-    // Underline, // Commented out - StarterKit might include this
-    Citation,
-    Mermaid,
-    TextAlign.configure({
-      types: ['heading', 'paragraph'],
-    }),
+  StarterKit.configure({
+    heading: {
+      levels: [1, 2, 3]
+    },
+    codeBlock: false, // Disable default code block to use our custom one
+    link: false, // Disable built-in Link to avoid duplicate with custom Link below
+  }),
+  CodeBlockLowlight.configure({
+    lowlight,
+    HTMLAttributes: {
+      class: 'code-block-highlighted',
+    },
+  }),
+  Placeholder.configure({
+    placeholder: props.placeholder
+  }),
+  Typography,
+  TextStyle,
+  FontSize,
+  Color,
+  Highlight.configure({
+    multicolor: true
+  }),
+  Link.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      class: 'prose-link text-primary hover:text-primary/80 underline decoration-primary/50'
+    }
+  }),
+  // Gapcursor, // Removed duplicate
+  Table.configure({
+    resizable: true,
+  }),
+  TableRow,
+  TableHeader,
+  TableCell,
+  // Underline, // Commented out - StarterKit might include this
+  Citation,
+  Mermaid,
+  TextAlign.configure({
+    types: ['heading', 'paragraph'],
+  }),
 ]
 
 // Filter out any duplicate extension names to avoid tiptap warnings
@@ -1057,7 +1057,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative flex flex-col w-full h-full group">
+  <div class="relative flex flex-col w-full h-full group bg-background">
     <!-- Floating Toolbar - Responsive & Scrollable -->
     <div v-if="showToolbar && !readonly"
       class="sticky top-0 z-20 mx-0 sm:mx-2 md:mx-4 mt-0 sm:mt-1 md:mt-2 mb-2 md:mb-4 flex items-center gap-1 rounded-none sm:rounded-lg md:rounded-xl border-y sm:border border-border/40 bg-background/95 p-1.5 shadow-sm backdrop-blur-md transition-all duration-200 supports-[backdrop-filter]:bg-background/80 overflow-x-auto no-scrollbar mask-gradient-right">
@@ -1335,6 +1335,8 @@ defineExpose({
 
 :deep(.ProseMirror) {
   @apply min-h-full outline-none;
+  background-color: var(--background);
+  color: var(--foreground);
 
   /* Academic Typography Improvements */
   p {
@@ -1421,8 +1423,8 @@ defineExpose({
   }
 }
 
-/* Dark mode specific adjustments - use :global to escape scoped styles */
-:global(.dark) :deep(.ProseMirror) {
+/* Dark mode specific adjustments - follow the app's `html.dark` root class */
+:global(html.dark) :deep(.ProseMirror) {
   blockquote {
     @apply border-primary/50 bg-primary/5;
   }

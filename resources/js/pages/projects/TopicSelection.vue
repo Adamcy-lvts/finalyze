@@ -661,7 +661,7 @@ const goBackToWizard = async () => {
 
 <style scoped>
 :deep(.prose h2) {
-    color: hsl(var(--primary));
+    color: var(--primary);
     font-size: 1.25rem;
     font-weight: 700;
     margin-top: 1.5em;
@@ -669,13 +669,13 @@ const goBackToWizard = async () => {
 }
 
 :deep(.prose h3) {
-    color: hsl(var(--foreground));
+    color: var(--foreground);
     font-size: 1.1rem;
     font-weight: 600;
 }
 
 :deep(.prose strong) {
-    color: hsl(var(--foreground));
+    color: var(--foreground);
     font-weight: 700;
 }
 

@@ -186,12 +186,14 @@ defineExpose({
   max-height: 8rem;
   overflow-y: auto;
   padding: 8px;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 :deep(.ProseMirror p.is-editor-empty:first-child::before) {
   content: attr(data-placeholder);
   float: left;
-  color: hsl(var(--muted-foreground));
+  color: var(--muted-foreground);
   pointer-events: none;
   height: 0;
 }
@@ -206,7 +208,7 @@ defineExpose({
 }
 
 :deep(.ProseMirror code) {
-  background: hsl(var(--muted));
+  background: var(--muted);
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
   font-size: 0.875rem;

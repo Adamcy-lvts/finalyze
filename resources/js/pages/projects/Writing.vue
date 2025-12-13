@@ -381,20 +381,10 @@ const goToChapter = (chapterNumber: number) => {
 
     if (hasContent) {
         // Chapter has content, use edit mode
-        router.visit(
-            route('chapters.edit', {
-                project: props.project.slug,
-                chapter: chapterNumber,
-            }),
-        );
+        router.visit(route('chapters.edit', { project: props.project.slug, chapter: chapterNumber }));
     } else {
         // Chapter is new or empty, use write mode
-        router.visit(
-            route('chapters.write', {
-                project: props.project.slug,
-                chapter: chapterNumber,
-            }),
-        );
+        router.visit(route('chapters.write', { project: props.project.slug, chapter: chapterNumber }));
     }
 };
 

@@ -107,6 +107,58 @@ require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/payment.php';
 
+// Theme test page (temporary for debugging)
+Route::get('/theme-test', function () {
+    // Load heavy data similar to ManualEditor to test theme behavior with large Inertia props
+    $user = auth()->user();
+    $heavyData = [];
+    
+    if ($user) {
+        // Get a project with all relations (heavy load)
+        $project = \App\Models\Project::where('user_id', $user->id)
+            ->with([
+                'category',
+                'universityRelation',
+                'facultyRelation', 
+                'departmentRelation',
+                'chapters',
+                'outlines.sections',
+            ])
+            ->first();
+            
+        if ($project) {
+            $heavyData['project'] = $project;
+            $heavyData['allChapters'] = $project->chapters()->orderBy('chapter_number')->get();
+            $heavyData['chapter'] = $project->chapters()->first();
+            
+            // Add more heavy data
+            $heavyData['allProjects'] = \App\Models\Project::where('user_id', $user->id)
+                ->with(['chapters', 'category'])
+                ->get();
+        }
+    }
+    
+    // Also load some general heavy data
+    $heavyData['sampleData'] = [
+        'loremIpsum' => str_repeat('Lorem ipsum dolor sit amet, consectetur adipiscing elit. ', 100),
+        'numbers' => range(1, 1000),
+        'nestedData' => array_fill(0, 50, [
+            'id' => rand(1, 10000),
+            'name' => 'Sample Item ' . rand(1, 1000),
+            'description' => str_repeat('This is a sample description. ', 20),
+            'children' => array_fill(0, 10, [
+                'childId' => rand(1, 10000),
+                'childName' => 'Child Item',
+            ]),
+        ]),
+    ];
+    
+    return Inertia::render('ThemeTest', [
+        'heavyData' => $heavyData,
+        'dataSize' => strlen(json_encode($heavyData)),
+    ]);
+})->middleware(['auth'])->name('theme-test');
+
 // Admin routes
 Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->group(function () {
     // Dashboard
@@ -264,6 +316,56 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Project-specific routes WITH state persistence middleware
     // This middleware ensures users are always on the correct page for their setup progress
     Route::middleware([ProjectStateMiddleware::class])->group(function () {
+        // Theme test inside project middleware (for debugging)
+        Route::get('/projects/{project}/theme-test', function (\App\Models\Project $project) {
+            $heavyData = [
+                'project' => $project->load([
+                    'category',
+                    'universityRelation',
+                    'facultyRelation',
+                    'departmentRelation',
+                    'chapters',
+                    'outlines.sections',
+                ]),
+                'allChapters' => $project->chapters()->orderBy('chapter_number')->get(),
+                'sampleData' => [
+                    'loremIpsum' => str_repeat('Lorem ipsum dolor sit amet. ', 100),
+                    'nestedData' => array_fill(0, 50, [
+                        'id' => rand(1, 10000),
+                        'children' => array_fill(0, 10, ['childId' => rand(1, 10000)]),
+                    ]),
+                ],
+            ];
+            
+            return \Inertia\Inertia::render('ThemeTest', [
+                'heavyData' => $heavyData,
+                'dataSize' => strlen(json_encode($heavyData)),
+                'insideMiddleware' => true,
+            ]);
+        })->name('projects.theme-test');
+        
+        // ManualEditor Debug Route - renders the same data as real ManualEditor
+        Route::get('/projects/{project:slug}/manual-editor-debug/{chapter}', function (\App\Models\Project $project, int $chapter) {
+            $chapterModel = \App\Models\Chapter::where('project_id', $project->id)
+                ->where('chapter_number', $chapter)
+                ->firstOrFail();
+            
+            $facultyStructureService = app(\App\Services\FacultyStructureService::class);
+            
+            return \Inertia\Inertia::render('projects/ManualEditorDebug', [
+                'project' => $project->load([
+                    'category',
+                    'universityRelation',
+                    'facultyRelation',
+                    'departmentRelation',
+                    'outlines.sections',
+                ]),
+                'chapter' => $chapterModel,
+                'allChapters' => $project->chapters()->orderBy('chapter_number')->get(),
+                'facultyChapters' => $facultyStructureService->getChapterStructure($project),
+            ]);
+        })->name('projects.manual-editor-debug');
+        
         Route::get('/projects/{project}/topic-selection', [ProjectController::class, 'topicSelection'])->name('projects.topic-selection');
         Route::get('/projects/{project}/topic-approval', [ProjectController::class, 'topicApproval'])->name('projects.topic-approval');
         Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
@@ -293,6 +395,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/projects/{project}/bulk-generate', [ProjectController::class, 'bulkGenerate'])->name('projects.bulk-generate');
         Route::get('/projects/{project}/chapters/{chapter}/write', [ChapterController::class, 'write'])->name('chapters.write');
         Route::get('/projects/{project}/chapters/{chapter}/edit', [ChapterController::class, 'edit'])->name('chapters.edit');
+        Route::get('/projects/{project}/chapters/{chapter}/ai-generate', [ChapterController::class, 'aiGenerate'])->name('chapters.ai-generate');
         Route::post('/projects/{project}/chapters/generate', [ChapterController::class, 'generate'])
             ->middleware(['prevent.duplicate:30', 'check.words'])
             ->name('chapters.generate');

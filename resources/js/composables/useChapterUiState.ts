@@ -1,4 +1,4 @@
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { usePage } from "@inertiajs/vue3";
 import { toast } from "vue-sonner";
 import { useAppearance } from "@/composables/useAppearance";
@@ -25,23 +25,15 @@ export function useChapterUiState(props: ChapterEditorProps) {
     const chapterContent = ref(props.chapter.content || '');
     const showPreview = ref(true);
 
-    const { isDark: globalIsDark } = useAppearance();
-    const isEditorDark = ref(false);
+    const { isDark, toggle } = useAppearance();
+    const isEditorDark = computed(() => isDark.value);
 
     const initChapterTheme = () => {
-        const saved = localStorage.getItem(`chapter_theme_${props.project.id}`);
-        if (saved) {
-            isEditorDark.value = saved === 'dark';
-        } else {
-            isEditorDark.value = globalIsDark.value;
-        }
+        // Global theme is initialized in `resources/views/app.blade.php` and `useAppearance`.
     };
 
     const toggleChapterTheme = () => {
-        isEditorDark.value = !isEditorDark.value;
-        const newMode = isEditorDark.value ? 'dark' : 'light';
-        localStorage.setItem(`chapter_theme_${props.project.id}`, newMode);
-        toast.success(`Switched to ${isEditorDark.value ? 'Dark' : 'Light'} Mode`);
+        toggle();
     };
 
     const isNativeFullscreen = ref(false);
