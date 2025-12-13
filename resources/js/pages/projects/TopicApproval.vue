@@ -9,6 +9,7 @@ import { router } from '@inertiajs/vue3';
 import { ArrowLeft, CheckCircle, Clock, Download, FileText, MessageSquare, XCircle, ShieldCheck, BookOpen, GraduationCap, School, User } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { toast } from 'vue-sonner';
+import { route } from 'ziggy-js';
 
 interface Project {
     id: number;
