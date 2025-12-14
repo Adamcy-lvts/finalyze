@@ -335,6 +335,18 @@ const formatTimestamp = (value?: string) => {
 }
 
 let adminChannel: any = null
+let adminNotificationsChannel: any = null
+
+const upsertIncomingNotification = (incoming: any) => {
+  if (!incoming?.id) return
+  const existingIndex = notifications.value.findIndex((n) => n.id === incoming.id)
+  if (existingIndex !== -1) {
+    notifications.value = notifications.value.map((n) => n.id === incoming.id ? incoming : n)
+    return
+  }
+
+  notifications.value = [incoming, ...notifications.value].slice(0, 50)
+}
 
 onMounted(() => {
   // Preload notifications to show badge
@@ -345,9 +357,16 @@ onMounted(() => {
   adminChannel?.listen('.ai.provisioning.updated', () => {
     loadNotifications()
   })
+
+  // Subscribe to realtime admin notifications (e.g., new user signup)
+  adminNotificationsChannel = (window as any).Echo?.private('admin.notifications')
+  adminNotificationsChannel?.listen('.admin.notification.created', (e: any) => {
+    upsertIncomingNotification(e?.notification)
+  })
 })
 
 onBeforeUnmount(() => {
   adminChannel?.stopListening('.ai.provisioning.updated')
+  adminNotificationsChannel?.stopListening('.admin.notification.created')
 })
 </script>

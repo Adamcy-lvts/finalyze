@@ -56,3 +56,11 @@ Broadcast::channel('user.{id}', function ($user, $id) {
 Broadcast::channel('admin.ai', function ($user) {
     return $user && $user->hasAnyRole(['super_admin', 'admin', 'support']);
 });
+
+/**
+ * Admin Notifications channel
+ * Only admins/support can listen for admin notification updates.
+ */
+Broadcast::channel('admin.notifications', function ($user) {
+    return $user && $user->hasAnyRole(['super_admin', 'admin', 'support']);
+});

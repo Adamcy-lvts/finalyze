@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Events\AdminNotificationCreated;
 use App\Models\AdminNotification;
 use App\Models\User;
 use App\Notifications\NewUserSignedUp;
@@ -20,7 +21,7 @@ class NotifyAdminsOfNewUserSignup
             Notification::send($admins, new NewUserSignedUp($newUser));
         }
 
-        AdminNotification::create([
+        $adminNotification = AdminNotification::create([
             'type' => 'new_user_signup',
             'title' => 'New user signup',
             'message' => "{$newUser->name} ({$newUser->email}) just created an account.",
@@ -31,5 +32,7 @@ class NotifyAdminsOfNewUserSignup
                 'user_email' => $newUser->email,
             ],
         ]);
+
+        broadcast(new AdminNotificationCreated($adminNotification));
     }
 }
