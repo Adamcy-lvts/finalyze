@@ -191,12 +191,20 @@
       </Sheet>
     </SidebarInset>
   </SidebarProvider>
+
+  <Toaster
+    position="top-right"
+    :expand="false"
+    :rich-colors="true"
+    :close-button="true"
+  />
 </template>
 
 <script setup lang="ts">
 import axios from 'axios'
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3'
+import { Toaster } from '@/components/ui/sonner'
 import {
   Sidebar,
   SidebarContent,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\Project;
+use App\Models\RegistrationInvite;
 use App\Models\User;
 use App\Models\WordTransaction;
 use Carbon\Carbon;
@@ -43,7 +44,24 @@ class AdminDashboardController extends Controller
             ])->toArray(),
         ];
 
+        $invites = RegistrationInvite::query()
+            ->latest()
+            ->take(25)
+            ->get()
+            ->map(fn (RegistrationInvite $invite) => [
+                'id' => $invite->id,
+                'code' => $invite->code,
+                'link' => route('invite.show', ['code' => $invite->code]),
+                'uses' => $invite->uses,
+                'max_uses' => $invite->max_uses,
+                'status' => $invite->status(),
+                'expires_at' => $invite->expires_at?->toDateTimeString(),
+                'revoked_at' => $invite->revoked_at?->toDateTimeString(),
+                'created_at' => $invite->created_at?->toDateTimeString(),
+            ]);
+
         return Inertia::render('Admin/Dashboard', [
+            'inviteOnlyEnabled' => (bool) config('registration.invite_only', true),
             'stats' => [
                 'users' => ['total' => $totalUsers, 'today' => $newUsersToday],
                 'revenue' => ['total' => $totalRevenueKobo / 100, 'today' => $todayRevenueKobo / 100],
@@ -51,6 +69,7 @@ class AdminDashboardController extends Controller
                 'words' => ['total' => $wordsGenerated, 'today' => $wordsGeneratedToday],
             ],
             'recentActivity' => $recentActivity,
+            'invites' => $invites,
         ]);
     }
 }

@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdminAIController;
 use App\Http\Controllers\Admin\AdminAnalyticsController;
 use App\Http\Controllers\Admin\AdminAuditController;
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminRegistrationInviteController;
 use App\Http\Controllers\Admin\AdminNotificationController;
 use App\Http\Controllers\Admin\AdminPackageController;
 use App\Http\Controllers\Admin\AdminPaymentController;
@@ -163,6 +164,12 @@ Route::get('/theme-test', function () {
 Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->group(function () {
     // Dashboard
     Route::get('/', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
+
+    // Registration invites (invite-only mode)
+    Route::prefix('invites')->middleware(['role:super_admin|admin'])->group(function () {
+        Route::post('/', [AdminRegistrationInviteController::class, 'store'])->name('admin.invites.store');
+        Route::post('/{invite}/revoke', [AdminRegistrationInviteController::class, 'revoke'])->name('admin.invites.revoke');
+    });
 
     // Users
     Route::prefix('users')->group(function () {
