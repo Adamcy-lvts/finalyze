@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-foreground">Project Detail</h2>
-    </template>
+  <AdminLayout title="Project Detail">
     <div class="grid gap-4 lg:grid-cols-3">
       <Card class="lg:col-span-2 border border-border bg-card shadow-sm">
         <CardHeader>

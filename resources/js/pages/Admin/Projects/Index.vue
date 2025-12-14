@@ -1,11 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <div class="flex flex-col">
-        <h2 class="text-2xl font-bold tracking-tight text-foreground">Projects</h2>
-        <p class="text-muted-foreground text-sm">Manage and monitor all user projects.</p>
-      </div>
-    </template>
+  <AdminLayout title="Projects" subtitle="Manage and monitor all user projects.">
 
     <div class="grid gap-4 md:grid-cols-3 mb-8">
       <Card class="bg-card text-card-foreground border-border/50 shadow-sm">

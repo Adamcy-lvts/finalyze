@@ -1,11 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <div class="flex flex-col">
-        <h2 class="text-2xl font-bold tracking-tight text-foreground">Packages</h2>
-        <p class="text-muted-foreground text-sm">Control what shows on the pricing page.</p>
-      </div>
-    </template>
+  <AdminLayout title="Packages" subtitle="Control what shows on the pricing page.">
 
     <div class="grid gap-4 md:grid-cols-4 mb-6">
       <Card class="bg-card text-card-foreground border-border/50 shadow-sm">

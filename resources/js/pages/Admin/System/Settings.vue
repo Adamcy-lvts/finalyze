@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-foreground">System Settings</h2>
-    </template>
+  <AdminLayout title="System Settings">
     <Card class="border border-border bg-card shadow-sm">
       <CardHeader>
         <CardTitle class="text-base font-semibold text-foreground">Settings</CardTitle>

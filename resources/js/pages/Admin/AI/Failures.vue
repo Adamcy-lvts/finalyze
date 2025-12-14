@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-slate-900">Failures</h2>
-    </template>
+  <AdminLayout title="Failures">
     <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
       Failed generations coming soon.
     </div>

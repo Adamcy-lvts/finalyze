@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-slate-900">Revenue</h2>
-    </template>
+  <AdminLayout title="Revenue">
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
       <div v-for="(val, key) in summary" :key="key" class="bg-white border border-slate-200 rounded-xl p-4">
         <div class="text-xs uppercase tracking-wide text-slate-500">{{ labels[key] }}</div>

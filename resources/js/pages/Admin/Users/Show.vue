@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-slate-900">User Detail</h2>
-    </template>
+  <AdminLayout title="User Detail">
     <div class="space-y-4">
       <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-700">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

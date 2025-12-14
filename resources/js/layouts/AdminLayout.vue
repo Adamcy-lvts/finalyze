@@ -94,23 +94,26 @@
     <SidebarInset class="bg-background text-foreground flex min-h-screen flex-col">
       <header
         class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div class="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
+        <div class="max-w-7xl mx-auto px-4 md:px-8 min-h-16 py-3 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <SidebarTrigger />
             <slot name="title">
-              <div class="flex items-center gap-2">
-                <LayoutDashboard class="h-4 w-4 text-muted-foreground" />
-                <h2 class="text-base font-semibold">Admin</h2>
+              <div class="flex flex-col leading-tight">
+                <h2 class="text-2xl font-bold tracking-tight text-foreground">{{ title ?? 'Admin' }}</h2>
+                <p v-if="subtitle" class="text-muted-foreground text-sm">{{ subtitle }}</p>
               </div>
             </slot>
           </div>
           <div class="flex items-center gap-3 md:gap-6">
             <slot name="actions">
               <Button variant="ghost" size="icon"
-                class="relative text-muted-foreground hover:text-foreground transition-colors" @click="openDrawer">
+                class="relative text-muted-foreground hover:text-foreground transition-colors"
+                @click="openNotifications">
                 <Bell class="h-5 w-5" />
                 <span v-if="unreadCount > 0"
-                  class="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background"></span>
+                  class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground ring-2 ring-background">
+                  {{ unreadCount > 99 ? '99+' : unreadCount }}
+                </span>
                 <span class="sr-only">Notifications</span>
               </Button>
             </slot>
@@ -130,26 +133,29 @@
         </div>
       </main>
 
-      <Drawer v-model:open="drawerOpen" direction="right" :should-scale-background="false">
-        <DrawerContent side="right" class="mt-0 h-full rounded-none border-l bg-background shadow-2xl">
-          <DrawerHeader class="flex items-center justify-between border-b px-4 py-3">
-            <div class="flex flex-col gap-1">
-              <DrawerTitle class="text-base font-semibold text-foreground">Notifications</DrawerTitle>
-              <DrawerDescription class="text-xs text-muted-foreground">Latest admin alerts</DrawerDescription>
-            </div>
-            <div class="flex items-center gap-2">
-              <Button variant="outline" size="sm" class="text-xs" :disabled="!notifications.length"
-                @click="markAllRead">
-                Mark all read
-              </Button>
-              <DrawerClose as-child>
-                <Button variant="ghost" size="icon">
-                  <X class="h-4 w-4" />
+      <Sheet v-model:open="notificationsOpen">
+        <SheetContent
+          class="w-full sm:max-w-md p-0 flex flex-col h-full bg-background/95 backdrop-blur-sm shadow-2xl border-l-primary/10">
+          <SheetHeader class="px-6 py-4 border-b bg-muted/30 sticky top-0 z-10">
+            <div class="flex items-center justify-between gap-3">
+              <div class="space-y-1">
+                <SheetTitle class="text-xl font-bold">Notifications</SheetTitle>
+                <SheetDescription>You have {{ unreadCount }} unread messages</SheetDescription>
+              </div>
+              <div class="flex items-center gap-2">
+                <Button v-if="unreadCount > 0" variant="outline" size="sm" class="text-xs" @click="markAllRead">
+                  Mark all read
                 </Button>
-              </DrawerClose>
+                <SheetClose as-child>
+                  <Button variant="ghost" size="icon">
+                    <X class="h-4 w-4" />
+                  </Button>
+                </SheetClose>
+              </div>
             </div>
-          </DrawerHeader>
-          <div class="flex-1 overflow-y-auto divide-y">
+          </SheetHeader>
+
+          <div class="flex-1 overflow-y-auto divide-y divide-border/40">
             <div v-if="notificationsLoading" class="p-4 text-sm text-muted-foreground flex items-center gap-2">
               <Loader2 class="h-4 w-4 animate-spin" />
               Loading notifications...
@@ -159,7 +165,8 @@
             </div>
             <template v-else>
               <div v-for="notification in notifications" :key="notification.id"
-                class="flex items-start gap-3 p-4 hover:bg-muted/50">
+                class="flex items-start gap-3 p-4 hover:bg-muted/40 transition-colors"
+                :class="{ 'bg-primary/5': !notification.is_read && !notification.read_at }">
                 <span class="mt-1 h-2.5 w-2.5 rounded-full"
                   :class="notification.is_read || notification.read_at ? 'bg-muted-foreground/40' : 'bg-primary'"></span>
                 <div class="flex-1 space-y-1">
@@ -180,8 +187,8 @@
               </div>
             </template>
           </div>
-        </DrawerContent>
-      </Drawer>
+        </SheetContent>
+      </Sheet>
     </SidebarInset>
   </SidebarProvider>
 </template>
@@ -234,13 +241,18 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+
+defineProps<{
+  title?: string
+  subtitle?: string
+}>()
 
 const page = usePage()
 const user = computed(() => page.props.auth?.user)
@@ -269,7 +281,7 @@ const isActive = (href: string, exact = false) => {
   return page.url.startsWith(href)
 }
 
-const drawerOpen = ref(false)
+const notificationsOpen = ref(false)
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
 
@@ -285,8 +297,8 @@ const loadNotifications = async () => {
   }
 }
 
-const openDrawer = async () => {
-  drawerOpen.value = true
+const openNotifications = async () => {
+  notificationsOpen.value = true
   await loadNotifications()
 }
 

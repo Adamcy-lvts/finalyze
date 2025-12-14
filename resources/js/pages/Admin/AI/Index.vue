@@ -1,11 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <div class="flex flex-col">
-        <h2 class="text-2xl font-bold tracking-tight text-foreground">AI Monitoring</h2>
-        <p class="text-muted-foreground text-sm">Real-time insights into AI generation performance.</p>
-      </div>
-    </template>
+  <AdminLayout title="AI Monitoring" subtitle="Real-time insights into AI generation performance.">
 
     <div class="space-y-6">
       <div class="flex justify-end">

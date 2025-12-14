@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-slate-900">Usage Analytics</h2>
-    </template>
+  <AdminLayout title="Usage Analytics">
     <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
       Usage analytics coming soon.
     </div>

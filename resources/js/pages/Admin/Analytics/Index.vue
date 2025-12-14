@@ -1,11 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <div class="flex flex-col">
-        <h2 class="text-2xl font-bold tracking-tight text-foreground">Analytics</h2>
-        <p class="text-muted-foreground text-sm">Insights across users, revenue, and usage.</p>
-      </div>
-    </template>
+  <AdminLayout title="Analytics" subtitle="Insights across users, revenue, and usage.">
     <div class="space-y-6">
       <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card v-for="stat in statCards" :key="stat.label"

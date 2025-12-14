@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-foreground">Audit Logs</h2>
-    </template>
+  <AdminLayout title="Audit Logs">
     <Card class="border border-border bg-card shadow-sm">
       <CardHeader>
         <CardTitle class="text-base font-semibold text-foreground">Recent Activity</CardTitle>

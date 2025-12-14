@@ -1,8 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <h2 class="text-lg font-semibold text-foreground">Notifications</h2>
-    </template>
+  <AdminLayout title="Notifications">
     <Card class="border border-border bg-card shadow-sm">
       <CardHeader class="flex flex-row items-center justify-between pb-3">
         <CardTitle class="text-base font-semibold text-foreground">Recent Notifications</CardTitle>

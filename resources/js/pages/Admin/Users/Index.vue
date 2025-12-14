@@ -1,11 +1,5 @@
 <template>
-  <AdminLayout>
-    <template #title>
-      <div class="flex flex-col">
-        <h2 class="text-2xl font-bold tracking-tight text-foreground">Users</h2>
-        <p class="text-muted-foreground text-sm">Manage your platform's user base.</p>
-      </div>
-    </template>
+  <AdminLayout title="Users" subtitle="Manage your platform's user base.">
 
     <div class="grid gap-4 md:grid-cols-3 mb-8">
       <Card class="bg-card text-card-foreground border-border/50 shadow-sm">
