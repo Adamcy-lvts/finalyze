@@ -3,6 +3,7 @@
 namespace App\Services\AI\Providers;
 
 use Generator;
+use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -23,6 +24,9 @@ class ClaudeProvider implements AIProviderInterface
     {
         $model = $options['model'] ?? $this->model;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
+        $feature = $options['feature'] ?? null;
+        $userId = $options['user_id'] ?? null;
+        $startedAt = hrtime(true);
 
         Log::info('Claude Provider - Starting generation', [
             'model' => $model,
@@ -56,6 +60,7 @@ class ClaudeProvider implements AIProviderInterface
 
             $data = $response->json();
             $content = $data['content'][0]['text'] ?? '';
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
 
             Log::info('Claude Provider - Generation completed', [
                 'content_length' => strlen($content),
@@ -63,13 +68,53 @@ class ClaudeProvider implements AIProviderInterface
                 'tokens_used' => $data['usage']['output_tokens'] ?? 0,
             ]);
 
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.claude',
+                    'Claude generation completed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'claude',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'prompt_length' => strlen($prompt),
+                        'content_length' => strlen($content),
+                        'tokens' => [
+                            'output' => $data['usage']['output_tokens'] ?? 0,
+                            'input' => $data['usage']['input_tokens'] ?? null,
+                        ],
+                    ], fn ($v) => $v !== null)
+                );
+            }
+
             return $content;
 
         } catch (\Exception $e) {
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
             Log::error('Claude Provider - Generation failed', [
                 'error' => $e->getMessage(),
                 'model' => $model,
             ]);
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.claude_failed',
+                    'Claude generation failed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'claude',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'prompt_length' => strlen($prompt),
+                        'error' => $e->getMessage(),
+                    ], fn ($v) => $v !== null)
+                );
+            }
             throw $e;
         }
     }

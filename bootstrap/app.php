@@ -4,6 +4,7 @@ use App\Http\Middleware\CheckWordBalance;
 use App\Http\Middleware\EnsureRegistrationInvite;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\LogAiActivity;
 use App\Http\Middleware\PreventDuplicateRequests;
 use App\Http\Middleware\TrackLastActive;
 use Illuminate\Foundation\Application;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             TrackLastActive::class,
+            LogAiActivity::class,
         ]);
 
         $middleware->alias([
@@ -49,6 +51,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             \Illuminate\Session\Middleware\StartSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        ]);
+
+        $middleware->api(append: [
+            LogAiActivity::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

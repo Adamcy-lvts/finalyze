@@ -69,6 +69,7 @@ const props = defineProps<{
     project: Project;
     topics: Topic[];
     sessionId: string;
+    returnToSelection?: boolean;
     historySessions: Array<{
         id: string;
         title: string;
@@ -90,6 +91,8 @@ const isSidebarOpen = ref(true);
 
 // Word balance
 const { formattedBalance, balance, checkAndPrompt, hasWords } = useWordBalance();
+
+const suppressWelcomeReset = ref(false);
 
 // Input resize monitoring
 const checkMobile = () => {
@@ -147,6 +150,10 @@ const startNewChat = () => {
 
 const backToLibrary = () => {
     router.visit(route('projects.topics.index'));
+};
+
+const backToSelection = () => {
+    router.visit(route('projects.topic-selection', props.project.slug));
 };
 
 // --- Renaming Session ---
@@ -404,6 +411,14 @@ const sendMessage = async () => {
                 }
             }
         }
+
+        // If the AI included a refined topic block, extract it and set it as the current topic.
+        const refined = extractRefinedTopic(aiContent);
+        if (refined) {
+            refinedTopicCandidate.value = refined;
+            setCurrentTopicWithoutReset(refined);
+            toast.success('Refined topic detected', { description: 'The refined topic is ready to select.' });
+        }
     } catch (error: any) {
         if (error.name === 'AbortError') {
             const idx = messages.value.findIndex(m => m.id === aiMsgId);
@@ -434,6 +449,7 @@ const stripHtml = (html: string) => {
 let isFirstLoad = true;
 watch(currentTopic, (newTopic) => {
     if (!newTopic) return;
+    if (suppressWelcomeReset.value) return;
     if (isFirstLoad) {
         isFirstLoad = false;
         if (messages.value.length === 0) {
@@ -471,6 +487,59 @@ const extractSuggestedTopics = (content: string): string[] => {
         }
     }
     return topics;
+};
+
+const refinedTopicCandidate = ref<Topic | null>(null);
+
+const setCurrentTopicWithoutReset = (topic: Topic) => {
+    suppressWelcomeReset.value = true;
+    currentTopic.value = topic;
+    void nextTick(() => {
+        suppressWelcomeReset.value = false;
+    });
+};
+
+const extractRefinedTopic = (content: string): Topic | null => {
+    if (!content) return null;
+    const match = content.match(/<REFINED_TOPIC_JSON>\s*([\s\S]*?)\s*<\/REFINED_TOPIC_JSON>/i);
+    if (!match) return null;
+
+    const raw = match[1].trim();
+    try {
+        const parsed = JSON.parse(raw);
+        const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+        const description = typeof parsed?.description === 'string' ? parsed.description.trim() : '';
+        if (!title) return null;
+
+        // Keep description as plain text; render via SafeHtmlText as-is (it can handle plain).
+        return {
+            id: 0,
+            title,
+            description,
+            difficulty: 'Intermediate',
+            resource_level: 'Medium',
+            feasibility_score: 75,
+        };
+    } catch {
+        return null;
+    }
+};
+
+const applyRefinedTopic = () => {
+    if (!refinedTopicCandidate.value) return;
+    setCurrentTopicWithoutReset(refinedTopicCandidate.value);
+    toast.success('Refined topic applied');
+};
+
+const applyRefinedTopicFromContent = async (content: string, selectAfter = false) => {
+    const refined = extractRefinedTopic(content);
+    if (!refined) {
+        toast.error('No refined topic found in this message');
+        return;
+    }
+    refinedTopicCandidate.value = refined;
+    setCurrentTopicWithoutReset(refined);
+    if (selectAfter) await selectTopic();
 };
 
 const openSaveTopicDialog = (title: string) => {
@@ -540,6 +609,8 @@ const selectTopic = async () => {
 
 const formatMessageContent = (content: string) => {
     if (!content) return '';
+    // Remove machine-readable block from display.
+    content = content.replace(/<REFINED_TOPIC_JSON>[\s\S]*?<\/REFINED_TOPIC_JSON>/gi, '').trim();
     let formatted = content
         .replace(/^### (.*$)/gim, '<strong>$1</strong>')
         .replace(/^## (.*$)/gim, '<strong class="text-lg">$1</strong>')
@@ -687,6 +758,15 @@ const formatMessageContent = (content: string) => {
 
                     <!-- Sidebar Footer -->
                     <div class="p-4 border-t border-border/50 bg-background/50 backdrop-blur-sm mt-auto">
+                        <Button
+                            v-if="props.returnToSelection"
+                            variant="outline"
+                            class="w-full justify-start overflow-hidden bg-background/50 hover:bg-background border-border/60 mb-2"
+                            @click="backToSelection"
+                        >
+                            <ArrowLeft class="mr-2 h-4 w-4" />
+                            Back to Topic Selection
+                        </Button>
                         <Button variant="ghost" class="w-full justify-start text-muted-foreground hover:text-foreground" @click="backToLibrary">
                             <ArrowLeft class="mr-2 h-4 w-4" />
                             Back to Library
@@ -803,6 +883,34 @@ const formatMessageContent = (content: string) => {
                                                         <Save class="h-3 w-3 shrink-0" />
                                                         <span class="truncate">{{ topic }}</span>
                                                     </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Refined Topic Detected -->
+                                            <div
+                                                v-if="msg.role === 'assistant' && extractRefinedTopic(msg.content)"
+                                                class="mt-4 pt-3 border-t border-border/30"
+                                            >
+                                                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1 font-semibold opacity-70">
+                                                    <CheckCircle2 class="h-3 w-3" />
+                                                    Refined Topic
+                                                </div>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        class="h-8"
+                                                        @click="applyRefinedTopicFromContent(msg.content, false)"
+                                                    >
+                                                        Use refined topic
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        class="h-8"
+                                                        @click="applyRefinedTopicFromContent(msg.content, true)"
+                                                    >
+                                                        Select refined topic
+                                                    </Button>
                                                 </div>
                                             </div>
                                         </div>

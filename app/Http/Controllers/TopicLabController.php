@@ -39,6 +39,7 @@ class TopicLabController extends Controller
 
         $project->load('category');
         $topics = $this->getProjectGeneratedTopics($project);
+        $returnToSelection = $request->boolean('return_to_selection');
 
         // Fetch ALL existing chat sessions for this project (for history sidebar)
         // Include both topic_refinement and null task_type for backward compatibility
@@ -103,6 +104,22 @@ class TopicLabController extends Controller
             }
         }
 
+        // Allow TopicSelection to open Topic Lab with a pre-selected topic.
+        if ($chatMessages->isEmpty()) {
+            $prefillTitle = $request->input('topic_title');
+            $prefillDescription = $request->input('topic_description');
+            if (is_string($prefillTitle) && trim($prefillTitle) !== '') {
+                $initialTopic = [
+                    'id' => 0,
+                    'title' => trim($prefillTitle),
+                    'description' => is_string($prefillDescription) ? $prefillDescription : '',
+                    'difficulty' => 'Intermediate',
+                    'resource_level' => 'Medium',
+                    'feasibility_score' => 75,
+                ];
+            }
+        }
+
         // Format history sessions for sidebar
         $historySessions = $allSessions
             ->map(function ($messages, $sid) {
@@ -146,6 +163,7 @@ class TopicLabController extends Controller
             'historySessions' => $historySessions,
             'initialMessages' => $initialMessages,
             'initialTopic' => $initialTopic,
+            'returnToSelection' => $returnToSelection,
         ]);
     }
 
@@ -216,7 +234,15 @@ Academic Level: {$project->type}
 Your goal is to help the student refine this topic, clarify the scope, suggest methodologies, or answer questions about feasibility.
 Keep your responses helpful, encouraging, and academically rigorous but accessible.
 Avoid lengthy lectures; be conversational and interactive.
-If the student asks to change the topic significantly, guide them on how it aligns with their field.";
+If the student asks to change the topic significantly, guide them on how it aligns with their field.
+
+IMPORTANT OUTPUT FORMAT (for automatic extraction):
+- If your response includes a refined research topic the student can adopt, you MUST include exactly ONE machine-readable block at the very end of your response:
+<REFINED_TOPIC_JSON>{\"title\":\"...\",\"description\":\"...\"}</REFINED_TOPIC_JSON>
+- The JSON must be valid.
+- \"title\" must be a single line (<= 180 chars).
+- \"description\" must be plain text (no markdown), <= 1500 chars.
+- Do NOT include any other text after the closing </REFINED_TOPIC_JSON> tag.";
 
         // Construct the full prompt for the AI
         $fullPrompt = $systemPrompt."\n\nChat History:\n";
@@ -243,6 +269,8 @@ If the student asks to change the topic significantly, guide them on how it alig
                     'model' => 'gpt-4o-mini',
                     'temperature' => 0.7,
                     'max_tokens' => 1000,
+                    'feature' => 'topics_lab_chat',
+                    'user_id' => auth()->id(),
                 ];
 
                 foreach ($this->aiGenerator->streamGenerate($fullPrompt, $options) as $chunk) {

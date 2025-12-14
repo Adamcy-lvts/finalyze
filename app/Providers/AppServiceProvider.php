@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\Payment;
+use App\Models\Project;
+use App\Observers\PaymentObserver;
+use App\Observers\ProjectObserver;
 use App\Services\PromptSystem\ContentDecisionEngine;
 use App\Services\PromptSystem\ContextMatcher;
 use App\Services\PromptSystem\MockDataGenerator;
@@ -59,6 +63,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Payment::observe(PaymentObserver::class);
+        Project::observe(ProjectObserver::class);
+
         // Authorize access to Pulse dashboard (only for admins)
         Gate::define('viewPulse', function ($user) {
             return $user->hasRole('super_admin');

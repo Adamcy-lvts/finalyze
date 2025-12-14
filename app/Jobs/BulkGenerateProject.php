@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\ActivityLog;
 use App\Models\Project;
 use App\Models\ProjectGeneration;
 use App\Services\FacultyStructureService;
@@ -35,6 +36,21 @@ class BulkGenerateProject implements ShouldQueue
         $totalChapters = count($chapterStructure);
 
         try {
+            if (config('activity.bulk_jobs', true)) {
+            ActivityLog::record(
+                'ai.bulk_generation.started',
+                "Bulk generation started for project: ".($project->title ?: "Project #{$project->id}"),
+                $this->generation,
+                $project->user,
+                [
+                    'project_id' => $project->id,
+                    'generation_id' => $this->generation->id,
+                    'resume' => $this->resume,
+                    'total_chapters' => $totalChapters,
+                ]
+            );
+            }
+
             // Broadcast generation started
             $broadcaster->started(
                 $this->generation,
@@ -65,12 +81,42 @@ class BulkGenerateProject implements ShouldQueue
 
             Log::info('Bulk generation dispatch completed', ['project_id' => $project->id]);
 
+            if (config('activity.bulk_jobs', true)) {
+            ActivityLog::record(
+                'ai.bulk_generation.dispatched',
+                "Bulk generation dispatched chapter jobs for project: ".($project->title ?: "Project #{$project->id}"),
+                $this->generation,
+                $project->user,
+                [
+                    'project_id' => $project->id,
+                    'generation_id' => $this->generation->id,
+                    'current_stage' => $this->generation->current_stage,
+                    'total_chapters' => $totalChapters,
+                ]
+            );
+            }
+
         } catch (\Throwable $e) {
             Log::error('Bulk generation failed', [
                 'project_id' => $project->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            if (config('activity.bulk_jobs', true)) {
+            ActivityLog::record(
+                'ai.bulk_generation.failed',
+                "Bulk generation failed for project: ".($project->title ?: "Project #{$project->id}"),
+                $this->generation,
+                $project->user,
+                [
+                    'project_id' => $project->id,
+                    'generation_id' => $this->generation->id,
+                    'current_stage' => $this->generation->current_stage,
+                    'error' => $e->getMessage(),
+                ]
+            );
+            }
 
             $broadcaster->failed(
                 $this->generation,

@@ -2,6 +2,7 @@
 
 namespace App\Services\AI\Providers;
 
+use App\Models\ActivityLog;
 use App\Services\AIUsageLogger;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +23,7 @@ class OpenAIProvider implements AIProviderInterface
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
         $feature = $options['feature'] ?? null;
         $userId = $options['user_id'] ?? null;
+        $startedAt = hrtime(true);
 
         Log::info('OpenAI Provider - Starting generation', [
             'model' => $model,
@@ -48,6 +50,7 @@ class OpenAIProvider implements AIProviderInterface
             ]);
 
             $content = $response->choices[0]->message->content;
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
 
             Log::info('OpenAI Provider - Generation completed', [
                 'content_length' => strlen($content),
@@ -68,13 +71,58 @@ class OpenAIProvider implements AIProviderInterface
                 );
             }
 
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.openai',
+                    'OpenAI generation completed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'openai',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'temperature' => $temperature,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'prompt_length' => strlen($prompt),
+                        'content_length' => strlen($content),
+                        'tokens' => isset($response->usage) ? [
+                            'prompt' => $response->usage->promptTokens ?? 0,
+                            'completion' => $response->usage->completionTokens ?? 0,
+                            'total' => $response->usage->totalTokens ?? 0,
+                        ] : null,
+                        'openai_id' => $response->id ?? null,
+                    ], fn ($v) => $v !== null)
+                );
+            }
+
             return $content;
 
         } catch (\Exception $e) {
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
             Log::error('OpenAI Provider - Generation failed', [
                 'error' => $e->getMessage(),
                 'model' => $model,
             ]);
+
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.openai_failed',
+                    'OpenAI generation failed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'openai',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'temperature' => $temperature,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'prompt_length' => strlen($prompt),
+                        'error' => $e->getMessage(),
+                    ], fn ($v) => $v !== null)
+                );
+            }
             throw $e;
         }
     }
@@ -86,6 +134,7 @@ class OpenAIProvider implements AIProviderInterface
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
         $feature = $options['feature'] ?? null;
         $userId = $options['user_id'] ?? null;
+        $startedAt = hrtime(true);
 
         // Retry configuration for stream connection errors
         $maxRetries = 3;
@@ -169,6 +218,7 @@ class OpenAIProvider implements AIProviderInterface
                 // Streaming responses from OpenAI do not include token usage;
                 // approximate using word count so we at least track something.
                 $approxTokens = (int) round(str_word_count($totalContent) * 1.3);
+                $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
                 app(AIUsageLogger::class)->log(
                     $userId,
                     $feature,
@@ -178,6 +228,31 @@ class OpenAIProvider implements AIProviderInterface
                     null,
                     ['approx_stream_tokens' => true]
                 );
+
+                if (config('activity.ai_provider_calls', true)) {
+                    ActivityLog::record(
+                        'ai.call.openai_stream',
+                        'OpenAI stream completed',
+                        null,
+                        $userId ? (int) $userId : null,
+                        array_filter([
+                            'provider' => 'openai',
+                            'feature' => $feature,
+                            'model' => $model,
+                            'temperature' => $temperature,
+                            'max_tokens' => $maxTokens,
+                            'duration_ms' => $durationMs,
+                            'prompt_length' => strlen($prompt),
+                            'content_length' => strlen($totalContent),
+                            'total_chunks' => $totalChunks,
+                            'tokens' => [
+                                'prompt' => $promptTokens,
+                                'completion' => $approxTokens,
+                                'approx_stream_tokens' => true,
+                            ],
+                        ], fn ($v) => $v !== null)
+                    );
+                }
 
                 // Success - exit the retry loop
                 return;
@@ -245,6 +320,27 @@ class OpenAIProvider implements AIProviderInterface
                     'max_retries' => $maxRetries,
                     'trace' => $e->getTraceAsString(),
                 ]);
+
+                if (config('activity.ai_provider_calls', true)) {
+                    ActivityLog::record(
+                        'ai.call.openai_stream_failed',
+                        'OpenAI stream failed',
+                        null,
+                        $userId ? (int) $userId : null,
+                        array_filter([
+                            'provider' => 'openai',
+                            'feature' => $feature,
+                            'model' => $model,
+                            'temperature' => $temperature,
+                            'max_tokens' => $maxTokens,
+                            'duration_ms' => (int) round((hrtime(true) - $startedAt) / 1_000_000),
+                            'prompt_length' => strlen($prompt),
+                            'attempt' => $attempt,
+                            'error' => $errorMessage,
+                            'error_class' => get_class($e),
+                        ], fn ($v) => $v !== null)
+                    );
+                }
 
                 // Yield error message to client
                 yield "\n\n❌ **Generation Error**\n\nError generating content with OpenAI: " . $errorMessage . "\n\n";

@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\ProjectTopic;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class TopicLibraryService
 {
@@ -28,8 +29,15 @@ class TopicLibraryService
                 'academic_level',
             ]);
 
+        $query->where('user_id', $project->user_id);
+
+        // Backward-compatible safety: if some environments have an older schema,
+        // avoid 500s and return empty set rather than querying a missing column.
+        if (! Schema::hasColumn('project_topics', 'project_id')) {
+            return collect();
+        }
+
         return $query
-            ->where('user_id', $project->user_id)
             ->where('project_id', $project->id)
             ->orderByDesc('created_at')
             ->limit($limit)

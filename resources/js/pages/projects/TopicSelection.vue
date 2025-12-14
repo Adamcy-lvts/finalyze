@@ -497,6 +497,42 @@ const toggleDescription = (topicId: number) => {
     }
 };
 
+const openTopicInLab = (topic: { title: string; description: string }) => {
+    // Ensure a clean title for the lab view
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = topic.title;
+    const plainTitle = (tempDiv.textContent || tempDiv.innerText || topic.title).trim();
+
+    if (!plainTitle) {
+        toast('Error', { description: 'Topic title is missing.' });
+        return;
+    }
+
+    router.visit(
+        route('topics.lab', {
+            project: props.project.slug,
+            new: 'true',
+            return_to_selection: 1,
+            topic_title: plainTitle,
+            topic_description: topic.description || '',
+        }),
+    );
+};
+
+const refineCurrentTopicInLab = () => {
+    const title = (customTopic.value || customTitle.value || '').trim();
+    const description = (customDescription.value || '').trim();
+    if (!title && !description) {
+        toast('Error', { description: 'Please select or enter a topic first.' });
+        return;
+    }
+
+    openTopicInLab({
+        title: title || customTitle.value || 'Research Topic',
+        description,
+    });
+};
+
 const truncateDescription = (description: string, maxLength: number = 150) => {
     if (description.length <= maxLength) return description;
     return description.substring(0, maxLength).trim() + '...';
@@ -871,6 +907,16 @@ const goBackToWizard = async () => {
                                                     <ArrowRight class="ml-2 h-5 w-5" />
                                                 </span>
                                             </Button>
+
+                                            <Button
+                                                @click="refineCurrentTopicInLab"
+                                                :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
+                                                variant="outline"
+                                                class="w-full h-12 text-base font-medium mt-3"
+                                            >
+                                                <MessageSquare class="mr-2 h-5 w-5" />
+                                                Refine in Topic Lab
+                                            </Button>
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -1097,6 +1143,15 @@ const goBackToWizard = async () => {
                                                             {{ selectedTopic === topic.title ? 'Selected' : 'Select This Topic' }}
                                                             <CheckCircle v-if="selectedTopic === topic.title" class="ml-2 h-3.5 w-3.5" />
                                                             <ArrowRight v-else class="ml-2 h-3.5 w-3.5" />
+                                                        </Button>
+
+                                                        <Button
+                                                            @click="openTopicInLab(topic)"
+                                                            variant="outline"
+                                                            class="w-full mt-2"
+                                                        >
+                                                            <MessageSquare class="mr-2 h-4 w-4" />
+                                                            Refine in Topic Lab
                                                         </Button>
                                                     </div>
                                                 </div>

@@ -25,51 +25,72 @@
       </Card>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-      <!-- Main Chart Area (Placeholder) -->
-      <Card class="col-span-4 border-border/50 shadow-sm">
+    <!-- Charts -->
+    <div class="grid gap-4 lg:grid-cols-2">
+      <Card class="border-border/50 shadow-sm">
         <CardHeader>
-          <CardTitle>Revenue Overview</CardTitle>
-          <CardDescription>Monthly revenue breakdown for the current year.</CardDescription>
-        </CardHeader>
-        <CardContent class="pl-2">
-          <div
-            class="h-[350px] w-full flex items-center justify-center rounded-md border border-dashed border-border bg-muted/20">
-            <div class="flex flex-col items-center gap-2 text-muted-foreground">
-              <BarChart3 class="h-10 w-10 opacity-50" />
-              <span class="text-sm font-medium">Chart Visualization Placeholder</span>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Revenue</CardTitle>
+              <CardDescription>Track successful payments over time.</CardDescription>
             </div>
+            <div class="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                :class="revenueRange === '30d' ? 'border-primary/40 bg-primary/10 text-primary' : ''"
+                @click="revenueRange = '30d'"
+              >
+                30d
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                :class="revenueRange === 'monthly' ? 'border-primary/40 bg-primary/10 text-primary' : ''"
+                @click="revenueRange = 'monthly'"
+              >
+                Monthly
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div class="h-[320px] w-full">
+            <canvas ref="revenueCanvas" />
           </div>
         </CardContent>
       </Card>
 
-      <!-- Recent Activity / System Status -->
-      <Card class="col-span-3 border-border/50 shadow-sm flex flex-col">
+      <Card class="border-border/50 shadow-sm">
         <CardHeader>
-          <CardTitle>System Health</CardTitle>
-          <CardDescription>Real-time status of core services.</CardDescription>
-        </CardHeader>
-        <CardContent class="flex-1">
-          <div class="space-y-6">
-            <div v-for="(status, index) in systemStatus" :key="index" class="flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-muted/50 border border-border">
-                  <component :is="status.icon" class="h-4 w-4 text-foreground" />
-                </div>
-                <div class="space-y-1">
-                  <p class="text-sm font-medium leading-none">{{ status.name }}</p>
-                  <p class="text-xs text-muted-foreground">{{ status.description }}</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="relative flex h-2.5 w-2.5">
-                  <span
-                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-                <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Operational</span>
-              </div>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>User Registrations</CardTitle>
+              <CardDescription>New user signups over time.</CardDescription>
             </div>
+            <div class="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                :class="registrationsRange === '30d' ? 'border-primary/40 bg-primary/10 text-primary' : ''"
+                @click="registrationsRange = '30d'"
+              >
+                30d
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                :class="registrationsRange === 'monthly' ? 'border-primary/40 bg-primary/10 text-primary' : ''"
+                @click="registrationsRange = 'monthly'"
+              >
+                Monthly
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div class="h-[320px] w-full">
+            <canvas ref="registrationsCanvas" />
           </div>
         </CardContent>
       </Card>
@@ -248,10 +269,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 import { toast } from 'vue-sonner'
 import { route } from 'ziggy-js'
+import { Chart, type ChartConfiguration, registerables } from 'chart.js'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -266,11 +288,6 @@ import {
   Type,
   ArrowUpRight,
   ArrowDownRight,
-  Activity,
-  Server,
-  Database,
-  Cpu,
-  BarChart3,
 
   Filter,
   Copy,
@@ -293,7 +310,7 @@ const props = defineProps<{
     projects: { total: number; today: number }
     words: { total: number; today: number }
   }
-  recentActivity: { message: string; time: string }[]
+  recentActivity: { type: string; message: string; time: string; created_at?: string }[]
   invites: {
     id: number
     code: string
@@ -304,10 +321,155 @@ const props = defineProps<{
     expires_at: string | null
     created_at: string | null
   }[]
+  charts: {
+    revenue: {
+      daily: { labels: string[]; data: number[] }
+      monthly: { labels: string[]; data: number[] }
+    }
+    registrations: {
+      daily: { labels: string[]; data: number[] }
+      monthly: { labels: string[]; data: number[] }
+    }
+  }
 }>()
 
 const formatNumber = (val: number) => Number(val ?? 0).toLocaleString()
 const formatDate = (iso: string) => new Date(iso).toLocaleString()
+
+Chart.register(...registerables)
+
+const revenueRange = ref<'30d' | 'monthly'>('30d')
+const registrationsRange = ref<'30d' | 'monthly'>('30d')
+
+const revenueCanvas = ref<HTMLCanvasElement | null>(null)
+const registrationsCanvas = ref<HTMLCanvasElement | null>(null)
+
+let revenueChart: Chart | null = null
+let registrationsChart: Chart | null = null
+
+const shortDate = (ymd: string) => {
+  const d = new Date(`${ymd}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ymd
+  return new Intl.DateTimeFormat('en', { month: 'short', day: '2-digit' }).format(d)
+}
+
+const shortMonth = (ym: string) => {
+  const d = new Date(`${ym}-01T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ym
+  return new Intl.DateTimeFormat('en', { month: 'short', year: '2-digit' }).format(d)
+}
+
+const makeLineChart = (
+  canvas: HTMLCanvasElement,
+  labels: string[],
+  data: number[],
+  options: {
+    label: string
+    color: string
+    formatTick: (value: string) => string
+    valuePrefix?: string
+    valueSuffix?: string
+  },
+) => {
+  const cfg: ChartConfiguration<'line'> = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: options.label,
+          data,
+          borderColor: options.color,
+          backgroundColor: `${options.color}22`,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.35,
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const raw = String(items?.[0]?.label ?? '')
+              return options.formatTick(raw)
+            },
+            label: (item) => {
+              const prefix = options.valuePrefix ?? ''
+              const suffix = options.valueSuffix ?? ''
+              const v = typeof item.parsed.y === 'number' ? item.parsed.y : Number(item.parsed.y ?? 0)
+              return `${prefix}${v.toLocaleString()}${suffix}`
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: 8,
+            callback: (_value, index) => options.formatTick(String(labels[index] ?? '')),
+          },
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(148,163,184,0.15)' },
+          ticks: { precision: 0 },
+        },
+      },
+    },
+  }
+
+  return new Chart(canvas, cfg)
+}
+
+const renderRevenueChart = () => {
+  if (!revenueCanvas.value) return
+  revenueChart?.destroy()
+
+  const series = revenueRange.value === '30d' ? props.charts.revenue.daily : props.charts.revenue.monthly
+  const formatTick = revenueRange.value === '30d' ? shortDate : shortMonth
+  revenueChart = makeLineChart(revenueCanvas.value, series.labels, series.data, {
+    label: 'Revenue',
+    color: '#6366f1',
+    formatTick,
+    valuePrefix: '₦',
+  })
+}
+
+const renderRegistrationsChart = () => {
+  if (!registrationsCanvas.value) return
+  registrationsChart?.destroy()
+
+  const series = registrationsRange.value === '30d' ? props.charts.registrations.daily : props.charts.registrations.monthly
+  const formatTick = registrationsRange.value === '30d' ? shortDate : shortMonth
+  registrationsChart = makeLineChart(registrationsCanvas.value, series.labels, series.data, {
+    label: 'Registrations',
+    color: '#10b981',
+    formatTick,
+  })
+}
+
+onMounted(() => {
+  renderRevenueChart()
+  renderRegistrationsChart()
+})
+
+watch(revenueRange, () => renderRevenueChart())
+watch(registrationsRange, () => renderRegistrationsChart())
+
+onBeforeUnmount(() => {
+  revenueChart?.destroy()
+  registrationsChart?.destroy()
+  revenueChart = null
+  registrationsChart = null
+})
 
 const inviteForm = useForm({
   count: 1,
@@ -420,17 +582,17 @@ const statsData = computed(() => [
   },
 ])
 
-const systemStatus = [
-  { name: 'Job Queue', description: 'Processing background tasks', icon: Activity },
-  { name: 'OpenAI API', description: 'Content generation service', icon: Cpu },
-  { name: 'Database', description: 'Primary data storage', icon: Database },
-  { name: 'Cache', description: 'Redis cache cluster', icon: Server },
-]
-
 // TanStack Table Setup for Recent Activity
-const columnHelper = createColumnHelper<{ message: string; time: string }>()
+const columnHelper = createColumnHelper<{ type: string; message: string; time: string }>()
 
 const columns = [
+  columnHelper.accessor('type', {
+    header: 'Type',
+    cell: (info) => {
+      const t = info.getValue()
+      return h(Badge, { variant: 'secondary' }, () => t)
+    },
+  }),
   columnHelper.accessor('message', {
     header: 'Activity',
     cell: (info) => h('div', { class: 'font-medium text-foreground' }, info.getValue()),
