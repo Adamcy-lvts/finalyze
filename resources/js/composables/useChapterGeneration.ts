@@ -61,6 +61,17 @@ export function useChapterGeneration({
     const partialContentSaved = ref(false);
     const savedWordCountOnError = ref(0);
 
+    // Content history for undo/redo functionality
+    interface ContentHistoryEntry {
+        content: string;
+        action: string;
+        timestamp: number;
+    }
+    const contentHistory = ref<ContentHistoryEntry[]>([]);
+    const maxHistoryEntries = 10;
+    const canUndo = ref(false);
+    const lastUndoneContent = ref<string | null>(null);
+
     const isCollectingPapers = ref(false);
     const paperCollectionProgress = ref('');
     const paperCollectionPhase = ref('');
@@ -187,6 +198,68 @@ export function useChapterGeneration({
         }
 
         return true;
+    };
+
+    // Content history management for undo functionality
+    const pushToHistory = (action: string) => {
+        const currentContent = chapterContent.value;
+        if (!currentContent) return;
+
+        // Don't push if the content is the same as the last entry
+        if (contentHistory.value.length > 0 &&
+            contentHistory.value[contentHistory.value.length - 1].content === currentContent) {
+            return;
+        }
+
+        contentHistory.value.push({
+            content: currentContent,
+            action,
+            timestamp: Date.now(),
+        });
+
+        // Limit history size
+        if (contentHistory.value.length > maxHistoryEntries) {
+            contentHistory.value.shift();
+        }
+
+        canUndo.value = contentHistory.value.length > 0;
+    };
+
+    const undoLastAction = () => {
+        if (contentHistory.value.length === 0) {
+            toast.error('Nothing to undo');
+            return false;
+        }
+
+        const lastEntry = contentHistory.value.pop();
+        if (lastEntry) {
+            lastUndoneContent.value = chapterContent.value;
+            chapterContent.value = lastEntry.content;
+            canUndo.value = contentHistory.value.length > 0;
+
+            toast.success('Undone', {
+                description: `Reverted "${lastEntry.action}" action`,
+                action: {
+                    label: 'Redo',
+                    onClick: () => {
+                        if (lastUndoneContent.value) {
+                            pushToHistory('Redo');
+                            chapterContent.value = lastUndoneContent.value;
+                            lastUndoneContent.value = null;
+                        }
+                    },
+                },
+            });
+
+            return true;
+        }
+        return false;
+    };
+
+    const clearHistory = () => {
+        contentHistory.value = [];
+        canUndo.value = false;
+        lastUndoneContent.value = null;
     };
 
     const monitorPaperCollection = async (): Promise<boolean> => {
@@ -1044,5 +1117,11 @@ export function useChapterGeneration({
         resumeGeneration,
         dismissRecovery,
         checkForAutoGeneration,
+        // Undo/Redo functionality
+        contentHistory,
+        canUndo,
+        pushToHistory,
+        undoLastAction,
+        clearHistory,
     };
 }

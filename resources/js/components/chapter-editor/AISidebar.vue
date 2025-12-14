@@ -6,10 +6,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
-import { Brain, Lightbulb, Quote, Sparkles, Target, Wand2, ChevronDown, Zap, RefreshCw, AlignLeft, Type, CheckCircle2, PenTool } from 'lucide-vue-next';
+import { Brain, Lightbulb, Quote, Sparkles, Target, Wand2, ChevronDown, Zap, RefreshCw, AlignLeft, Type, CheckCircle2, PenTool, MessageSquarePlus, Undo2 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import CitationHelper from './CitationHelper.vue';
+import CustomPromptDialog from './CustomPromptDialog.vue';
 import axios from 'axios';
 
 
@@ -30,18 +31,20 @@ interface Props {
     showCitationHelper: boolean;
     chapterContent: string;
     cursorPosition?: number;
-    currentWordCount?: number; // Add current word count from parent
-    targetWordCount?: number;  // Add target word count from parent
+    currentWordCount?: number;
+    targetWordCount?: number;
+    canUndo?: boolean;
 }
 
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-    startStreamingGeneration: [type: 'progressive' | 'outline' | 'improve' | 'section' | 'rephrase' | 'expand', options?: { section?: string, mode?: string, selectedText?: string, style?: string }];
+    startStreamingGeneration: [type: 'progressive' | 'outline' | 'improve' | 'section' | 'rephrase' | 'expand' | 'custom', options?: { section?: string, mode?: string, selectedText?: string, style?: string, customPrompt?: string }];
     getAISuggestions: [];
     'update:showCitationHelper': [value: boolean];
     'insert-citation': [citation: string];
     checkCitations: [];
+    undoLastAction: [];
 }>();
 
 // Local state
@@ -56,8 +59,22 @@ const actionLoadingStates = ref({
     rephrase: false,
     cite: false,
     'generate-full': false,
-    'generate-section': false
+    'generate-section': false,
+    custom: false
 });
+
+// Custom prompt dialog state - DISABLED
+// const showCustomPromptDialog = ref(false);
+
+// Handle custom prompt execution - DISABLED
+// const handleCustomPromptExecute = (prompt: string) => {
+//     actionLoadingStates.value.custom = true;
+//     emit('startStreamingGeneration', 'custom', { customPrompt: prompt });
+//     toast('Executing custom prompt...');
+//     setTimeout(() => {
+//         actionLoadingStates.value.custom = false;
+//     }, 1000);
+// };
 
 // Computed
 const hasValidChapter = computed(() => !!props.chapter?.id && !!props.chapter?.chapter_number);
@@ -438,6 +455,29 @@ watch(
                                 </div>
                                 <span class="text-xs font-medium">Rephrase</span>
                             </Button>
+
+                            <!-- Custom Prompt Button - DISABLED
+                            <Button @click="showCustomPromptDialog = true"
+                                :disabled="isGenerating || actionLoadingStates.custom"
+                                variant="outline"
+                                class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-accent hover:border-accent transition-all duration-300">
+                                <div class="p-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-500/10 text-purple-500">
+                                    <MessageSquarePlus class="h-4 w-4" />
+                                </div>
+                                <span class="text-xs font-medium">Custom</span>
+                            </Button>
+                            -->
+
+                            <!-- Undo Button -->
+                            <Button v-if="canUndo" 
+                                @click="emit('undoLastAction')"
+                                variant="outline"
+                                class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-amber-500/10 hover:border-amber-500/30 transition-all duration-300 col-span-2">
+                                <div class="p-1.5 rounded-full bg-amber-500/10 text-amber-500">
+                                    <Undo2 class="h-4 w-4" />
+                                </div>
+                                <span class="text-xs font-medium">Undo Last AI Change</span>
+                            </Button>
                         </div>
                     </CollapsibleContent>
                 </Collapsible>
@@ -473,9 +513,24 @@ watch(
         </Card>
 
         <!-- Citation Helper -->
-        <CitationHelper :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+        <CitationHelper 
+            :show-citation-helper="showCitationHelper" 
+            :chapter-content="chapterContent"
+            :chapter-id="chapter?.id || 0"
             @update:show-citation-helper="emit('update:showCitationHelper', $event)"
-            @insert-citation="handleInsertCitation" />
+            @insert-citation="handleInsertCitation" 
+        />
+
+        <!-- Custom Prompt Dialog - DISABLED
+        <CustomPromptDialog 
+            v-model:open="showCustomPromptDialog"
+            :selected-text="selectedText"
+            :chapter-content="chapterContent"
+            :project-title="project?.slug || ''"
+            :chapter-title="chapter?.title || ''"
+            @execute-prompt="handleCustomPromptExecute"
+        />
+        -->
     </div>
 </template>
 

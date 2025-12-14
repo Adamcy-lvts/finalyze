@@ -907,7 +907,8 @@ const markAsComplete = async () => {
               :selected-text="selectedText" :chapter-content="content" :is-processing="isAnalyzing || isSaving"
               :ensure-balance="ensureQuickActionBalance" :on-usage="recordManualUsage"
               @text-improved="handleTextImproved" @text-expanded="handleTextExpanded"
-              @citations-suggested="handleCitationsSuggested" @text-rephrased="handleTextRephrased" />
+              @citations-suggested="handleCitationsSuggested" @text-rephrased="handleTextRephrased"
+              @open-citation-helper="showCitationHelper = true" />
 
             <Separator class="bg-border/50" />
 

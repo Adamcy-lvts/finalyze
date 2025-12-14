@@ -12,8 +12,10 @@ import {
     Type,
     ChevronDown,
     Wand2,
+    MessageSquarePlus,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import CustomPromptDialog from '@/components/chapter-editor/CustomPromptDialog.vue'
 
 interface Props {
     projectSlug: string
@@ -32,6 +34,8 @@ const emit = defineEmits<{
     textExpanded: [text: string]
     citationsSuggested: [suggestions: string]
     textRephrased: [alternatives: string]
+    customPromptExecuted: [prompt: string]
+    openCitationHelper: []
 }>()
 
 const isOpen = ref(true)
@@ -41,7 +45,21 @@ const actionLoadingStates = ref({
     expand: false,
     cite: false,
     rephrase: false,
+    custom: false,
 })
+
+// Custom prompt dialog state - DISABLED
+// const showCustomPromptDialog = ref(false)
+
+// Handle custom prompt execution - DISABLED
+// const handleCustomPrompt = (prompt: string) => {
+//     actionLoadingStates.value.custom = true
+//     emit('customPromptExecuted', prompt)
+//     toast('Executing custom prompt...')
+//     setTimeout(() => {
+//         actionLoadingStates.value.custom = false
+//     }, 1000)
+// }
 
 const getBodyTextForAction = (action: 'improve' | 'expand' | 'cite' | 'rephrase') => {
     const selection = props.selectedText?.trim() || ''
@@ -80,6 +98,13 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
         return
     }
 
+    // For cite action, just open the CitationHelper panel (same as ChapterEditor)
+    if (action === 'cite') {
+        emit('openCitationHelper')
+        toast('Opening citation helper...')
+        return
+    }
+
     actionLoadingStates.value[action] = true
 
     try {
@@ -94,10 +119,6 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
             case 'expand':
                 routeName = 'projects.manual-editor.expand-text'
                 eventName = 'textExpanded'
-                break
-            case 'cite':
-                routeName = 'projects.manual-editor.suggest-citations'
-                eventName = 'citationsSuggested'
                 break
             case 'rephrase':
                 routeName = 'projects.manual-editor.rephrase-text'
@@ -131,10 +152,6 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
             emit('textExpanded', data.expandedText)
             await props.onUsage?.(countWords(data.expandedText), 'Manual editor: Expand')
             toast.success('Text expanded successfully!')
-        } else if (action === 'cite' && data.suggestions) {
-            emit('citationsSuggested', data.suggestions)
-            await props.onUsage?.(countWords(data.suggestions), 'Manual editor: Citation suggestions')
-            toast.success('Citation suggestions generated!')
         } else if (action === 'rephrase' && data.alternatives) {
             emit('textRephrased', data.alternatives)
             await props.onUsage?.(countWords(data.alternatives), 'Manual editor: Rephrase')
@@ -237,6 +254,22 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
                             {{ actionLoadingStates.rephrase ? 'Rephrasing...' : 'Rephrase' }}
                         </span>
                     </Button>
+
+                    <!-- Custom Prompt Button - DISABLED
+                    <Button
+                        @click="showCustomPromptDialog = true"
+                        :disabled="isProcessing || actionLoadingStates.custom"
+                        variant="outline"
+                        class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-accent hover:border-accent transition-all duration-300 col-span-2"
+                    >
+                        <div class="p-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-500/10 text-purple-500">
+                            <MessageSquarePlus class="h-4 w-4" />
+                        </div>
+                        <span class="text-xs font-medium">
+                            {{ actionLoadingStates.custom ? 'Executing...' : 'Custom Prompt' }}
+                        </span>
+                    </Button>
+                    -->
                 </div>
 
                 <!-- Help Text -->
@@ -249,4 +282,13 @@ const handleQuickAction = async (action: 'improve' | 'expand' | 'cite' | 'rephra
             </CollapsibleContent>
         </Collapsible>
     </div>
+
+    <!-- Custom Prompt Dialog - DISABLED
+    <CustomPromptDialog 
+        v-model:open="showCustomPromptDialog"
+        :selected-text="selectedText"
+        :chapter-content="chapterContent"
+        @execute-prompt="handleCustomPrompt"
+    />
+    -->
 </template>
