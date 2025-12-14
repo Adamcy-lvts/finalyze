@@ -58,6 +58,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('/citations/clear', [CitationController::class, 'clearCitations'])
         ->name('api.citations.clear');
 
+    // Auto-detect claims that need citations
+    Route::post('/citations/detect-claims', [CitationController::class, 'detectClaims'])
+        ->name('api.citations.detect-claims');
+
+    // Get saved detected claims for a chapter
+    Route::get('/citations/detected-claims', [CitationController::class, 'getDetectedClaims'])
+        ->name('api.citations.detected-claims');
+
     // Paper collection routes
     Route::prefix('projects/{project}/paper-collection')->name('api.projects.paper-collection.')->group(function () {
         Route::post('/start', [PaperCollectionController::class, 'startCollection'])

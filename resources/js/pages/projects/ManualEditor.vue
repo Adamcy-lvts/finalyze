@@ -160,6 +160,35 @@ const isGeneratingDefense = ref(false)
 // Citation Helper state
 const showCitationHelper = ref(true)
 
+// Load citation operation mode from localStorage
+const loadCitationModeFromStorage = () => {
+  try {
+    const stored = localStorage.getItem('citationOperationMode')
+    return stored === 'true'
+  } catch {
+    return false
+  }
+}
+
+const citationOperationMode = ref(loadCitationModeFromStorage())
+
+// Enter/exit citation operation mode (split view) with localStorage persistence
+const enterCitationOperationMode = () => {
+  citationOperationMode.value = true
+  showRightSidebar.value = false // Hide normal sidebar
+  try {
+    localStorage.setItem('citationOperationMode', 'true')
+  } catch {}
+}
+
+const exitCitationOperationMode = () => {
+  citationOperationMode.value = false
+  showRightSidebar.value = true // Restore sidebar
+  try {
+    localStorage.setItem('citationOperationMode', 'false')
+  } catch {}
+}
+
 // Fullscreen state - DISABLED due to dark mode issues
 const isNativeFullscreen = ref(false)
 
@@ -404,16 +433,89 @@ const copyCitationSuggestions = async () => {
 const prevChapter = computed(() => props.allChapters.find(c => c.chapter_number === props.chapter.chapter_number - 1))
 const nextChapter = computed(() => props.allChapters.find(c => c.chapter_number === props.chapter.chapter_number + 1))
 
-const handleInsertCitation = (citation: string) => {
+const handleInsertCitation = (citation: string, claimText?: string) => {
+  // If we have claim text, try to find it and insert citation at the end of the claim
+  if (claimText && content.value) {
+    // Clean up the claim text for searching
+    const cleanClaimText = claimText.trim()
+    
+    // For HTML content, we need to find the text within the HTML structure
+    // First, create a temporary DOM element to parse the content
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = content.value
+    const plainText = tempDiv.textContent || tempDiv.innerText || ''
+    
+    // Find the claim text in plain text
+    const claimStart = plainText.indexOf(cleanClaimText)
+    
+    if (claimStart !== -1) {
+      // Find the end of the sentence containing the claim
+      const claimEnd = claimStart + cleanClaimText.length
+      const afterClaim = plainText.substring(claimEnd)
+      
+      // Find the next sentence ending
+      const sentenceEndMatch = afterClaim.match(/^[^.!?]*[.!?]/)
+      let insertPosition: number
+      
+      if (sentenceEndMatch) {
+        insertPosition = claimEnd + sentenceEndMatch[0].length
+      } else {
+        insertPosition = claimEnd
+      }
+      
+      // Now we need to find this position in the HTML content
+      // Walk through the HTML to find where to insert
+      let htmlPos = 0
+      let textPos = 0
+      const htmlContent = content.value
+      
+      while (htmlPos < htmlContent.length && textPos < insertPosition) {
+        if (htmlContent[htmlPos] === '<') {
+          // Skip HTML tag
+          while (htmlPos < htmlContent.length && htmlContent[htmlPos] !== '>') {
+            htmlPos++
+          }
+          htmlPos++ // Skip the '>'
+        } else if (htmlContent[htmlPos] === '&') {
+          // Handle HTML entities (like &nbsp;)
+          const entityEnd = htmlContent.indexOf(';', htmlPos)
+          if (entityEnd !== -1 && entityEnd - htmlPos < 10) {
+            htmlPos = entityEnd + 1
+            textPos++ // Entity counts as one character
+          } else {
+            htmlPos++
+            textPos++
+          }
+        } else {
+          htmlPos++
+          textPos++
+        }
+      }
+      
+      // Insert the citation at the found HTML position
+      if (htmlPos > 0) {
+        const before = htmlContent.substring(0, htmlPos)
+        const after = htmlContent.substring(htmlPos)
+        const newContent = `${before} ${citation}${after}`
+        
+        handleContentUpdate(newContent)
+        toast.success('Citation inserted at claim location')
+        return
+      }
+    }
+  }
+
+  // Fallback: Try cursor position
   const cursor = editorRef.value?.getCursorPosition?.()
   if (typeof cursor === 'number') {
     const ok = editorRef.value?.replaceTextAt?.({ from: cursor, to: cursor }, ` ${citation} `) ?? false
     if (ok) {
-      toast.success('Citation inserted')
+      toast.success('Citation inserted at cursor')
       return
     }
   }
 
+  // Final fallback: Append to content
   handleContentUpdate(`${content.value} ${citation}`)
   toast.success('Citation appended to content')
 }
@@ -753,19 +855,32 @@ const markAsComplete = async () => {
       </Transition>
 
       <!-- Writing Area -->
-	    <div class="flex-1 flex flex-col overflow-hidden">
-	        <!-- Editor -->
-	        <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
-	          <RichTextEditor
-	            ref="editorRef"
-	            :modelValue="content"
-	            @update:modelValue="handleContentUpdate"
-	            @update:selectedText="selectedText = $event"
-	            @update:selectionRange="selectionRange = $event"
-	            :manual-mode="true"
-	            :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''" class="min-h-full" />
-	        </div>
-	      </div>
+      <div :class="[
+        'flex-1 flex overflow-hidden',
+        citationOperationMode ? 'flex-row' : 'flex-col'
+      ]">
+        <!-- Editor (narrower when in operation mode) -->
+        <div :class="[
+          'flex flex-col overflow-hidden',
+          citationOperationMode ? 'w-1/2 border-r border-border/50' : 'flex-1'
+        ]">
+          <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
+            <RichTextEditor ref="editorRef" :modelValue="content" @update:modelValue="handleContentUpdate"
+              @update:selectedText="selectedText = $event" @update:selectionRange="selectionRange = $event"
+              :manual-mode="true" :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''"
+              class="min-h-full" />
+          </div>
+        </div>
+
+        <!-- Citation Operation Panel (shown in split view) -->
+        <div v-if="citationOperationMode" class="w-1/2 flex flex-col bg-background overflow-hidden">
+          <div class="flex-1 overflow-y-auto custom-scrollbar">
+            <CitationHelper v-model:show-citation-helper="showCitationHelper" :chapter-content="content"
+              :chapter-id="chapter.id" :citation-operation-mode="true" @insert-citation="handleInsertCitation"
+              @exit-operation-mode="exitCitationOperationMode" />
+          </div>
+        </div>
+      </div>
 
       <!-- Right Sidebar (Tools & Guidance) -->
       <Transition enter-active-class="transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)"
@@ -791,9 +906,8 @@ const markAsComplete = async () => {
             <QuickActionsPanel :project-slug="project.slug" :chapter-number="chapter.chapter_number"
               :selected-text="selectedText" :chapter-content="content" :is-processing="isAnalyzing || isSaving"
               :ensure-balance="ensureQuickActionBalance" :on-usage="recordManualUsage"
-              @text-improved="handleTextImproved"
-              @text-expanded="handleTextExpanded" @citations-suggested="handleCitationsSuggested"
-              @text-rephrased="handleTextRephrased" />
+              @text-improved="handleTextImproved" @text-expanded="handleTextExpanded"
+              @citations-suggested="handleCitationsSuggested" @text-rephrased="handleTextRephrased" />
 
             <Separator class="bg-border/50" />
 
@@ -804,14 +918,16 @@ const markAsComplete = async () => {
                   Copy
                 </Button>
               </div>
-              <pre class="text-xs whitespace-pre-wrap rounded-lg border border-border/50 bg-muted/30 p-3">{{ citationSuggestions }}</pre>
+              <pre
+                class="text-xs whitespace-pre-wrap rounded-lg border border-border/50 bg-muted/30 p-3">{{ citationSuggestions }}</pre>
               <Separator class="bg-border/50" />
             </div>
 
             <!-- Citation Helper -->
             <div class="space-y-2">
               <CitationHelper v-model:show-citation-helper="showCitationHelper" :chapter-content="content"
-                @insert-citation="handleInsertCitation" />
+                :chapter-id="chapter.id" @insert-citation="handleInsertCitation"
+                @enter-operation-mode="enterCitationOperationMode" />
             </div>
 
             <Separator class="bg-border/50" />

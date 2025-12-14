@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessCitationVerification;
 use App\Models\Chapter;
+use App\Models\ChapterCitationDetection;
 use App\Models\Citation;
 use App\Models\Project;
 use App\Services\CitationService;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use OpenAI\Laravel\Facades\OpenAI;
 
 class CitationController extends Controller
 {
@@ -217,6 +219,375 @@ class CitationController extends Controller
                 'message' => 'Failed to clear citations',
             ], 500);
         }
+    }
+
+    /**
+     * Auto-detect claims in chapter content that need citations
+     * Uses AI to identify statements requiring academic references,
+     * then searches multiple academic APIs for relevant papers.
+     */
+    public function detectClaims(Request $request): JsonResponse
+    {
+        $request->validate([
+            'content' => 'required|string|min:100|max:50000',
+            'chapter_id' => 'required|integer|exists:chapters,id',
+        ]);
+
+        $chapterId = $request->input('chapter_id');
+        
+        // Get chapter with project for user_id and project_id
+        $chapter = Chapter::find($chapterId);
+        if (!$chapter) {
+            return response()->json(['success' => false, 'message' => 'Chapter not found'], 404);
+        }
+
+        try {
+            $content = trim($request->input('content'));
+            $wordsUsed = 0;
+            $userId = Auth::id();
+            $projectId = $chapter->project_id;
+
+            Log::info('Starting claim detection', [
+                'content_length' => strlen($content),
+                'user_id' => $userId,
+                'project_id' => $projectId,
+            ]);
+
+            // Step 1: Use AI to analyze content and identify claims needing citations
+            $aiResponse = OpenAI::chat()->create([
+                'model' => config('ai.model', 'gpt-4o-mini'),
+                'temperature' => 0.3,
+                'max_tokens' => 2000,
+                'response_format' => ['type' => 'json_object'],
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'You are an academic writing assistant that identifies claims, statements, and assertions in academic text that require citations. Focus on:
+1. Statistical claims or data points
+2. Factual statements about research findings
+3. Theoretical assertions or definitions
+4. Claims about effectiveness, impact, or relationships
+5. Statements about trends, developments, or changes in a field
+
+For each claim, provide:
+- The exact text of the claim
+- Why it needs a citation
+- Search keywords for finding relevant papers (2-4 keywords)
+- Confidence level (0.0 to 1.0)
+
+Respond in JSON format:
+{
+  "claims": [
+    {
+      "text": "exact claim text from the content",
+      "reason": "why this needs a citation",
+      "search_keywords": ["keyword1", "keyword2"],
+      "confidence": 0.85
+    }
+  ]
+}'
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => "Analyze this academic text and identify claims that need citations:\n\n{$content}"
+                    ]
+                ]
+            ]);
+
+            $wordsUsed += ($aiResponse->usage->promptTokens ?? 0) + ($aiResponse->usage->completionTokens ?? 0);
+
+            $analysisResult = json_decode($aiResponse->choices[0]->message->content, true);
+            $claims = $analysisResult['claims'] ?? [];
+
+            Log::info('AI identified claims', [
+                'claim_count' => count($claims),
+                'words_used' => $wordsUsed,
+            ]);
+
+            if (empty($claims)) {
+                return response()->json([
+                    'success' => true,
+                    'claims' => [],
+                    'total_claims' => 0,
+                    'words_used' => $wordsUsed,
+                    'message' => 'No claims requiring citations were detected.',
+                ]);
+            }
+
+            // Step 2: For each claim, search academic APIs for relevant papers
+            $claimsWithSuggestions = [];
+            $processedClaims = array_slice($claims, 0, 5); // Limit to 5 claims to avoid rate limits
+
+            foreach ($processedClaims as $index => $claim) {
+                $searchQuery = implode(' ', $claim['search_keywords'] ?? []);
+
+                if (empty($searchQuery)) {
+                    $searchQuery = $this->extractKeywords($claim['text']);
+                }
+
+                Log::info("Searching papers for claim {$index}", [
+                    'search_query' => $searchQuery,
+                ]);
+
+                // Search all available APIs in parallel (using try/catch for each)
+                $allPapers = [];
+
+                // CrossRef
+                try {
+                    $crossRefAPI = app(\App\Services\APIs\CrossRefAPI::class);
+                    $crossRefResults = $crossRefAPI->searchWorks($searchQuery, 3);
+                    $allPapers = array_merge($allPapers, $this->formatPapersForSuggestion($crossRefResults, 'crossref'));
+                } catch (\Exception $e) {
+                    Log::warning('CrossRef search failed for claim', ['error' => $e->getMessage()]);
+                }
+
+                // OpenAlex
+                try {
+                    $openAlexAPI = app(\App\Services\APIs\OpenAlexAPI::class);
+                    $openAlexResults = $openAlexAPI->searchWorks($searchQuery, 3);
+                    $allPapers = array_merge($allPapers, $this->formatPapersForSuggestion($openAlexResults, 'openalex'));
+                } catch (\Exception $e) {
+                    Log::warning('OpenAlex search failed for claim', ['error' => $e->getMessage()]);
+                }
+
+                // Semantic Scholar
+                try {
+                    $semanticScholarAPI = app(\App\Services\APIs\SemanticScholarAPI::class);
+                    $semanticScholarResults = $semanticScholarAPI->searchByTopic($searchQuery, 3);
+                    $allPapers = array_merge($allPapers, $this->formatPapersForSuggestion($semanticScholarResults, 'semantic_scholar'));
+                } catch (\Exception $e) {
+                    Log::warning('Semantic Scholar search failed for claim', ['error' => $e->getMessage()]);
+                }
+
+                // PubMed (for medical/biomedical content)
+                try {
+                    $pubMedAPI = app(\App\Services\APIs\PubMedAPI::class);
+                    $pubMedResults = $pubMedAPI->searchWorks($searchQuery, 3);
+                    $allPapers = array_merge($allPapers, $this->formatPapersForSuggestion($pubMedResults, 'pubmed'));
+                } catch (\Exception $e) {
+                    Log::warning('PubMed search failed for claim', ['error' => $e->getMessage()]);
+                }
+
+                // Deduplicate and rank papers
+                $rankedPapers = $this->deduplicateAndRankPapers($allPapers);
+
+                $claimsWithSuggestions[] = [
+                    'id' => 'claim_' . ($index + 1),
+                    'text' => $claim['text'],
+                    'reason' => $claim['reason'],
+                    'confidence' => $claim['confidence'] ?? 0.7,
+                    'search_keywords' => $claim['search_keywords'] ?? [],
+                    'suggestions' => array_slice($rankedPapers, 0, 3), // Top 3 suggestions per claim
+                ];
+            }
+
+            Log::info('Claim detection complete', [
+                'total_claims' => count($claimsWithSuggestions),
+                'words_used' => $wordsUsed,
+            ]);
+
+            // Save to database
+            $detection = ChapterCitationDetection::create([
+                'user_id' => $userId,
+                'project_id' => $projectId,
+                'chapter_id' => $chapterId,
+                'claims' => $claimsWithSuggestions,
+                'total_claims' => count($claimsWithSuggestions),
+                'words_used' => $wordsUsed,
+                'detected_at' => now(),
+            ]);
+
+            Log::info('Detection saved to database', [
+                'detection_id' => $detection->id,
+                'chapter_id' => $chapterId,
+                'user_id' => $userId,
+                'project_id' => $projectId,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'detection_id' => $detection->id,
+                'claims' => $claimsWithSuggestions,
+                'total_claims' => count($claimsWithSuggestions),
+                'words_used' => $wordsUsed,
+                'detected_at' => $detection->detected_at->toISOString(),
+                'message' => count($claimsWithSuggestions) . ' claims detected with citation suggestions.',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to detect claims', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to analyze content for citations: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get saved detected claims for a chapter
+     */
+    public function getDetectedClaims(Request $request): JsonResponse
+    {
+        $request->validate([
+            'chapter_id' => 'required|integer|exists:chapters,id',
+        ]);
+
+        $chapterId = $request->input('chapter_id');
+        $userId = Auth::id();
+
+        try {
+            $detection = ChapterCitationDetection::getLatestForChapter($chapterId, $userId);
+
+            if (!$detection) {
+                return response()->json([
+                    'success' => true,
+                    'has_detection' => false,
+                    'claims' => [],
+                    'total_claims' => 0,
+                    'message' => 'No saved detection found for this chapter.',
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'has_detection' => true,
+                'detection_id' => $detection->id,
+                'claims' => $detection->claims,
+                'total_claims' => $detection->total_claims,
+                'words_used' => $detection->words_used,
+                'detected_at' => $detection->detected_at->toISOString(),
+                'message' => 'Loaded saved detection with ' . $detection->total_claims . ' claims.',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get detected claims', [
+                'chapter_id' => $chapterId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load saved detection.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Extract keywords from claim text for searching
+     */
+    private function extractKeywords(string $text): string
+    {
+        // Remove common words and extract key terms
+        $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'it', 'its'];
+
+        $words = preg_split('/\s+/', strtolower($text));
+        $keywords = array_filter($words, function ($word) use ($stopWords) {
+            return strlen($word) > 3 && !in_array($word, $stopWords);
+        });
+
+        return implode(' ', array_slice(array_values($keywords), 0, 4));
+    }
+
+    /**
+     * Format papers from different APIs into a consistent suggestion format
+     */
+    private function formatPapersForSuggestion(array $papers, string $source): array
+    {
+        $formatted = [];
+
+        foreach ($papers as $paper) {
+            $authors = $paper['authors'] ?? [];
+            if (is_array($authors) && !empty($authors)) {
+                $authorList = array_slice($authors, 0, 3);
+                if (count($authors) > 3) {
+                    $authorList[] = 'et al.';
+                }
+            } else {
+                $authorList = ['Unknown Author'];
+            }
+
+            $formatted[] = [
+                'id' => $paper['doi'] ?? $paper['pubmed_id'] ?? $paper['openalex_id'] ?? uniqid('paper_'),
+                'title' => $paper['title'] ?? 'Untitled',
+                'authors' => $authorList,
+                'year' => $paper['year'] ?? null,
+                'journal' => $paper['journal'] ?? null,
+                'doi' => $paper['doi'] ?? null,
+                'url' => $paper['url'] ?? ($paper['doi'] ? "https://doi.org/{$paper['doi']}" : null),
+                'citation_count' => $paper['citation_count'] ?? $paper['cited_by_count'] ?? 0,
+                'source' => $source,
+                'style' => $this->generateCitationStyles($paper),
+            ];
+        }
+
+        return $formatted;
+    }
+
+    /**
+     * Generate citation strings in different academic styles
+     */
+    private function generateCitationStyles(array $paper): array
+    {
+        $authors = $paper['authors'] ?? ['Unknown Author'];
+        $year = $paper['year'] ?? date('Y');
+        $title = $paper['title'] ?? 'Untitled';
+        $journal = $paper['journal'] ?? '';
+
+        // Format authors for APA (Last, F. M.)
+        $apaAuthors = [];
+        foreach (array_slice($authors, 0, 3) as $author) {
+            if (is_string($author)) {
+                $parts = explode(' ', $author);
+                $lastName = end($parts);
+                $initials = array_map(fn($p) => strtoupper(substr($p, 0, 1)) . '.', array_slice($parts, 0, -1));
+                $apaAuthors[] = $lastName . ', ' . implode(' ', $initials);
+            }
+        }
+        if (count($authors) > 3) {
+            $apaAuthors[] = 'et al.';
+        }
+
+        $apaAuthorStr = implode(', ', $apaAuthors);
+        $harvardAuthorStr = implode(', ', array_slice($authors, 0, 3));
+        if (count($authors) > 3) {
+            $harvardAuthorStr .= ' et al.';
+        }
+
+        return [
+            'apa' => "{$apaAuthorStr} ({$year}). {$title}." . ($journal ? " {$journal}." : ''),
+            'harvard' => "{$harvardAuthorStr} ({$year}) '{$title}'," . ($journal ? " {$journal}." : ''),
+            'ieee' => $apaAuthors[0] ?? 'Unknown' . ($journal ? ", \"{$title},\" {$journal}, {$year}." : ", \"{$title},\" {$year}."),
+        ];
+    }
+
+    /**
+     * Deduplicate papers by DOI/title and rank by citation count
+     */
+    private function deduplicateAndRankPapers(array $papers): array
+    {
+        $seen = [];
+        $unique = [];
+
+        foreach ($papers as $paper) {
+            // Create a unique key based on DOI or normalized title
+            $key = $paper['doi'] ?? strtolower(preg_replace('/[^a-z0-9]/', '', $paper['title'] ?? ''));
+
+            if (!empty($key) && !isset($seen[$key])) {
+                $seen[$key] = true;
+                $unique[] = $paper;
+            }
+        }
+
+        // Sort by citation count (descending)
+        usort($unique, function ($a, $b) {
+            return ($b['citation_count'] ?? 0) <=> ($a['citation_count'] ?? 0);
+        });
+
+        return $unique;
     }
 
     /**
