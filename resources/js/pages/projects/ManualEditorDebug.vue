@@ -11,7 +11,6 @@ import { toast } from 'vue-sonner'
 import { useAppearance } from '@/composables/useAppearance'
 import { useManualEditor } from '@/composables/useManualEditor'
 import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggestions'
-import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
 import { useTextHistory } from '@/composables/useTextHistory'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
@@ -19,7 +18,6 @@ import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue'
 import SmartSuggestionPanel from '@/components/manual-editor/SmartSuggestionPanel.vue'
-import ProgressiveGuidancePanel from '@/components/manual-editor/ProgressiveGuidancePanel.vue'
 import QuickActionsPanel from '@/components/manual-editor/QuickActionsPanel.vue'
 import MobileNavOverlay from '@/components/manual-editor/MobileNavOverlay.vue'
 import ChapterNavigation from '@/components/chapter-editor/ChapterNavigation.vue'
@@ -208,9 +206,6 @@ const handleContentInsert = (text: string, position?: { from: number; to: number
 
                     <CitationHelper v-model:show-citation-helper="showCitationHelper" :chapter-content="content"
                         @insert-citation="(c) => handleContentInsert(c)" />
-
-                    <ProgressiveGuidancePanel :project="project" :chapter="chapter"
-                        :current-analysis="currentAnalysis" />
 
                     <!-- NEW: SmartSuggestionPanel -->
                     <SmartSuggestionPanel v-if="currentSuggestion" :suggestion="currentSuggestion"

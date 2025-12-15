@@ -60,4 +60,14 @@ return [
     |--------------------------------------------------------------------------
     */
     'billing_base' => env('OPENAI_BILLING_BASE', 'https://api.openai.com'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature flags (AI assistant)
+    |--------------------------------------------------------------------------
+    */
+    'features' => [
+        // Progressive guidance is experimental; keep disabled for release by default.
+        'progressive_guidance' => env('PROGRESSIVE_GUIDANCE_ENABLED', false),
+    ],
 ];

@@ -40,8 +40,7 @@ import { defineAsyncComponent } from 'vue';
 const AISidebar = defineAsyncComponent(() => import('@/components/chapter-editor/AISidebar.vue'));
 const ChapterNavigation = defineAsyncComponent(() => import('@/components/chapter-editor/ChapterNavigation.vue'));
 const MobileNavOverlay = defineAsyncComponent(() => import('@/components/chapter-editor/MobileNavOverlay.vue'));
-// ChatModeLayout DISABLED - causes dark mode issues
-// const ChatModeLayout = defineAsyncComponent(() => import('@/components/chapter-editor/ChatModeLayout.vue'));
+const ChatModeLayout = defineAsyncComponent(() => import('@/components/chapter-editor/ChatModeLayout.vue'));
 const CitationVerificationLayout = defineAsyncComponent(() => import('@/components/chapter-editor/CitationVerificationLayout.vue'));
 // DefensePreparationPanel DISABLED - causes dark mode issues
 // const DefensePreparationPanel = defineAsyncComponent(() => import('@/components/chapter-editor/DefensePreparationPanel.vue'));
@@ -1020,29 +1019,27 @@ watch(globalIsDark, () => {
                     </div>
                 </div>
             </AppLayout>
-        </template>
+	        </template>
 
-        <template v-else>
-            <!-- Chat Mode Layout - DISABLED due to dark mode issues
-            <ChatModeLayout v-if="showChatMode" :project="memoizedProject" :chapter="memoizedChapter"
-                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
-                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
-                :writing-quality-score="writingQualityScore" :is-valid="isValid" :is-saving="isSaving"
-                :show-preview="showPreview" :is-generating="isGenerating" :generation-progress="generationProgress"
-                :history-index="historyIndex" :content-history-length="contentHistory.length"
-                :selected-text="selectedText" @update:chapter-title="chapterTitle = $event"
-                @update:chapter-content="chapterContent = $event" @update:selected-text="selectedText = $event"
-                @update:show-preview="showPreview = $event" @save="(autoSave) => saveChapter(autoSave)"
-                @undo="handleUndo" @redo="handleRedo" @exit-chat-mode="exitChatMode" />
-            -->
-            <!-- Citation Verification Layout -->
-            <CitationVerificationLayout v-if="showCitationMode" :project="memoizedProject" :chapter="memoizedChapter"
-                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
-                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
-                @exit-citation-mode="exitCitationMode" />
+	        <template v-else>
+	            <!-- Chat Mode Layout -->
+	            <ChatModeLayout v-if="showChatMode" :project="memoizedProject" :chapter="memoizedChapter"
+	                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
+	                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
+	                :writing-quality-score="writingQualityScore" :is-valid="isValid" :is-saving="isSaving"
+	                :show-preview="showPreview" :is-generating="isGenerating" :generation-progress="generationProgress"
+	                :history-index="historyIndex" :content-history-length="contentHistory.length"
+	                :selected-text="selectedText" @update:chapter-title="chapterTitle = $event"
+	                @update:chapter-content="chapterContent = $event" @update:selected-text="selectedText = $event"
+	                @update:show-preview="showPreview = $event" @save="(autoSave) => saveChapter(autoSave)"
+	                @undo="handleUndo" @redo="handleRedo" @exit-chat-mode="exitChatMode" />
+	            <CitationVerificationLayout v-else-if="showCitationMode" :project="memoizedProject" :chapter="memoizedChapter"
+	                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
+	                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
+	                @exit-citation-mode="exitCitationMode" />
 
-            <!-- Fullscreen Layout with Sidebars -->
-            <!-- Fullscreen Layout with Sidebars -->
+	            <!-- Fullscreen Layout with Sidebars -->
+	            <!-- Fullscreen Layout with Sidebars -->
             <div v-else-if="isNativeFullscreen"
                 class="flex h-screen flex-col overflow-hidden bg-background dark:bg-background font-sans selection:bg-primary/20 transition-colors duration-300">
                 <!-- Ambient Background Effects -->
@@ -1112,14 +1109,26 @@ watch(globalIsDark, () => {
                             </Button>
                         </div>
 
-                        <!-- Right Actions -->
-                        <div class="flex items-center gap-2">
-                            <!-- Stats DISABLED in ChapterEditor -->
+	                        <!-- Right Actions -->
+	                        <div class="flex items-center gap-2">
+	                            <!-- Stats DISABLED in ChapterEditor -->
 
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button @click="toggleNativeFullscreen"
-                                        :variant="isNativeFullscreen ? 'secondary' : 'ghost'" size="icon"
+	                            <Tooltip>
+	                                <TooltipTrigger asChild>
+	                                    <Button @click="toggleChatMode" variant="ghost" size="icon"
+	                                        class="h-9 w-9 rounded-full transition-all hover:bg-muted">
+	                                        <MessageSquare class="h-4.5 w-4.5 text-blue-500" />
+	                                    </Button>
+	                                </TooltipTrigger>
+	                                <TooltipContent>
+	                                    <p>Open AI Chat</p>
+	                                </TooltipContent>
+	                            </Tooltip>
+
+	                            <Tooltip>
+	                                <TooltipTrigger asChild>
+	                                    <Button @click="toggleNativeFullscreen"
+	                                        :variant="isNativeFullscreen ? 'secondary' : 'ghost'" size="icon"
                                         class="h-9 w-9 rounded-full transition-all hover:bg-muted">
                                         <Minimize2 v-if="isNativeFullscreen" class="h-4.5 w-4.5" />
                                         <Maximize2 v-else class="h-4.5 w-4.5" />

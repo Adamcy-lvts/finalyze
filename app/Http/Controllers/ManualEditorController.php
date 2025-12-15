@@ -80,31 +80,33 @@ class ManualEditorController extends Controller
             $currentSuggestion = $this->suggestionService->generateInitialGuidance($chapter);
         }
 
-        $latestProgressGuidance = ChapterProgressGuidance::query()
-            ->where('user_id', auth()->id())
-            ->where('chapter_id', $chapter->id)
-            ->where('meta->algo_version', ProgressiveGuidanceService::ALGO_VERSION)
-            ->latest('id')
-            ->first();
-
         $initialProgressGuidance = null;
-        if ($latestProgressGuidance) {
-            $completed = $latestProgressGuidance->completed_step_ids ?? [];
-            $initialProgressGuidance = [
-                'guidance_id' => $latestProgressGuidance->id,
-                'stage' => $latestProgressGuidance->stage,
-                'stage_label' => $latestProgressGuidance->stage_label,
-                'completion_percentage' => $latestProgressGuidance->completion_percentage,
-                'contextual_tip' => $latestProgressGuidance->contextual_tip,
-                'completed_step_ids' => $completed,
-                'writing_milestones' => $latestProgressGuidance->writing_milestones,
-                'next_steps' => collect($latestProgressGuidance->next_steps ?? [])->map(function ($step) use ($completed) {
-                    if (is_array($step) && isset($step['id'])) {
-                        $step['completed'] = in_array($step['id'], $completed, true);
-                    }
-                    return $step;
-                })->values()->all(),
-            ];
+        if (config('ai.features.progressive_guidance')) {
+            $latestProgressGuidance = ChapterProgressGuidance::query()
+                ->where('user_id', auth()->id())
+                ->where('chapter_id', $chapter->id)
+                ->where('meta->algo_version', ProgressiveGuidanceService::ALGO_VERSION)
+                ->latest('id')
+                ->first();
+
+            if ($latestProgressGuidance) {
+                $completed = $latestProgressGuidance->completed_step_ids ?? [];
+                $initialProgressGuidance = [
+                    'guidance_id' => $latestProgressGuidance->id,
+                    'stage' => $latestProgressGuidance->stage,
+                    'stage_label' => $latestProgressGuidance->stage_label,
+                    'completion_percentage' => $latestProgressGuidance->completion_percentage,
+                    'contextual_tip' => $latestProgressGuidance->contextual_tip,
+                    'completed_step_ids' => $completed,
+                    'writing_milestones' => $latestProgressGuidance->writing_milestones,
+                    'next_steps' => collect($latestProgressGuidance->next_steps ?? [])->map(function ($step) use ($completed) {
+                        if (is_array($step) && isset($step['id'])) {
+                            $step['completed'] = in_array($step['id'], $completed, true);
+                        }
+                        return $step;
+                    })->values()->all(),
+                ];
+            }
         }
 
         Log::info('✅ MANUAL EDITOR - Rendering ManualEditor view', [

@@ -10,7 +10,6 @@ import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue'
 import SmartSuggestionPanel from '@/components/manual-editor/SmartSuggestionPanel.vue'
-import ProgressiveGuidancePanel from '@/components/manual-editor/ProgressiveGuidancePanel.vue'
 import QuickActionsPanel from '@/components/manual-editor/QuickActionsPanel.vue'
 import MobileNavOverlay from '@/components/manual-editor/MobileNavOverlay.vue'
 import ManualChatSidebar from '@/components/manual-editor/ManualChatSidebar.vue'
@@ -25,7 +24,6 @@ import CitationHelper from '@/components/chapter-editor/CitationHelper.vue'
 import WordBalanceDisplay from '@/components/WordBalanceDisplay.vue'
 import { useManualEditor } from '@/composables/useManualEditor'
 import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggestions'
-import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
 import { useTextHistory } from '@/composables/useTextHistory'
 import PurchaseModal from '@/components/PurchaseModal.vue'
 import { recordWordUsage, useWordBalance } from '@/composables/useWordBalance'
@@ -140,15 +138,6 @@ const isValid = computed(() => {
   const c = content.value?.trim();
   return !!(title && title.length > 0 && c && c.length > 50);
 });
-
-const {
-  guidance,
-  isLoadingGuidance,
-  debouncedRequestGuidance,
-  toggleStep,
-} = useProgressiveGuidance(props.project.slug, props.chapter.chapter_number, props.initialProgressGuidance || null)
-
-const initialGuidanceRequested = ref(false)
 
 // Mobile responsive state (check early)
 const getInitialMobileState = () => typeof window !== 'undefined' && window.innerWidth < 1024
@@ -370,55 +359,6 @@ onMounted(() => {
   })
 })
 
-// Watch for content changes to trigger progressive guidance
-watch(
-  () => currentAnalysis.value,
-  (analysis) => {
-    if (analysis) {
-      debouncedRequestGuidance(
-        {
-          word_count: analysis.word_count,
-          citation_count: analysis.citation_count,
-          table_count: analysis.table_count,
-          figure_count: analysis.figure_count,
-          claim_count: analysis.claim_count,
-          has_introduction: analysis.has_introduction,
-          has_conclusion: analysis.has_conclusion,
-          detected_issues: analysis.detected_issues,
-          quality_metrics: analysis.quality_metrics,
-        },
-        content.value
-      )
-    }
-  },
-  { deep: true }
-)
-
-// If chapter already has content but we don't yet have guidance (e.g., first load),
-// request guidance once using basic metrics so the panel isn't empty.
-onMounted(() => {
-  if (initialGuidanceRequested.value) return
-  const hasContent = (props.chapter.word_count || 0) > 50 || !!(content.value && content.value.trim().length > 200)
-  if (!hasContent) return
-  if (guidance.value) return
-
-  initialGuidanceRequested.value = true
-  debouncedRequestGuidance(
-    {
-      word_count: props.chapter.word_count || 0,
-      citation_count: props.contextAnalysis?.citation_count || 0,
-      table_count: props.contextAnalysis?.table_count || 0,
-      figure_count: props.contextAnalysis?.figure_count || 0,
-      claim_count: props.contextAnalysis?.claim_count || 0,
-      has_introduction: props.contextAnalysis?.has_introduction || false,
-      has_conclusion: props.contextAnalysis?.has_conclusion || false,
-      detected_issues: props.contextAnalysis?.detected_issues || [],
-      quality_metrics: props.contextAnalysis?.quality_metrics || {},
-    },
-    content.value || ''
-  )
-})
-
 // Handle quick action results (placeholder - would integrate with editor)
 const handleTextImproved = (text: string) => {
   handleContentUpdate(text)
@@ -454,35 +394,6 @@ const handleTextRephrased = (alternatives: string) => {
   }
   handleContentUpdate(`${content.value}\n\n${alternatives}`)
   toast.success('Added rephrased text')
-}
-
-const handleGuidanceAction = (stepId: string) => {
-  const step = guidance.value?.next_steps?.find((s: any) => s?.id === stepId)
-  if (!step || !step.action || step.action === 'none') return
-
-  if (step.action === 'open_citation_helper') {
-    showCitationHelper.value = true
-    toast.success('Citation helper opened')
-    toggleStep(stepId)
-    return
-  }
-
-  if (step.action === 'insert_text') {
-    const payloadText = step?.payload?.text
-    if (typeof payloadText !== 'string' || !payloadText.trim()) {
-      toast.error('Nothing to insert for this step')
-      return
-    }
-
-    const ok = editorRef.value?.replaceSelection(payloadText.trim(), selectionRange.value || undefined) ?? false
-    if (ok) {
-      toast.success('Inserted into selection')
-    } else {
-      handleContentUpdate(`${content.value}\n\n${payloadText.trim()}`)
-      toast.success('Inserted into chapter')
-    }
-    toggleStep(stepId)
-  }
 }
 
 const ensureQuickActionBalance = (requiredWords: number, action: string) => checkAndPrompt(requiredWords, action)
@@ -986,17 +897,6 @@ const markAsComplete = async () => {
               <Separator class="bg-border/50" />
             </div>
 
-            <!-- Progressive Guidance Panel -->
-            <ProgressiveGuidancePanel
-              :guidance="guidance"
-              :is-loading="isLoadingGuidance"
-              :has-content="(currentAnalysis?.word_count ?? chapter.word_count) > 50"
-              @toggle-step="toggleStep"
-              @guidance-action="handleGuidanceAction"
-            />
-
-            <Separator class="bg-border/50" />
-
             <!-- Quick Actions Panel -->
             <QuickActionsPanel :project-slug="project.slug" :chapter-number="chapter.chapter_number"
               :selected-text="selectedText" :chapter-content="content" :is-processing="isAnalyzing || isSaving"
@@ -1052,13 +952,13 @@ const markAsComplete = async () => {
         :faculty-chapters="facultyChapters" :current-word-count="currentAnalysis?.word_count || chapter.word_count"
         :target-word-count="chapter.target_word_count" :chapter-content-length="content?.length || 0"
         :selected-text="selectedText" :is-analyzing="isAnalyzing" :is-saving="isSaving"
-        :current-suggestion="currentSuggestion" :current-analysis="currentAnalysis" :guidance="guidance"
-        :is-loading-guidance="isLoadingGuidance" :chapter-content="content" :show-citation-helper="showCitationHelper"
+        :current-suggestion="currentSuggestion" :current-analysis="currentAnalysis" :chapter-content="content"
+        :show-citation-helper="showCitationHelper"
         :ensure-balance="ensureQuickActionBalance" :on-usage="recordManualUsage"
         @update:show-left-sidebar="showLeftSidebar = $event" @update:show-right-sidebar="showRightSidebar = $event"
         @update:show-citation-helper="showCitationHelper = $event" @go-to-chapter="goToChapter"
         @generate-next-chapter="generateNextChapter" @delete-chapter="deleteChapter" @save-suggestion="saveSuggestion"
-        @clear-suggestion="clearSuggestion" @apply-suggestion="applySuggestion" @toggle-step="toggleStep"
+        @clear-suggestion="clearSuggestion" @apply-suggestion="applySuggestion"
         @text-improved="handleTextImproved" @text-expanded="handleTextExpanded"
         @citations-suggested="handleCitationsSuggested" @text-rephrased="handleTextRephrased"
         @insert-citation="handleInsertCitation" />

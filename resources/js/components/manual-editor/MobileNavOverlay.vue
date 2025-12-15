@@ -5,7 +5,6 @@ import { X } from 'lucide-vue-next'
 import { ref, watch } from 'vue'
 import ChapterNavigation from '@/components/chapter-editor/ChapterNavigation.vue'
 import SmartSuggestionPanel from '@/components/manual-editor/SmartSuggestionPanel.vue'
-import ProgressiveGuidancePanel from '@/components/manual-editor/ProgressiveGuidancePanel.vue'
 import QuickActionsPanel from '@/components/manual-editor/QuickActionsPanel.vue'
 import DefensePreparationPanel from '@/components/chapter-editor/DefensePreparationPanel.vue'
 import CitationHelper from '@/components/chapter-editor/CitationHelper.vue'
@@ -28,8 +27,6 @@ interface Props {
   isSaving: boolean
   currentSuggestion: UserChapterSuggestion | null
   currentAnalysis: ChapterContextAnalysis | null
-  guidance: any
-  isLoadingGuidance: boolean
   chapterContent: string
   showCitationHelper: boolean
   ensureBalance?: (requiredWords: number, action: string) => boolean
@@ -48,7 +45,6 @@ const emit = defineEmits<{
   saveSuggestion: [suggestion: string]
   clearSuggestion: []
   applySuggestion: []
-  toggleStep: [stepId: string]
   textImproved: [text: string]
   textExpanded: [text: string]
   citationsSuggested: [suggestions: string]
@@ -191,15 +187,6 @@ const handleInsertCitation = (citation: string) => emit('insertCitation', citati
                 />
                 <Separator class="bg-border/50" />
               </div>
-
-              <!-- Progressive Guidance Panel -->
-              <ProgressiveGuidancePanel
-                :guidance="guidance"
-                :is-loading="isLoadingGuidance"
-                @toggle-step="$emit('toggleStep', $event)"
-              />
-
-              <Separator class="bg-border/50" />
 
               <!-- Quick Actions Panel -->
               <QuickActionsPanel
