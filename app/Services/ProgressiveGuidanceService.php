@@ -8,6 +8,8 @@ use Illuminate\Support\Str;
 
 class ProgressiveGuidanceService
 {
+    public const ALGO_VERSION = 2;
+
     public function __construct(
         private AIContentGenerator $aiGenerator,
         private FacultyStructureService $facultyStructureService

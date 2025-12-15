@@ -83,6 +83,7 @@ class ManualEditorController extends Controller
         $latestProgressGuidance = ChapterProgressGuidance::query()
             ->where('user_id', auth()->id())
             ->where('chapter_id', $chapter->id)
+            ->where('meta->algo_version', ProgressiveGuidanceService::ALGO_VERSION)
             ->latest('id')
             ->first();
 
@@ -377,6 +378,7 @@ class ManualEditorController extends Controller
 
         $fingerprint = hash('sha256', json_encode([
             'chapter_id' => $chapter->id,
+            'algo_version' => ProgressiveGuidanceService::ALGO_VERSION,
             'metrics' => [
                 'word_bucket' => $wordBucket,
                 'citation_count' => (int) ($analysis['citation_count'] ?? 0),
@@ -398,6 +400,7 @@ class ManualEditorController extends Controller
             ->where('user_id', auth()->id())
             ->where('chapter_id', $chapter->id)
             ->where('fingerprint', $fingerprint)
+            ->where('meta->algo_version', ProgressiveGuidanceService::ALGO_VERSION)
             ->latest('id')
             ->first();
 
@@ -491,6 +494,7 @@ class ManualEditorController extends Controller
             'writing_milestones' => $guidance['writing_milestones'],
             'completed_step_ids' => $completed,
             'meta' => [
+                'algo_version' => ProgressiveGuidanceService::ALGO_VERSION,
                 'cached' => false,
                 'source' => 'ai_or_fallback',
             ],
