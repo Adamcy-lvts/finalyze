@@ -9,7 +9,8 @@ use Illuminate\Support\Str;
 class ProgressiveGuidanceService
 {
     public function __construct(
-        private AIContentGenerator $aiGenerator
+        private AIContentGenerator $aiGenerator,
+        private FacultyStructureService $facultyStructureService
     ) {}
 
     /**
@@ -49,10 +50,6 @@ class ProgressiveGuidanceService
     private function determineWritingStage(Chapter $chapter, array $analysis): string
     {
         $wordCount = $analysis['word_count'] ?? 0;
-        $outline = array_map(fn ($h) => strtolower(trim((string) $h)), $analysis['outline'] ?? []);
-        $hasIntro = (bool) ($analysis['has_introduction'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'introduction'));
-        $hasConclusion = (bool) ($analysis['has_conclusion'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'conclusion'));
-        $citationCount = $analysis['citation_count'] ?? 0;
         $targetWordCount = $chapter->target_word_count ?? 1500;
         $wordRatio = $targetWordCount > 0 ? ($wordCount / $targetWordCount) : 0;
 
@@ -61,27 +58,23 @@ class ProgressiveGuidanceService
             return 'planning';
         }
 
-        // Early writing (or missing intro for early chapters)
-        if ($wordCount < 250 || (! $hasIntro && $chapter->chapter_number <= 2)) {
+        // Early drafting
+        if ($wordRatio < 0.25) {
             return 'introduction';
         }
 
-        // Body development
-        if ($hasIntro && ! $hasConclusion && $wordRatio < 0.7) {
+        // Developing
+        if ($wordRatio < 0.7) {
             return 'body_development';
         }
 
-        // Advanced body or near completion
-        if ($hasIntro && ! $hasConclusion && $wordRatio >= 0.7) {
+        // Near completion
+        if ($wordRatio < 1.0) {
             return 'body_advanced';
         }
 
-        // Has conclusion
-        if ($hasConclusion) {
-            return 'refinement';
-        }
-
-        return 'body_development';
+        // At or above target word count: refine
+        return 'refinement';
     }
 
     /**
@@ -89,49 +82,44 @@ class ProgressiveGuidanceService
      */
     private function calculateCompletionPercentage(Chapter $chapter, array $analysis): int
     {
-        $wordCount = $analysis['word_count'] ?? 0;
-        $targetWordCount = $chapter->target_word_count ?? 1500;
-        $outline = array_map(fn ($h) => strtolower(trim((string) $h)), $analysis['outline'] ?? []);
-        $hasIntro = (bool) ($analysis['has_introduction'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'introduction'));
-        $hasConclusion = (bool) ($analysis['has_conclusion'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'conclusion'));
-        $citationCount = $analysis['citation_count'] ?? 0;
-        $tableCount = $analysis['table_count'] ?? 0;
+        $wordCount = (int) ($analysis['word_count'] ?? 0);
+        $targetWordCount = (int) ($chapter->target_word_count ?? 1500);
+        $outline = is_array($analysis['outline'] ?? null) ? $analysis['outline'] : [];
 
-        $score = 0;
-
-        // Word count (50% weight)
-        $wordScore = min(100, ($wordCount / $targetWordCount) * 100);
-        $score += $wordScore * 0.5;
-
-        // Structure elements (30% weight)
-        if ($hasIntro) {
-            $score += 15;
-        }
-        if ($hasConclusion) {
-            $score += 15;
+        if ($targetWordCount <= 0) {
+            return 0;
         }
 
-        // Academic elements (20% weight)
-        if ($citationCount >= 3) {
-            $score += 10;
-        } elseif ($citationCount > 0) {
-            $score += 5;
+        $wordProgress = min(1, $wordCount / $targetWordCount); // 0..1
+
+        $expectedSections = $this->getExpectedSections($chapter);
+        $requiredSections = array_values(array_filter($expectedSections, fn ($s) => (bool) ($s['is_required'] ?? true)));
+
+        $sectionCoverage = null; // 0..1 or null when not applicable
+        if (count($requiredSections) > 0) {
+            if (count($outline) === 0) {
+                $assumedWordsPerSection = 200;
+                $sectionCoverage = min(1, $wordCount / (count($requiredSections) * $assumedWordsPerSection));
+            } else {
+                $matched = 0;
+                foreach ($requiredSections as $section) {
+                    if ($this->sectionAppearsInOutline($section, $outline)) {
+                        $matched++;
+                    }
+                }
+                $sectionCoverage = $matched / max(1, count($requiredSections));
+            }
         }
 
-        // Headings coverage (lightweight structural signal)
-        $headingBonus = 0;
-        if (count($outline) > 0) {
-            // Reward having at least a few headings in longer chapters.
-            $headingBonus = min(10, (int) floor(count($outline) * 2));
-        }
-        $score += $headingBonus;
-
-        // Data visualization for methodology chapters
-        if ($chapter->chapter_number === 3 && $tableCount > 0) {
-            $score += 10;
+        // Weighting:
+        // - Word progress is consistent across disciplines.
+        // - Section coverage only applies when the faculty structure defines sections.
+        if ($sectionCoverage === null) {
+            return (int) round($wordProgress * 100);
         }
 
-        return min(100, (int) $score);
+        $weighted = ($wordProgress * 0.8) + ($sectionCoverage * 0.2);
+        return (int) round(min(1, $weighted) * 100);
     }
 
     /**
@@ -178,17 +166,11 @@ class ProgressiveGuidanceService
     private function generateContextualTip(Chapter $chapter, string $stage, array $analysis): ?string
     {
         $wordCount = $analysis['word_count'] ?? 0;
-        $citationCount = $analysis['citation_count'] ?? 0;
-        $hasIntro = $analysis['has_introduction'] ?? false;
 
         return match ($stage) {
             'planning' => "Start with a brief introduction to set the context. Don't worry about perfection - just get your ideas down!",
-            'introduction' => $hasIntro
-                ? 'Great start! Now develop your main points with supporting evidence. Each paragraph should focus on one key idea.'
-                : 'Consider starting with a clear introduction that outlines what this chapter will cover and why it matters.',
-            'body_development' => $citationCount === 0
-                ? 'Remember to add citations as you make claims. Every significant statement should be backed by evidence.'
-                : "You're making good progress! Keep developing your arguments and connecting ideas logically.",
+            'introduction' => 'Great start! Keep building your outline/sections and develop your main points one at a time.',
+            'body_development' => "You're making good progress! Keep developing your arguments and connecting ideas logically.",
             'body_advanced' => "You're nearly there! Start thinking about how to tie everything together in a strong conclusion.",
             'refinement' => 'Excellent work! Review your chapter for clarity, check all citations are formatted correctly, and ensure smooth transitions between paragraphs.',
             default => null,
@@ -200,12 +182,9 @@ class ProgressiveGuidanceService
      */
     private function getWritingMilestones(Chapter $chapter, array $analysis): array
     {
-        $wordCount = $analysis['word_count'] ?? 0;
-        $hasIntro = $analysis['has_introduction'] ?? false;
-        $hasConclusion = $analysis['has_conclusion'] ?? false;
-        $citationCount = $analysis['citation_count'] ?? 0;
-        $tableCount = $analysis['table_count'] ?? 0;
-        $targetWords = $chapter->target_word_count ?? 1500;
+        $wordCount = (int) ($analysis['word_count'] ?? 0);
+        $targetWords = (int) ($chapter->target_word_count ?? 1500);
+        $outline = is_array($analysis['outline'] ?? null) ? $analysis['outline'] : [];
 
         $milestones = [
             [
@@ -213,37 +192,29 @@ class ProgressiveGuidanceService
                 'label' => 'Started writing',
                 'completed' => $wordCount > 0,
             ],
-            [
-                'id' => 'introduction',
-                'label' => 'Introduction written',
-                'completed' => $hasIntro,
-            ],
-            [
-                'id' => 'word_count',
-                'label' => "Reached {$targetWords} words",
-                'completed' => $wordCount >= $targetWords,
-            ],
-            [
-                'id' => 'citations',
-                'label' => 'Added citations (3+)',
-                'completed' => $citationCount >= 3,
-            ],
         ];
 
-        // Add chapter-specific milestones
-        if ($chapter->chapter_number === 3) {
-            // Methodology chapter
+        $expectedSections = $this->getExpectedSections($chapter);
+        $requiredSections = array_values(array_filter($expectedSections, fn ($s) => (bool) ($s['is_required'] ?? true)));
+        foreach (array_slice($requiredSections, 0, 6) as $section) {
+            $label = trim(($section['number'] ?? '') . ' ' . ($section['title'] ?? ''));
             $milestones[] = [
-                'id' => 'tables',
-                'label' => 'Added tables/figures',
-                'completed' => $tableCount > 0,
+                'id' => 'section_'.md5(($section['number'] ?? '').'|'.($section['title'] ?? '')),
+                'label' => $label !== '' ? $label : 'Section started',
+                'completed' => $this->sectionAppearsInOutline($section, $outline),
             ];
         }
 
         $milestones[] = [
-            'id' => 'conclusion',
-            'label' => 'Conclusion written',
-            'completed' => $hasConclusion,
+            'id' => 'word_count',
+            'label' => "Reached {$targetWords} words",
+            'completed' => $targetWords > 0 ? $wordCount >= $targetWords : false,
+        ];
+
+        $milestones[] = [
+            'id' => 'marked_complete',
+            'label' => 'Chapter marked complete',
+            'completed' => ($chapter->status ?? null) === \App\Enums\ChapterStatus::Completed->value,
         ];
 
         return $milestones;
@@ -256,12 +227,100 @@ class ProgressiveGuidanceService
     {
         return match ($stage) {
             'planning' => 'Getting Started',
-            'introduction' => 'Writing Introduction',
+            'introduction' => 'Drafting',
             'body_development' => 'Developing Body',
-            'body_advanced' => 'Advanced Writing',
+            'body_advanced' => 'Near Completion',
             'refinement' => 'Refinement & Review',
             default => 'Writing in Progress',
         };
+    }
+
+    private function getExpectedSections(Chapter $chapter): array
+    {
+        $project = $chapter->project;
+        if (! $project) {
+            return [];
+        }
+
+        try {
+            $structure = $this->facultyStructureService->getChapterStructure($project);
+            $entry = collect($structure)->first(fn ($c) => (int) ($c['number'] ?? 0) === (int) $chapter->chapter_number);
+            if (! is_array($entry)) {
+                return [];
+            }
+
+            $sections = $entry['sections'] ?? [];
+            if (! is_array($sections)) {
+                return [];
+            }
+
+            return array_values(array_map(function ($s) {
+                if (! is_array($s)) return null;
+                return [
+                    'number' => (string) ($s['number'] ?? ''),
+                    'title' => (string) ($s['title'] ?? ''),
+                    'is_required' => (bool) ($s['is_required'] ?? true),
+                ];
+            }, $sections));
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    private function sectionAppearsInOutline(array $section, array $outline): bool
+    {
+        $sectionNumber = trim((string) ($section['number'] ?? ''));
+        $sectionTitle = trim((string) ($section['title'] ?? ''));
+
+        $normalizedTitle = $this->normalizeHeading($sectionTitle);
+        $titleTokens = $this->tokenizeHeading($normalizedTitle);
+
+        foreach ($outline as $headingRaw) {
+            $heading = $this->normalizeHeading((string) $headingRaw);
+            if ($heading === '') continue;
+
+            if ($sectionNumber !== '' && preg_match('/^\s*'.preg_quote($sectionNumber, '/').'\b/', (string) $headingRaw)) {
+                return true;
+            }
+
+            if ($normalizedTitle !== '' && str_contains($heading, $normalizedTitle)) {
+                return true;
+            }
+
+            if (count($titleTokens) >= 3) {
+                $headingTokens = $this->tokenizeHeading($heading);
+                if ($this->tokenOverlap($titleTokens, $headingTokens) >= 0.6) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeHeading(string $value): string
+    {
+        $value = mb_strtolower($value);
+        $value = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $value) ?? '';
+        $value = preg_replace('/\s+/u', ' ', $value) ?? '';
+        return trim($value);
+    }
+
+    private function tokenizeHeading(string $value): array
+    {
+        if ($value === '') return [];
+        $tokens = preg_split('/\s+/u', $value) ?: [];
+        $tokens = array_values(array_filter($tokens, fn ($t) => mb_strlen($t) >= 3));
+        return array_slice($tokens, 0, 12);
+    }
+
+    private function tokenOverlap(array $a, array $b): float
+    {
+        $a = array_values(array_unique($a));
+        $b = array_values(array_unique($b));
+        if (count($a) === 0 || count($b) === 0) return 0.0;
+        $intersection = array_intersect($a, $b);
+        return count($intersection) / max(count($a), count($b));
     }
 
     /**
