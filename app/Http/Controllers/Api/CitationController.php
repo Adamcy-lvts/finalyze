@@ -11,6 +11,7 @@ use App\Models\Project;
 use App\Services\CitationService;
 use App\Services\ReferenceVerificationService;
 use App\Services\SimpleCitationExtractor;
+use App\Services\WordBalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -23,7 +24,8 @@ class CitationController extends Controller
     public function __construct(
         private SimpleCitationExtractor $extractor,
         private CitationService $citationService,
-        private ReferenceVerificationService $referenceService
+        private ReferenceVerificationService $referenceService,
+        private WordBalanceService $wordBalanceService
     ) {}
 
     /**
@@ -237,13 +239,28 @@ class CitationController extends Controller
         
         // Get chapter with project for user_id and project_id
         $chapter = Chapter::find($chapterId);
-        if (!$chapter) {
+        if (! $chapter) {
             return response()->json(['success' => false, 'message' => 'Chapter not found'], 404);
+        }
+
+        $user = $request->user();
+        if (! $user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required',
+                'error_code' => 'UNAUTHENTICATED',
+            ], 401);
+        }
+
+        if ((int) $chapter->project?->user_id !== (int) $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access to chapter',
+            ], 403);
         }
 
         try {
             $content = trim($request->input('content'));
-            $wordsUsed = 0;
             $userId = Auth::id();
             $projectId = $chapter->project_id;
 
@@ -294,14 +311,56 @@ Respond in JSON format:
                 ]
             ]);
 
-            $wordsUsed += ($aiResponse->usage->promptTokens ?? 0) + ($aiResponse->usage->completionTokens ?? 0);
+            $promptTokens = (int) ($aiResponse->usage->promptTokens ?? 0);
+            $completionTokens = (int) ($aiResponse->usage->completionTokens ?? 0);
+            $tokensUsed = $promptTokens + $completionTokens;
+            $aiContent = (string) ($aiResponse->choices[0]->message->content ?? '');
+            $billedWords = max(1, str_word_count(strip_tags($aiContent)));
 
             $analysisResult = json_decode($aiResponse->choices[0]->message->content, true);
             $claims = $analysisResult['claims'] ?? [];
 
+            // Deduct after successful AI response (same principle as ChapterEditor)
+            try {
+                $this->wordBalanceService->deductForGeneration(
+                    $user,
+                    $billedWords,
+                    'Citation claim detection',
+                    'citation_claim_detection',
+                    $chapterId,
+                    [
+                        'project_id' => $projectId,
+                        'tokens_used' => $tokensUsed,
+                        'prompt_tokens' => $promptTokens,
+                        'completion_tokens' => $completionTokens,
+                        'model' => config('ai.model', 'gpt-4o-mini'),
+                    ]
+                );
+            } catch (\Exception $e) {
+                Log::warning('Failed to deduct words for citation claim detection', [
+                    'user_id' => $userId,
+                    'chapter_id' => $chapterId,
+                    'billed_words' => $billedWords,
+                    'tokens_used' => $tokensUsed,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient word balance',
+                    'error_code' => 'INSUFFICIENT_BALANCE',
+                    'data' => [
+                        'current_balance' => $user->word_balance,
+                        'required' => $billedWords,
+                        'shortage' => max(0, $billedWords - $user->word_balance),
+                    ],
+                ], 402);
+            }
+
             Log::info('AI identified claims', [
                 'claim_count' => count($claims),
-                'words_used' => $wordsUsed,
+                'tokens_used' => $tokensUsed,
+                'billed_words' => $billedWords,
             ]);
 
             if (empty($claims)) {
@@ -309,7 +368,8 @@ Respond in JSON format:
                     'success' => true,
                     'claims' => [],
                     'total_claims' => 0,
-                    'words_used' => $wordsUsed,
+                    'words_used' => $tokensUsed,
+                    'billed_words' => $billedWords,
                     'message' => 'No claims requiring citations were detected.',
                 ]);
             }
@@ -383,7 +443,8 @@ Respond in JSON format:
 
             Log::info('Claim detection complete', [
                 'total_claims' => count($claimsWithSuggestions),
-                'words_used' => $wordsUsed,
+                'tokens_used' => $tokensUsed,
+                'billed_words' => $billedWords,
             ]);
 
             // Save to database
@@ -393,7 +454,7 @@ Respond in JSON format:
                 'chapter_id' => $chapterId,
                 'claims' => $claimsWithSuggestions,
                 'total_claims' => count($claimsWithSuggestions),
-                'words_used' => $wordsUsed,
+                'words_used' => $tokensUsed,
                 'detected_at' => now(),
             ]);
 
@@ -409,7 +470,8 @@ Respond in JSON format:
                 'detection_id' => $detection->id,
                 'claims' => $claimsWithSuggestions,
                 'total_claims' => count($claimsWithSuggestions),
-                'words_used' => $wordsUsed,
+                'words_used' => $tokensUsed,
+                'billed_words' => $billedWords,
                 'detected_at' => $detection->detected_at->toISOString(),
                 'message' => count($claimsWithSuggestions) . ' claims detected with citation suggestions.',
             ]);

@@ -60,6 +60,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Auto-detect claims that need citations
     Route::post('/citations/detect-claims', [CitationController::class, 'detectClaims'])
+        ->middleware(['prevent.duplicate:15', 'check.words:300'])
         ->name('api.citations.detect-claims');
 
     // Get saved detected claims for a chapter
