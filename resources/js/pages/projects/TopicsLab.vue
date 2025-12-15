@@ -156,6 +156,18 @@ const backToSelection = () => {
     router.visit(route('projects.topic-selection', props.project.slug));
 };
 
+const goToSelectionWithPrefill = (topic: Topic) => {
+    const plainTitle = stripHtml(topic.title || '').trim();
+    router.visit(
+        route('projects.topic-selection', {
+            project: props.project.slug,
+            prefill_topic: plainTitle,
+            prefill_title: plainTitle.substring(0, 100),
+            prefill_description: topic.description || '',
+        }),
+    );
+};
+
 // --- Renaming Session ---
 const editingSessionId = ref<string | null>(null);
 const editingSessionName = ref('');
@@ -539,7 +551,7 @@ const applyRefinedTopicFromContent = async (content: string, selectAfter = false
     }
     refinedTopicCandidate.value = refined;
     setCurrentTopicWithoutReset(refined);
-    if (selectAfter) await selectTopic();
+    if (selectAfter) goToSelectionWithPrefill(refined);
 };
 
 const openSaveTopicDialog = (title: string) => {

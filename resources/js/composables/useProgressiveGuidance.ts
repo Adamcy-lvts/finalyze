@@ -8,6 +8,8 @@ export interface ProgressiveStep {
     id: string
     text: string
     completed: boolean
+    action?: 'none' | 'open_citation_helper' | 'insert_text'
+    payload?: { text?: string } | null
 }
 
 export interface WritingMilestone {
@@ -30,6 +32,89 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
     const isLoadingGuidance = ref(false)
     const lastRequestTime = ref<number>(0)
     const lastChargedFingerprint = ref<string>('')
+    const lastKnownCompletedIds = ref<string[]>([])
+
+    const storageKey = `progressive-guidance-${projectSlug}-${chapterNumber}`
+
+    const getStoredCompletedStepIds = (): string[] => {
+        try {
+            const stored = localStorage.getItem(storageKey)
+            if (!stored) return []
+            const parsed = JSON.parse(stored)
+            if (!Array.isArray(parsed)) return []
+            return parsed.filter((v) => typeof v === 'string' && v.length > 0)
+        } catch {
+            return []
+        }
+    }
+
+    const setStoredCompletedStepIds = (ids: string[]) => {
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(Array.from(new Set(ids))))
+        } catch {
+            // ignore
+        }
+    }
+
+    const clearStoredCompletedStepIds = () => {
+        try {
+            localStorage.removeItem(storageKey)
+        } catch {
+            // ignore
+        }
+    }
+
+    const persistCompletedSteps = async () => {
+        const completed = getStoredCompletedStepIds()
+
+        try {
+            await fetch(
+                route('projects.manual-editor.progressive-guidance.steps', {
+                    project: projectSlug,
+                    chapter: chapterNumber,
+                }),
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                    },
+                    body: JSON.stringify({ completed_step_ids: completed }),
+                }
+            )
+        } catch (e) {
+            console.error('Failed to persist completed steps:', e)
+        }
+    }
+
+    const debouncedPersistCompletedSteps = debounce(persistCompletedSteps, 400)
+
+    const extractOutlineFromHtml = (html: string): string[] => {
+        try {
+            const parser = new DOMParser()
+            const doc = parser.parseFromString(html || '', 'text/html')
+            const nodes = Array.from(doc.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+            const headings = nodes
+                .map((n) => (n.textContent || '').trim())
+                .filter(Boolean)
+                .slice(0, 20)
+            return headings
+        } catch {
+            return []
+        }
+    }
+
+    const extractContentExcerpt = (html: string): string => {
+        try {
+            const parser = new DOMParser()
+            const doc = parser.parseFromString(html || '', 'text/html')
+            const text = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim()
+            if (text.length <= 2000) return text
+            return text.slice(-2000)
+        } catch {
+            return (html || '').slice(-2000)
+        }
+    }
 
     /**
      * Request progressive guidance from backend
@@ -50,6 +135,10 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
         lastRequestTime.value = now
 
         try {
+            const completedFromStorage = getStoredCompletedStepIds()
+            const outline = extractOutlineFromHtml(content)
+            const contentExcerpt = extractContentExcerpt(content)
+
             const response = await fetch(
                 route('projects.manual-editor.progressive-guidance', {
                     project: projectSlug,
@@ -64,7 +153,9 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
                     body: JSON.stringify({
                         analysis: {
                             ...analysis,
-                            content: content,
+                            outline,
+                            content_excerpt: contentExcerpt,
+                            completed_step_ids: completedFromStorage,
                         },
                     }),
                 }
@@ -74,14 +165,19 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
                 const data = await response.json()
                 guidance.value = data
 
-                // Load completed steps from localStorage
+                if (Array.isArray(data?.completed_step_ids)) {
+                    lastKnownCompletedIds.value = data.completed_step_ids
+                    setStoredCompletedStepIds(lastKnownCompletedIds.value)
+                }
+
+                // Load completed steps from localStorage (in case server has none yet)
                 loadCompletedSteps()
 
                 const fingerprint = JSON.stringify({
                     stage: data?.stage,
                     completion: data?.completion_percentage,
                     tip: data?.contextual_tip,
-                    steps: (data?.next_steps || []).map((s: any) => s?.text),
+                    steps: (data?.next_steps || []).map((s: any) => ({ t: s?.text, a: s?.action })),
                 })
                 if (fingerprint && fingerprint !== lastChargedFingerprint.value) {
                     lastChargedFingerprint.value = fingerprint
@@ -121,6 +217,7 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
         if (step) {
             step.completed = !step.completed
             saveCompletedSteps()
+            debouncedPersistCompletedSteps()
         }
     }
 
@@ -136,8 +233,7 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
             .filter(step => step.completed)
             .map(step => step.id)
 
-        const storageKey = `progressive-guidance-${projectSlug}-${chapterNumber}`
-        localStorage.setItem(storageKey, JSON.stringify(completedStepIds))
+        setStoredCompletedStepIds(completedStepIds)
     }
 
     /**
@@ -148,20 +244,14 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
             return
         }
 
-        const storageKey = `progressive-guidance-${projectSlug}-${chapterNumber}`
-        const stored = localStorage.getItem(storageKey)
+        const storedIds = getStoredCompletedStepIds()
 
-        if (stored) {
-            try {
-                const completedStepIds: string[] = JSON.parse(stored)
-                guidance.value.next_steps.forEach(step => {
-                    if (completedStepIds.includes(step.id)) {
-                        step.completed = true
-                    }
-                })
-            } catch (e) {
-                console.error('Failed to parse completed steps:', e)
-            }
+        if (storedIds.length) {
+            guidance.value.next_steps.forEach(step => {
+                if (storedIds.includes(step.id)) {
+                    step.completed = true
+                }
+            })
         }
     }
 
@@ -177,8 +267,8 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
             step.completed = false
         })
 
-        const storageKey = `progressive-guidance-${projectSlug}-${chapterNumber}`
-        localStorage.removeItem(storageKey)
+        clearStoredCompletedStepIds()
+        debouncedPersistCompletedSteps()
     }
 
     /**

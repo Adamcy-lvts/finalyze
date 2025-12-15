@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\ChapterStatus;
 use App\Models\Chapter;
 use App\Models\ChapterContextAnalysis;
+use App\Models\ChapterProgressGuidance;
 use App\Models\Project;
 use App\Models\UserChapterSuggestion;
 use App\Services\AIContentGenerator;
@@ -331,15 +332,139 @@ class ManualEditorController extends Controller
             'analysis.has_conclusion' => 'boolean',
             'analysis.detected_issues' => 'array',
             'analysis.quality_metrics' => 'array',
-            'analysis.content' => 'string',
+            'analysis.outline' => 'array',
+            'analysis.outline.*' => 'string',
+            'analysis.content_excerpt' => 'string',
+            'analysis.completed_step_ids' => 'array',
+            'analysis.completed_step_ids.*' => 'string',
         ]);
 
-        $guidance = $this->guidanceService->analyzeAndGuide(
-            $chapter,
-            $validated['analysis']
-        );
+        $analysis = $validated['analysis'];
+
+        $fingerprint = hash('sha256', json_encode([
+            'chapter_id' => $chapter->id,
+            'metrics' => [
+                'word_count' => (int) ($analysis['word_count'] ?? 0),
+                'citation_count' => (int) ($analysis['citation_count'] ?? 0),
+                'table_count' => (int) ($analysis['table_count'] ?? 0),
+                'figure_count' => (int) ($analysis['figure_count'] ?? 0),
+                'claim_count' => (int) ($analysis['claim_count'] ?? 0),
+                'has_introduction' => (bool) ($analysis['has_introduction'] ?? false),
+                'has_conclusion' => (bool) ($analysis['has_conclusion'] ?? false),
+            ],
+            'outline' => array_slice(array_values($analysis['outline'] ?? []), 0, 30),
+            'excerpt' => (string) ($analysis['content_excerpt'] ?? ''),
+        ], JSON_UNESCAPED_UNICODE));
+
+        $incomingCompleted = array_values(array_unique(array_filter(
+            $analysis['completed_step_ids'] ?? [],
+            fn ($id) => is_string($id) && $id !== ''
+        )));
+
+        $existing = ChapterProgressGuidance::query()
+            ->where('user_id', auth()->id())
+            ->where('chapter_id', $chapter->id)
+            ->where('fingerprint', $fingerprint)
+            ->latest('id')
+            ->first();
+
+        if ($existing) {
+            $completed = array_values(array_unique(array_merge($existing->completed_step_ids ?? [], $incomingCompleted)));
+            if ($completed !== ($existing->completed_step_ids ?? [])) {
+                $existing->update(['completed_step_ids' => $completed]);
+            }
+
+            $payload = [
+                'guidance_id' => $existing->id,
+                'stage' => $existing->stage,
+                'stage_label' => $existing->stage_label,
+                'completion_percentage' => $existing->completion_percentage,
+                'contextual_tip' => $existing->contextual_tip,
+                'completed_step_ids' => $completed,
+                'writing_milestones' => $existing->writing_milestones,
+                'next_steps' => collect($existing->next_steps)->map(function ($step) use ($completed) {
+                    if (is_array($step) && isset($step['id'])) {
+                        $step['completed'] = in_array($step['id'], $completed, true);
+                    }
+                    return $step;
+                })->values()->all(),
+            ];
+
+            return response()->json($payload);
+        }
+
+        $guidance = $this->guidanceService->analyzeAndGuide($chapter, $analysis);
+
+        $completed = array_values(array_unique(array_merge(
+            $incomingCompleted,
+            collect($guidance['next_steps'] ?? [])->filter(fn ($s) => ! empty($s['completed']))->pluck('id')->all(),
+        )));
+
+        $guidance['next_steps'] = collect($guidance['next_steps'] ?? [])->map(function ($step) use ($completed) {
+            if (is_array($step) && isset($step['id'])) {
+                $step['completed'] = in_array($step['id'], $completed, true);
+            }
+            return $step;
+        })->values()->all();
+
+        $stored = ChapterProgressGuidance::create([
+            'user_id' => auth()->id(),
+            'project_id' => $project->id,
+            'chapter_id' => $chapter->id,
+            'chapter_number' => $chapterNumber,
+            'fingerprint' => $fingerprint,
+            'stage' => $guidance['stage'],
+            'stage_label' => $guidance['stage_label'],
+            'completion_percentage' => (int) ($guidance['completion_percentage'] ?? 0),
+            'contextual_tip' => $guidance['contextual_tip'],
+            'next_steps' => $guidance['next_steps'],
+            'writing_milestones' => $guidance['writing_milestones'],
+            'completed_step_ids' => $completed,
+            'meta' => [
+                'cached' => false,
+                'source' => 'ai_or_fallback',
+            ],
+        ]);
+
+        $guidance['guidance_id'] = $stored->id;
+        $guidance['completed_step_ids'] = $completed;
 
         return response()->json($guidance);
+    }
+
+    /**
+     * Persist step completion without re-generating guidance.
+     */
+    public function updateProgressiveGuidanceSteps(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+        abort_if($project->mode !== 'manual', 403);
+
+        $validated = $request->validate([
+            'completed_step_ids' => 'required|array',
+            'completed_step_ids.*' => 'string',
+        ]);
+
+        $completed = array_values(array_unique(array_filter(
+            $validated['completed_step_ids'],
+            fn ($id) => is_string($id) && $id !== ''
+        )));
+
+        $latest = ChapterProgressGuidance::query()
+            ->where('user_id', auth()->id())
+            ->where('chapter_id', $chapter->id)
+            ->latest('id')
+            ->first();
+
+        if (! $latest) {
+            return response()->json(['success' => true, 'stored' => false]);
+        }
+
+        $latest->update(['completed_step_ids' => $completed]);
+
+        return response()->json(['success' => true, 'stored' => true]);
     }
 
     /**

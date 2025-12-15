@@ -19,7 +19,7 @@ class ProgressiveGuidanceService
     {
         $project = $chapter->project;
         $wordCount = $frontendAnalysis['word_count'] ?? 0;
-        $content = $frontendAnalysis['content'] ?? '';
+        $content = $frontendAnalysis['content_excerpt'] ?? ($frontendAnalysis['content'] ?? '');
 
         // Determine current stage
         $stage = $this->determineWritingStage($chapter, $frontendAnalysis);
@@ -49,27 +49,30 @@ class ProgressiveGuidanceService
     private function determineWritingStage(Chapter $chapter, array $analysis): string
     {
         $wordCount = $analysis['word_count'] ?? 0;
-        $hasIntro = $analysis['has_introduction'] ?? false;
-        $hasConclusion = $analysis['has_conclusion'] ?? false;
+        $outline = array_map(fn ($h) => strtolower(trim((string) $h)), $analysis['outline'] ?? []);
+        $hasIntro = (bool) ($analysis['has_introduction'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'introduction'));
+        $hasConclusion = (bool) ($analysis['has_conclusion'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'conclusion'));
         $citationCount = $analysis['citation_count'] ?? 0;
+        $targetWordCount = $chapter->target_word_count ?? 1500;
+        $wordRatio = $targetWordCount > 0 ? ($wordCount / $targetWordCount) : 0;
 
         // Empty or very minimal
         if ($wordCount < 50) {
             return 'planning';
         }
 
-        // Has introduction
-        if ($hasIntro && $wordCount < 200) {
+        // Early writing (or missing intro for early chapters)
+        if ($wordCount < 250 || (! $hasIntro && $chapter->chapter_number <= 2)) {
             return 'introduction';
         }
 
         // Body development
-        if ($hasIntro && ! $hasConclusion && $wordCount < 800) {
+        if ($hasIntro && ! $hasConclusion && $wordRatio < 0.7) {
             return 'body_development';
         }
 
         // Advanced body or near completion
-        if ($hasIntro && ! $hasConclusion && $wordCount >= 800) {
+        if ($hasIntro && ! $hasConclusion && $wordRatio >= 0.7) {
             return 'body_advanced';
         }
 
@@ -88,8 +91,9 @@ class ProgressiveGuidanceService
     {
         $wordCount = $analysis['word_count'] ?? 0;
         $targetWordCount = $chapter->target_word_count ?? 1500;
-        $hasIntro = $analysis['has_introduction'] ?? false;
-        $hasConclusion = $analysis['has_conclusion'] ?? false;
+        $outline = array_map(fn ($h) => strtolower(trim((string) $h)), $analysis['outline'] ?? []);
+        $hasIntro = (bool) ($analysis['has_introduction'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'introduction'));
+        $hasConclusion = (bool) ($analysis['has_conclusion'] ?? false) || collect($outline)->contains(fn ($h) => str_contains($h, 'conclusion'));
         $citationCount = $analysis['citation_count'] ?? 0;
         $tableCount = $analysis['table_count'] ?? 0;
 
@@ -113,6 +117,14 @@ class ProgressiveGuidanceService
         } elseif ($citationCount > 0) {
             $score += 5;
         }
+
+        // Headings coverage (lightweight structural signal)
+        $headingBonus = 0;
+        if (count($outline) > 0) {
+            // Reward having at least a few headings in longer chapters.
+            $headingBonus = min(10, (int) floor(count($outline) * 2));
+        }
+        $score += $headingBonus;
 
         // Data visualization for methodology chapters
         if ($chapter->chapter_number === 3 && $tableCount > 0) {
@@ -256,9 +268,13 @@ class ProgressiveGuidanceService
         $tableCount = $analysis['table_count'] ?? 0;
         $hasIntro = $analysis['has_introduction'] ?? false;
         $hasConclusion = $analysis['has_conclusion'] ?? false;
+        $outline = array_slice(array_values($analysis['outline'] ?? []), 0, 20);
 
         // Get a snippet of current content (last 300 chars)
         $contentSnippet = Str::limit($content, 300);
+        $outlineBlock = empty($outline)
+            ? '(none)'
+            : "- ".implode("\n- ", array_map('strval', $outline));
 
         return <<<PROMPT
 You are an academic writing coach providing real-time guidance to a student writing their project.
@@ -281,6 +297,9 @@ CHAPTER CONTEXT:
 RECENT CONTENT:
 {$contentSnippet}
 
+OUTLINE (headings found):
+{$outlineBlock}
+
 TASK:
 Generate 3-5 actionable next steps for the student to continue writing. Each step should be:
 - Specific and actionable (not vague like "continue writing")
@@ -288,9 +307,24 @@ Generate 3-5 actionable next steps for the student to continue writing. Each ste
 - Encouraging and supportive
 - Progressive (build on what's already written)
 
-Format your response as a numbered list (1., 2., 3., etc.), with each step on a new line.
-Keep each step concise (under 15 words).
-Focus on WHAT TO DO NEXT, not what they've already done.
+OUTPUT FORMAT (required):
+Return exactly ONE machine-readable JSON block wrapped in <NEXT_STEPS_JSON>...</NEXT_STEPS_JSON>.
+Schema:
+{
+  "steps": [
+    {
+      "text": "string (<= 120 chars)",
+      "action": "none|open_citation_helper|insert_text",
+      "payload": { "text": "string" } // only for insert_text
+    }
+  ]
+}
+Rules:
+- Always return 3-5 steps.
+- Use action=open_citation_helper when step is about adding citations.
+- Use action=insert_text only when you can provide a short template snippet to insert (<= 400 chars).
+- Otherwise use action=none.
+- Do NOT include any text outside the <NEXT_STEPS_JSON> block.
 
 Examples of good steps:
 - "Add a thesis statement at the end of your introduction"
@@ -308,40 +342,92 @@ PROMPT;
      */
     private function parseStepsFromAI(string $aiResponse): array
     {
-        // Split by numbered list patterns (1., 2., etc.)
-        $lines = explode("\n", trim($aiResponse));
         $steps = [];
 
-        foreach ($lines as $line) {
-            $line = trim($line);
-            // Match patterns like "1. " or "1) " or "- "
-            if (preg_match('/^(\d+[\.\)]\s*|-\s*)(.+)$/', $line, $matches)) {
-                $stepText = trim($matches[2]);
-                if (! empty($stepText)) {
+        // Prefer JSON block.
+        if (preg_match('/<NEXT_STEPS_JSON>\s*([\s\S]*?)\s*<\/NEXT_STEPS_JSON>/i', $aiResponse, $m)) {
+            $raw = trim($m[1]);
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded) && is_array($decoded['steps'] ?? null)) {
+                foreach ($decoded['steps'] as $item) {
+                    if (!is_array($item)) continue;
+                    $text = is_string($item['text'] ?? null) ? trim($item['text']) : '';
+                    if ($text === '') continue;
+
+                    $action = is_string($item['action'] ?? null) ? $item['action'] : 'none';
+                    $payload = is_array($item['payload'] ?? null) ? $item['payload'] : null;
+                    if ($action === 'insert_text') {
+                        $payloadText = is_string($payload['text'] ?? null) ? trim($payload['text']) : '';
+                        if ($payloadText === '') {
+                            $action = 'none';
+                            $payload = null;
+                        } else {
+                            $payload = ['text' => mb_substr($payloadText, 0, 400)];
+                        }
+                    } else {
+                        $payload = null;
+                    }
+
                     $steps[] = [
-                        'id' => 'step_'.count($steps),
-                        'text' => $stepText,
+                        'id' => $this->stableStepId($text, $action, $payload),
+                        'text' => mb_substr($text, 0, 120),
+                        'action' => $action,
+                        'payload' => $payload,
                         'completed' => false,
                     ];
                 }
             }
         }
 
-        // If parsing failed, try simpler approach
+        // Fallback: Split by numbered list patterns (1., 2., etc.)
         if (empty($steps)) {
-            $lines = array_filter(array_map('trim', $lines));
+            $lines = explode("\n", trim($aiResponse));
+
             foreach ($lines as $line) {
-                if (! empty($line)) {
-                    $steps[] = [
-                        'id' => 'step_'.count($steps),
-                        'text' => $line,
-                        'completed' => false,
-                    ];
+                $line = trim($line);
+                // Match patterns like "1. " or "1) " or "- "
+                if (preg_match('/^(\d+[\.\)]\s*|-\s*)(.+)$/', $line, $matches)) {
+                    $stepText = trim($matches[2]);
+                    if (! empty($stepText)) {
+                        $steps[] = [
+                            'id' => $this->stableStepId($stepText),
+                            'text' => $stepText,
+                            'action' => 'none',
+                            'payload' => null,
+                            'completed' => false,
+                        ];
+                    }
+                }
+            }
+
+            // If parsing failed, try simpler approach
+            if (empty($steps)) {
+                $lines = array_filter(array_map('trim', $lines));
+                foreach ($lines as $line) {
+                    if (! empty($line)) {
+                        $steps[] = [
+                            'id' => $this->stableStepId($line),
+                            'text' => $line,
+                            'action' => 'none',
+                            'payload' => null,
+                            'completed' => false,
+                        ];
+                    }
                 }
             }
         }
 
         return array_slice($steps, 0, 5); // Max 5 steps
+    }
+
+    private function stableStepId(string $text, string $action = 'none', ?array $payload = null): string
+    {
+        $normalized = Str::of($text)->lower()->replaceMatches('/\s+/', ' ')->trim()->toString();
+        $meta = $action;
+        if ($action === 'insert_text' && is_array($payload) && isset($payload['text']) && is_string($payload['text'])) {
+            $meta .= '|'.Str::of($payload['text'])->lower()->replaceMatches('/\s+/', ' ')->trim()->toString();
+        }
+        return 'step_'.substr(hash('sha1', $normalized.'|'.$meta), 0, 12);
     }
 
     /**
@@ -351,37 +437,37 @@ PROMPT;
     {
         $steps = match ($stage) {
             'planning' => [
-                ['id' => 'step_0', 'text' => 'Write a brief introduction paragraph', 'completed' => false],
-                ['id' => 'step_1', 'text' => 'Outline 2-3 main points to cover', 'completed' => false],
-                ['id' => 'step_2', 'text' => 'Define key terms or concepts', 'completed' => false],
+                ['id' => $this->stableStepId('Write a brief introduction paragraph'), 'text' => 'Write a brief introduction paragraph', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Outline 2-3 main points to cover'), 'text' => 'Outline 2-3 main points to cover', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Define key terms or concepts'), 'text' => 'Define key terms or concepts', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'introduction' => [
-                ['id' => 'step_0', 'text' => 'Add a clear thesis statement', 'completed' => false],
-                ['id' => 'step_1', 'text' => 'Provide background context', 'completed' => false],
-                ['id' => 'step_2', 'text' => 'Outline what the chapter will cover', 'completed' => false],
+                ['id' => $this->stableStepId('Add a clear thesis statement'), 'text' => 'Add a clear thesis statement', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Provide background context'), 'text' => 'Provide background context', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Outline what the chapter will cover'), 'text' => 'Outline what the chapter will cover', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'body_development' => [
-                ['id' => 'step_0', 'text' => 'Develop your first main argument', 'completed' => false],
-                ['id' => 'step_1', 'text' => 'Add supporting evidence and citations', 'completed' => false],
-                ['id' => 'step_2', 'text' => 'Use clear topic sentences for paragraphs', 'completed' => false],
-                ['id' => 'step_3', 'text' => 'Connect ideas with transition phrases', 'completed' => false],
+                ['id' => $this->stableStepId('Develop your first main argument'), 'text' => 'Develop your first main argument', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Add supporting evidence and citations'), 'text' => 'Add supporting evidence and citations', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Use clear topic sentences for paragraphs'), 'text' => 'Use clear topic sentences for paragraphs', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Connect ideas with transition phrases'), 'text' => 'Connect ideas with transition phrases', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'body_advanced' => [
-                ['id' => 'step_0', 'text' => 'Add more evidence for your claims', 'completed' => false],
-                ['id' => 'step_1', 'text' => 'Consider adding tables or figures', 'completed' => false],
-                ['id' => 'step_2', 'text' => 'Check all citations are formatted correctly', 'completed' => false],
-                ['id' => 'step_3', 'text' => 'Start writing your conclusion', 'completed' => false],
+                ['id' => $this->stableStepId('Add more evidence for your claims'), 'text' => 'Add more evidence for your claims', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Consider adding tables or figures'), 'text' => 'Consider adding tables or figures', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Check all citations are formatted correctly'), 'text' => 'Check all citations are formatted correctly', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Start writing your conclusion'), 'text' => 'Start writing your conclusion', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'refinement' => [
-                ['id' => 'step_0', 'text' => 'Review for clarity and coherence', 'completed' => false],
-                ['id' => 'step_1', 'text' => 'Check grammar and spelling', 'completed' => false],
-                ['id' => 'step_2', 'text' => 'Ensure consistent citation format', 'completed' => false],
-                ['id' => 'step_3', 'text' => 'Verify all claims have evidence', 'completed' => false],
+                ['id' => $this->stableStepId('Review for clarity and coherence'), 'text' => 'Review for clarity and coherence', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Check grammar and spelling'), 'text' => 'Check grammar and spelling', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Ensure consistent citation format'), 'text' => 'Ensure consistent citation format', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Verify all claims have evidence'), 'text' => 'Verify all claims have evidence', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             default => [
-                ['id' => 'step_0', 'text' => 'Continue developing your main points', 'completed' => false],
-                ['id' => 'step_1', 'text' => 'Add citations for your claims', 'completed' => false],
-                ['id' => 'step_2', 'text' => 'Use clear paragraph structure', 'completed' => false],
+                ['id' => $this->stableStepId('Continue developing your main points'), 'text' => 'Continue developing your main points', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Add citations for your claims'), 'text' => 'Add citations for your claims', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Use clear paragraph structure'), 'text' => 'Use clear paragraph structure', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
         };
 

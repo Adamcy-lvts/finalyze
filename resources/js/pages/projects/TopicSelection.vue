@@ -99,6 +99,28 @@ onMounted(() => {
         });
     }
 
+    // If we were sent here from Topic Lab with a refined topic, prefill Enter Topic tab.
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const prefillTopic = params.get('prefill_topic');
+        const prefillTitle = params.get('prefill_title');
+        const prefillDescription = params.get('prefill_description');
+
+        if (prefillTopic && prefillTopic.trim()) {
+            activeTab.value = 'existing';
+            customTopic.value = prefillTopic.trim();
+            if (prefillTitle && prefillTitle.trim()) customTitle.value = prefillTitle.trim();
+            if (prefillDescription && prefillDescription.trim()) customDescription.value = prefillDescription.trim();
+
+            toast.success('Refined topic loaded', { description: 'Review it in “Enter Topic” then continue.' });
+
+            // Clear query params so refresh doesn't re-apply unexpectedly.
+            window.history.replaceState({}, '', route('projects.topic-selection', props.project.slug));
+        }
+    } catch {
+        // ignore
+    }
+
     // If we have saved topics, load them and switch to generated tab
     if (props.savedTopics && props.savedTopics.length > 0) {
         generatedTopics.value = props.savedTopics;

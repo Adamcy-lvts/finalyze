@@ -447,6 +447,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{chapter}/mark-complete', [ManualEditorController::class, 'markComplete'])->name('mark-complete');
             Route::post('/{chapter}/analyze', [ManualEditorController::class, 'analyzeAndSuggest'])->middleware(['prevent.duplicate:15', 'check.words'])->name('analyze');
             Route::post('/{chapter}/progressive-guidance', [ManualEditorController::class, 'progressiveGuidance'])->middleware(['prevent.duplicate:15', 'check.words'])->name('progressive-guidance');
+            Route::post('/{chapter}/progressive-guidance/steps', [ManualEditorController::class, 'updateProgressiveGuidanceSteps'])->name('progressive-guidance.steps');
             Route::post('/{chapter}/suggestions/{suggestion}/save', [ManualEditorController::class, 'saveSuggestion'])->middleware(['prevent.duplicate:10', 'check.words'])->name('suggestion.save');
             Route::post('/{chapter}/suggestions/{suggestion}/clear', [ManualEditorController::class, 'clearSuggestion'])->middleware(['prevent.duplicate:5', 'check.words'])->name('suggestion.clear');
             Route::post('/{chapter}/suggestions/{suggestion}/apply', [ManualEditorController::class, 'applySuggestion'])->middleware(['prevent.duplicate:10', 'check.words'])->name('suggestion.apply');

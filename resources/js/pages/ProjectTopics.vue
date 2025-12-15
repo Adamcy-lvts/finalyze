@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
+import TopicDetailsDialog, { type TopicDetails } from '@/components/topics/TopicDetailsDialog.vue';
 import { route } from 'ziggy-js';
 import {
     BookOpen,
@@ -69,6 +70,13 @@ const isMobileMenuOpen = ref(false);
 // Topic Logic
 const allTopicsList = reactive<Topic[]>([...props.allTopics]);
 const totalTopics = computed(() => props.meta.totalTopics);
+
+const selectedTopic = ref<TopicDetails | null>(null);
+const isTopicModalOpen = ref(false);
+const openTopicModal = (topic: Topic) => {
+    selectedTopic.value = topic;
+    isTopicModalOpen.value = true;
+};
 
 const filters = reactive({
     search: '',
@@ -456,9 +464,15 @@ const difficultyBadge = (difficulty?: string) => {
                     </div>
 
                     <!-- Grid -->
-                    <div v-else class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        <div v-for="topic in paginatedTopics" :key="topic.id"
-                            class="group flex flex-col rounded-2xl border border-white/5 bg-zinc-900/40 backdrop-blur-sm p-6 transition-all duration-300 hover:bg-zinc-900/60 hover:shadow-2xl hover:shadow-indigo-500/10 hover:border-indigo-500/20 hover:-translate-y-1 relative overflow-hidden">
+	                    <div v-else class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+	                        <div v-for="topic in paginatedTopics" :key="topic.id"
+	                            class="group flex flex-col rounded-2xl border border-white/5 bg-zinc-900/40 backdrop-blur-sm p-6 transition-all duration-300 hover:bg-zinc-900/60 hover:shadow-2xl hover:shadow-indigo-500/10 hover:border-indigo-500/20 hover:-translate-y-1 relative overflow-hidden cursor-pointer"
+                                role="button"
+                                tabindex="0"
+                                @click="openTopicModal(topic)"
+                                @keydown.enter.prevent="openTopicModal(topic)"
+                                @keydown.space.prevent="openTopicModal(topic)"
+                            >
                             <!-- Category Tag -->
                             <div
                                 class="absolute top-0 right-0 px-4 py-1.5 bg-white/5 text-zinc-400 text-[10px] uppercase tracking-wider font-semibold rounded-bl-xl border-l border-b border-white/5">
@@ -493,7 +507,7 @@ const difficultyBadge = (difficulty?: string) => {
                                     <Target class="h-3.5 w-3.5" />
                                     <span>{{ topic.research_type || 'Research' }}</span>
                                 </div>
-                                <Button @click="startProject" size="sm"
+                                <Button @click.stop="startProject" size="sm"
                                     class="bg-indigo-600 hover:bg-indigo-500 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-lg text-xs font-semibold px-4 h-9">
                                     Start Project
                                 </Button>
@@ -523,6 +537,18 @@ const difficultyBadge = (difficulty?: string) => {
                 </div>
 
             </div>
-        </main>
-    </div>
-</template>
+	        </main>
+	    </div>
+
+        <TopicDetailsDialog v-model:open="isTopicModalOpen" :topic="selectedTopic" title-label="Topic Details">
+            <template #footer>
+                <Button
+                    type="button"
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white border-0"
+                    @click="startProject"
+                >
+                    Start Project
+                </Button>
+            </template>
+        </TopicDetailsDialog>
+	</template>

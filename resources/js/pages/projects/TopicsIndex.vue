@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
+import TopicDetailsDialog, { type TopicDetails } from '@/components/topics/TopicDetailsDialog.vue';
 import { router } from '@inertiajs/vue3';
 import { route } from 'ziggy-js';
 import { computed, reactive, ref, watch } from 'vue';
@@ -81,6 +82,13 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+
+const selectedTopic = ref<TopicDetails | null>(null);
+const isTopicModalOpen = ref(false);
+const openTopicModal = (topic: Topic) => {
+    selectedTopic.value = topic;
+    isTopicModalOpen.value = true;
+};
 
 // Use allTopics if provided, otherwise flatten from projectTopics
 const allTopicsList = reactive<Topic[]>([...(props.allTopics ?? props.projectTopics.flatMap(set => set.topics))]);
@@ -544,8 +552,8 @@ const difficultyBadge = (difficulty?: string) => {
                     </ScrollArea>
                 </div>
 
-                <!-- All Topics Grid (Flat Library View) -->
-                <div class="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
+	<!-- All Topics Grid (Flat Library View) -->
+	<div class="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
                     <!-- Empty State -->
                     <div v-if="categoryFilteredTopics.length === 0"
                         class="rounded-xl border border-dashed border-border/50 p-12 text-center bg-muted/5">
@@ -570,9 +578,17 @@ const difficultyBadge = (difficulty?: string) => {
                     </div>
 
                     <!-- Topics Grid -->
-                    <div v-else class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                        <div v-for="topic in paginatedTopics" :key="topic.id"
-                            class="group flex flex-col rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm p-5 transition-all duration-300 hover:bg-card hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1 relative overflow-hidden">
+	                    <div v-else class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+	                        <div
+                                v-for="topic in paginatedTopics"
+                                :key="topic.id"
+	                            class="group flex flex-col rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm p-5 transition-all duration-300 hover:bg-card hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1 relative overflow-hidden cursor-pointer"
+                                role="button"
+                                tabindex="0"
+                                @click="openTopicModal(topic)"
+                                @keydown.enter.prevent="openTopicModal(topic)"
+                                @keydown.space.prevent="openTopicModal(topic)"
+                            >
 
                             <!-- Category Badge -->
                             <div
@@ -630,16 +646,16 @@ const difficultyBadge = (difficulty?: string) => {
                                         class="text-[10px] bg-background/50 border-border/50 text-muted-foreground h-5 font-normal">
                                         {{ topic.research_type }}
                                     </Badge>
-                                    <Button v-if="topicSets[0]?.project" size="icon" variant="ghost"
-                                        class="h-8 w-8 rounded-full hover:bg-primary hover:text-primary-foreground transition-colors shrink-0"
-                                        @click="router.visit(route('topics.lab', topicSets[0].project.slug))"
-                                        title="Refine in Topic Lab">
-                                        <MessageSquare class="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+	                                    <Button v-if="topicSets[0]?.project" size="icon" variant="ghost"
+	                                        class="h-8 w-8 rounded-full hover:bg-primary hover:text-primary-foreground transition-colors shrink-0"
+	                                        @click.stop="router.visit(route('topics.lab', topicSets[0].project.slug))"
+	                                        title="Refine in Topic Lab">
+	                                        <MessageSquare class="h-4 w-4" />
+	                                    </Button>
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
 
                     <!-- Pagination -->
                     <div v-if="totalPages > 1" class="mt-8 flex items-center justify-center gap-2">
@@ -689,9 +705,21 @@ const difficultyBadge = (difficulty?: string) => {
                     </div>
                 </div>
             </div>
-        </div>
-    </AppLayout>
-</template>
+	        </div>
+	    </AppLayout>
+
+        <TopicDetailsDialog v-model:open="isTopicModalOpen" :topic="selectedTopic" title-label="Topic Details">
+            <template #footer="{ topic }">
+                <Button
+                    v-if="topic && topicSets[0]?.project"
+                    type="button"
+                    @click="router.visit(route('topics.lab', topicSets[0].project.slug))"
+                >
+                    Refine in Topic Lab
+                </Button>
+            </template>
+        </TopicDetailsDialog>
+	</template>
 
 <style scoped>
 .line-clamp-2 {

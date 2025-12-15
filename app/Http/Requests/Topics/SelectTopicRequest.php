@@ -19,7 +19,7 @@ class SelectTopicRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'topic' => 'required|string|max:500',
+            'topic' => 'required|string|max:1500',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string|max:2000',
         ];

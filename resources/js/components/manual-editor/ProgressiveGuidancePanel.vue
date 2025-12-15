@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +25,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
     toggleStep: [stepId: string]
+    guidanceAction: [stepId: string]
 }>()
 
 const isOpen = ref(true)
@@ -135,6 +137,16 @@ const totalStepsCount = computed(() => {
                                 >
                                     {{ step.text }}
                                 </span>
+                                <Button
+                                    v-if="step.action && step.action !== 'none'"
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    class="h-7 px-2 text-[11px] text-primary hover:bg-primary/10"
+                                    @click.stop="emit('guidanceAction', step.id)"
+                                >
+                                    {{ step.action === 'open_citation_helper' ? 'Citations' : 'Insert' }}
+                                </Button>
                             </div>
                         </div>
                     </div>

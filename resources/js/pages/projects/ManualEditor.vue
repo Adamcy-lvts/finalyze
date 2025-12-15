@@ -411,6 +411,35 @@ const handleTextRephrased = (alternatives: string) => {
   toast.success('Added rephrased text')
 }
 
+const handleGuidanceAction = (stepId: string) => {
+  const step = guidance.value?.next_steps?.find((s: any) => s?.id === stepId)
+  if (!step || !step.action || step.action === 'none') return
+
+  if (step.action === 'open_citation_helper') {
+    showCitationHelper.value = true
+    toast.success('Citation helper opened')
+    toggleStep(stepId)
+    return
+  }
+
+  if (step.action === 'insert_text') {
+    const payloadText = step?.payload?.text
+    if (typeof payloadText !== 'string' || !payloadText.trim()) {
+      toast.error('Nothing to insert for this step')
+      return
+    }
+
+    const ok = editorRef.value?.replaceSelection(payloadText.trim(), selectionRange.value || undefined) ?? false
+    if (ok) {
+      toast.success('Inserted into selection')
+    } else {
+      handleContentUpdate(`${content.value}\n\n${payloadText.trim()}`)
+      toast.success('Inserted into chapter')
+    }
+    toggleStep(stepId)
+  }
+}
+
 const ensureQuickActionBalance = (requiredWords: number, action: string) => checkAndPrompt(requiredWords, action)
 
 const recordManualUsage = async (wordsUsed: number, description: string) => {
@@ -898,7 +927,12 @@ const markAsComplete = async () => {
             </div>
 
             <!-- Progressive Guidance Panel -->
-            <ProgressiveGuidancePanel :guidance="guidance" :is-loading="isLoadingGuidance" @toggle-step="toggleStep" />
+            <ProgressiveGuidancePanel
+              :guidance="guidance"
+              :is-loading="isLoadingGuidance"
+              @toggle-step="toggleStep"
+              @guidance-action="handleGuidanceAction"
+            />
 
             <Separator class="bg-border/50" />
 
