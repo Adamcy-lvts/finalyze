@@ -325,6 +325,7 @@ Schema:
   "steps": [
     {
       "text": "string (<= 120 chars)",
+      "priority": "critical|optional",
       "action": "none|open_citation_helper|insert_text",
       "payload": { "text": "string" } // only for insert_text
     }
@@ -332,6 +333,8 @@ Schema:
 }
 Rules:
 - Always return 3-5 steps.
+- Mark at most 3 steps as priority=critical (the truly crucial steps).
+- Mark the rest as priority=optional.
 - Use action=open_citation_helper when step is about adding citations.
 - Use action=insert_text only when you can provide a short template snippet to insert (<= 400 chars).
 - Otherwise use action=none.
@@ -378,6 +381,11 @@ PROMPT;
                     $text = is_string($item['text'] ?? null) ? trim($item['text']) : '';
                     if ($text === '') continue;
 
+                    $priority = is_string($item['priority'] ?? null) ? strtolower(trim($item['priority'])) : 'optional';
+                    if (! in_array($priority, ['critical', 'optional'], true)) {
+                        $priority = 'optional';
+                    }
+
                     $action = is_string($item['action'] ?? null) ? $item['action'] : 'none';
                     $payload = is_array($item['payload'] ?? null) ? $item['payload'] : null;
                     if ($action === 'insert_text') {
@@ -395,6 +403,7 @@ PROMPT;
                     $steps[] = [
                         'id' => $this->stableStepId($text, $action, $payload),
                         'text' => mb_substr($text, 0, 120),
+                        'priority' => $priority,
                         'action' => $action,
                         'payload' => $payload,
                         'completed' => false,
@@ -421,6 +430,7 @@ PROMPT;
                         $steps[] = [
                             'id' => $this->stableStepId($stepText),
                             'text' => $stepText,
+                            'priority' => 'optional',
                             'action' => 'none',
                             'payload' => null,
                             'completed' => false,
@@ -441,6 +451,7 @@ PROMPT;
                         $steps[] = [
                             'id' => $this->stableStepId($line),
                             'text' => $line,
+                            'priority' => 'optional',
                             'action' => 'none',
                             'payload' => null,
                             'completed' => false,
@@ -470,37 +481,37 @@ PROMPT;
     {
         $steps = match ($stage) {
             'planning' => [
-                ['id' => $this->stableStepId('Write a brief introduction paragraph'), 'text' => 'Write a brief introduction paragraph', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Outline 2-3 main points to cover'), 'text' => 'Outline 2-3 main points to cover', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Define key terms or concepts'), 'text' => 'Define key terms or concepts', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Write a brief introduction paragraph'), 'text' => 'Write a brief introduction paragraph', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Outline 2-3 main points to cover'), 'text' => 'Outline 2-3 main points to cover', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Define key terms or concepts'), 'text' => 'Define key terms or concepts', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'introduction' => [
-                ['id' => $this->stableStepId('Add a clear thesis statement'), 'text' => 'Add a clear thesis statement', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Provide background context'), 'text' => 'Provide background context', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Outline what the chapter will cover'), 'text' => 'Outline what the chapter will cover', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Add a clear thesis statement'), 'text' => 'Add a clear thesis statement', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Provide background context'), 'text' => 'Provide background context', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Outline what the chapter will cover'), 'text' => 'Outline what the chapter will cover', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'body_development' => [
-                ['id' => $this->stableStepId('Develop your first main argument'), 'text' => 'Develop your first main argument', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Add supporting evidence and citations'), 'text' => 'Add supporting evidence and citations', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Use clear topic sentences for paragraphs'), 'text' => 'Use clear topic sentences for paragraphs', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Connect ideas with transition phrases'), 'text' => 'Connect ideas with transition phrases', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Develop your first main argument'), 'text' => 'Develop your first main argument', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Add supporting evidence and citations'), 'text' => 'Add supporting evidence and citations', 'priority' => 'critical', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Use clear topic sentences for paragraphs'), 'text' => 'Use clear topic sentences for paragraphs', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Connect ideas with transition phrases'), 'text' => 'Connect ideas with transition phrases', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'body_advanced' => [
-                ['id' => $this->stableStepId('Add more evidence for your claims'), 'text' => 'Add more evidence for your claims', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Consider adding tables or figures'), 'text' => 'Consider adding tables or figures', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Check all citations are formatted correctly'), 'text' => 'Check all citations are formatted correctly', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Start writing your conclusion'), 'text' => 'Start writing your conclusion', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Check all citations are formatted correctly'), 'text' => 'Check all citations are formatted correctly', 'priority' => 'critical', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Start writing your conclusion'), 'text' => 'Start writing your conclusion', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Add more evidence for your claims'), 'text' => 'Add more evidence for your claims', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Consider adding tables or figures'), 'text' => 'Consider adding tables or figures', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             'refinement' => [
-                ['id' => $this->stableStepId('Review for clarity and coherence'), 'text' => 'Review for clarity and coherence', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Check grammar and spelling'), 'text' => 'Check grammar and spelling', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Ensure consistent citation format'), 'text' => 'Ensure consistent citation format', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Verify all claims have evidence'), 'text' => 'Verify all claims have evidence', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Review for clarity and coherence'), 'text' => 'Review for clarity and coherence', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Ensure consistent citation format'), 'text' => 'Ensure consistent citation format', 'priority' => 'critical', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Check grammar and spelling'), 'text' => 'Check grammar and spelling', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Verify all claims have evidence'), 'text' => 'Verify all claims have evidence', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
             default => [
-                ['id' => $this->stableStepId('Continue developing your main points'), 'text' => 'Continue developing your main points', 'action' => 'none', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Add citations for your claims'), 'text' => 'Add citations for your claims', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
-                ['id' => $this->stableStepId('Use clear paragraph structure'), 'text' => 'Use clear paragraph structure', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Continue developing your main points'), 'text' => 'Continue developing your main points', 'priority' => 'critical', 'action' => 'none', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Add citations for your claims'), 'text' => 'Add citations for your claims', 'priority' => 'critical', 'action' => 'open_citation_helper', 'payload' => null, 'completed' => false],
+                ['id' => $this->stableStepId('Use clear paragraph structure'), 'text' => 'Use clear paragraph structure', 'priority' => 'optional', 'action' => 'none', 'payload' => null, 'completed' => false],
             ],
         };
 

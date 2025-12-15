@@ -8,6 +8,7 @@ export interface ProgressiveStep {
     id: string
     text: string
     completed: boolean
+    priority?: 'critical' | 'optional'
     action?: 'none' | 'open_citation_helper' | 'insert_text'
     payload?: { text?: string } | null
 }

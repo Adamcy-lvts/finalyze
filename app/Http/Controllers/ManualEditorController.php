@@ -369,10 +369,16 @@ class ManualEditorController extends Controller
 
         $analysis = $validated['analysis'];
 
+        // Use a stable fingerprint so guidance doesn't regenerate on every small edit.
+        $wordCount = (int) ($analysis['word_count'] ?? 0);
+        $wordBucket = (int) (floor($wordCount / 100) * 100);
+        $outline = array_slice(array_values($analysis['outline'] ?? []), 0, 30);
+        $outlineHash = hash('sha1', json_encode($outline, JSON_UNESCAPED_UNICODE));
+
         $fingerprint = hash('sha256', json_encode([
             'chapter_id' => $chapter->id,
             'metrics' => [
-                'word_count' => (int) ($analysis['word_count'] ?? 0),
+                'word_bucket' => $wordBucket,
                 'citation_count' => (int) ($analysis['citation_count'] ?? 0),
                 'table_count' => (int) ($analysis['table_count'] ?? 0),
                 'figure_count' => (int) ($analysis['figure_count'] ?? 0),
@@ -380,8 +386,7 @@ class ManualEditorController extends Controller
                 'has_introduction' => (bool) ($analysis['has_introduction'] ?? false),
                 'has_conclusion' => (bool) ($analysis['has_conclusion'] ?? false),
             ],
-            'outline' => array_slice(array_values($analysis['outline'] ?? []), 0, 30),
-            'excerpt' => (string) ($analysis['content_excerpt'] ?? ''),
+            'outline_hash' => $outlineHash,
         ], JSON_UNESCAPED_UNICODE));
 
         $incomingCompleted = array_values(array_unique(array_filter(
@@ -424,6 +429,19 @@ class ManualEditorController extends Controller
                 $existing->update(['completed_step_ids' => $completed]);
             }
 
+            $steps = collect($existing->next_steps)->map(function ($step) use ($completed) {
+                if (is_array($step) && isset($step['id'])) {
+                    $step['completed'] = in_array($step['id'], $completed, true);
+                }
+                return $step;
+            })->values();
+
+            // Prefer showing only critical steps (to avoid endless guidance churn).
+            $critical = $steps->filter(fn ($s) => is_array($s) && (($s['priority'] ?? null) === 'critical'));
+            if ($critical->isNotEmpty()) {
+                $steps = $critical->values();
+            }
+
             $payload = [
                 'guidance_id' => $existing->id,
                 'stage' => $existing->stage,
@@ -432,13 +450,15 @@ class ManualEditorController extends Controller
                 'contextual_tip' => $existing->contextual_tip,
                 'completed_step_ids' => $completed,
                 'writing_milestones' => $existing->writing_milestones,
-                'next_steps' => collect($existing->next_steps)->map(function ($step) use ($completed) {
-                    if (is_array($step) && isset($step['id'])) {
-                        $step['completed'] = in_array($step['id'], $completed, true);
-                    }
-                    return $step;
-                })->values()->all(),
+                'next_steps' => $steps->all(),
             ];
+
+            // If chapter is marked completed, force 100% completion.
+            if ($chapter->status === ChapterStatus::Completed->value) {
+                $payload['completion_percentage'] = 100;
+                $payload['stage'] = 'refinement';
+                $payload['stage_label'] = 'Completed';
+            }
 
             return response()->json($payload);
         }
@@ -478,6 +498,12 @@ class ManualEditorController extends Controller
 
         $guidance['guidance_id'] = $stored->id;
         $guidance['completed_step_ids'] = $completed;
+
+        if ($chapter->status === ChapterStatus::Completed->value) {
+            $guidance['completion_percentage'] = 100;
+            $guidance['stage'] = 'refinement';
+            $guidance['stage_label'] = 'Completed';
+        }
 
         return response()->json($guidance);
     }
