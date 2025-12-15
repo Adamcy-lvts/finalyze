@@ -36,6 +36,8 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
     const lastRequestTime = ref<number>(0)
     const lastChargedFingerprint = ref<string>('')
     const lastKnownCompletedIds = ref<string[]>([])
+    const chargedGuidanceIds = ref<Set<number>>(new Set<number>())
+    const chargedKey = `progressive-guidance-charged-${projectSlug}-${chapterNumber}`
 
     const storageKey = `progressive-guidance-${projectSlug}-${chapterNumber}`
 
@@ -188,23 +190,64 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
                 // Load completed steps from localStorage (in case server has none yet)
                 loadCompletedSteps()
 
-                const fingerprint = JSON.stringify({
-                    stage: data?.stage,
-                    completion: data?.completion_percentage,
-                    tip: data?.contextual_tip,
-                    steps: (data?.next_steps || []).map((s: any) => ({ t: s?.text, a: s?.action })),
-                })
-                if (fingerprint && fingerprint !== lastChargedFingerprint.value) {
-                    lastChargedFingerprint.value = fingerprint
-                    const wordsUsed =
-                        countWords(data?.contextual_tip || '') +
-                        countWords(data?.stage_label || '') +
-                        countWords((data?.next_steps || []).map((s: any) => s?.text).join(' ')) +
-                        countWords((data?.writing_milestones || []).map((m: any) => m?.label).join(' '))
+                // Charge once per guidance_id (stable across reloads/caching).
+                const guidanceId = Number(data?.guidance_id)
+                if (guidanceId) {
+                    if (chargedGuidanceIds.value.size === 0) {
+                        try {
+                            const stored = localStorage.getItem(chargedKey)
+                            if (stored) {
+                                const parsed = JSON.parse(stored)
+                                if (Array.isArray(parsed)) {
+                                    parsed
+                                        .filter((v) => typeof v === 'number' && Number.isFinite(v))
+                                        .forEach((v) => chargedGuidanceIds.value.add(v))
+                                }
+                            }
+                        } catch {
+                            // ignore
+                        }
+                    }
 
-                    if (wordsUsed > 0) {
-                        recordWordUsage(wordsUsed, 'Manual editor: Progressive guidance', 'chapter')
-                            .catch((err) => console.error('Failed to record word usage (progressive guidance):', err))
+                    if (!chargedGuidanceIds.value.has(guidanceId)) {
+                        const wordsUsed =
+                            countWords(data?.contextual_tip || '') +
+                            countWords(data?.stage_label || '') +
+                            countWords((data?.next_steps || []).map((s: any) => s?.text).join(' ')) +
+                            countWords((data?.writing_milestones || []).map((m: any) => m?.label).join(' '))
+
+                        if (wordsUsed > 0) {
+                            chargedGuidanceIds.value.add(guidanceId)
+                            try {
+                                localStorage.setItem(chargedKey, JSON.stringify(Array.from(chargedGuidanceIds.value).slice(-50)))
+                            } catch {
+                                // ignore
+                            }
+
+                            recordWordUsage(wordsUsed, 'Manual editor: Progressive guidance', 'chapter')
+                                .catch((err) => console.error('Failed to record word usage (progressive guidance):', err))
+                        }
+                    }
+                } else {
+                    // Backward-compat fallback: charge once per response fingerprint for older payloads.
+                    const fingerprint = JSON.stringify({
+                        stage: data?.stage,
+                        completion: data?.completion_percentage,
+                        tip: data?.contextual_tip,
+                        steps: (data?.next_steps || []).map((s: any) => ({ t: s?.text, a: s?.action })),
+                    })
+                    if (fingerprint && fingerprint !== lastChargedFingerprint.value) {
+                        lastChargedFingerprint.value = fingerprint
+                        const wordsUsed =
+                            countWords(data?.contextual_tip || '') +
+                            countWords(data?.stage_label || '') +
+                            countWords((data?.next_steps || []).map((s: any) => s?.text).join(' ')) +
+                            countWords((data?.writing_milestones || []).map((m: any) => m?.label).join(' '))
+
+                        if (wordsUsed > 0) {
+                            recordWordUsage(wordsUsed, 'Manual editor: Progressive guidance', 'chapter')
+                                .catch((err) => console.error('Failed to record word usage (progressive guidance):', err))
+                        }
                     }
                 }
             }

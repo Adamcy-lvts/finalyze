@@ -1,5 +1,9 @@
-import { ref, type Ref } from 'vue'
+import { ref } from 'vue'
+import axios from 'axios'
+import { route } from 'ziggy-js'
 import type { Chapter } from '@/types'
+import { countWords } from '@/utils/wordCount'
+import { recordWordUsage } from '@/composables/useWordBalance'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -32,7 +36,7 @@ export function useManualChat(chapter: Chapter, initialHistory: ChatMessage[] = 
       const response = await axios.post(
         route('projects.manual-editor.chat', {
           project: chapter.project.slug,
-          chapter: chapter.id,
+          chapter: chapter.chapter_number,
         }),
         {
           message: content,
@@ -41,11 +45,19 @@ export function useManualChat(chapter: Chapter, initialHistory: ChatMessage[] = 
       )
 
       // Add AI response
+      const aiContent = response.data.message
       messages.value.push({
         role: 'assistant',
-        content: response.data.message,
+        content: aiContent,
         timestamp: new Date(),
       })
+
+      const wordsUsed = countWords(aiContent || '')
+      if (wordsUsed > 0) {
+        recordWordUsage(wordsUsed, 'Manual editor: Chat', 'chapter', chapter.id).catch((err) =>
+          console.error('Failed to record word usage (manual chat):', err),
+        )
+      }
     } catch (error) {
       console.error('Failed to send chat message:', error)
 
