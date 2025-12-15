@@ -45,6 +45,7 @@ const props = defineProps<{
   facultyChapters: any[]
   currentSuggestion: UserChapterSuggestion | null
   contextAnalysis: ChapterContextAnalysis | null
+  initialProgressGuidance?: any | null
   chatHistory: ChatMessage[]
 }>()
 
@@ -128,7 +129,9 @@ const {
   isLoadingGuidance,
   debouncedRequestGuidance,
   toggleStep,
-} = useProgressiveGuidance(props.project.slug, props.chapter.chapter_number)
+} = useProgressiveGuidance(props.project.slug, props.chapter.chapter_number, props.initialProgressGuidance || null)
+
+const initialGuidanceRequested = ref(false)
 
 // Mobile responsive state (check early)
 const getInitialMobileState = () => typeof window !== 'undefined' && window.innerWidth < 1024
@@ -373,6 +376,31 @@ watch(
   },
   { deep: true }
 )
+
+// If chapter already has content but we don't yet have guidance (e.g., first load),
+// request guidance once using basic metrics so the panel isn't empty.
+onMounted(() => {
+  if (initialGuidanceRequested.value) return
+  const hasContent = (props.chapter.word_count || 0) > 50 || !!(content.value && content.value.trim().length > 200)
+  if (!hasContent) return
+  if (guidance.value) return
+
+  initialGuidanceRequested.value = true
+  debouncedRequestGuidance(
+    {
+      word_count: props.chapter.word_count || 0,
+      citation_count: props.contextAnalysis?.citation_count || 0,
+      table_count: props.contextAnalysis?.table_count || 0,
+      figure_count: props.contextAnalysis?.figure_count || 0,
+      claim_count: props.contextAnalysis?.claim_count || 0,
+      has_introduction: props.contextAnalysis?.has_introduction || false,
+      has_conclusion: props.contextAnalysis?.has_conclusion || false,
+      detected_issues: props.contextAnalysis?.detected_issues || [],
+      quality_metrics: props.contextAnalysis?.quality_metrics || {},
+    },
+    content.value || ''
+  )
+})
 
 // Handle quick action results (placeholder - would integrate with editor)
 const handleTextImproved = (text: string) => {
@@ -930,6 +958,7 @@ const markAsComplete = async () => {
             <ProgressiveGuidancePanel
               :guidance="guidance"
               :is-loading="isLoadingGuidance"
+              :has-content="(currentAnalysis?.word_count ?? chapter.word_count) > 50"
               @toggle-step="toggleStep"
               @guidance-action="handleGuidanceAction"
             />

@@ -19,6 +19,7 @@ import type { ProgressiveGuidanceData } from '@/composables/useProgressiveGuidan
 interface Props {
     guidance: ProgressiveGuidanceData | null
     isLoading: boolean
+    hasContent?: boolean
 }
 
 const props = defineProps<Props>()
@@ -209,7 +210,12 @@ const totalStepsCount = computed(() => {
                 <div v-else class="text-center py-8">
                     <Target class="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                     <p class="text-sm text-muted-foreground">
-                        Start writing to get personalized guidance
+                        <template v-if="hasContent">
+                            Analyzing your chapter to generate personalized guidance…
+                        </template>
+                        <template v-else>
+                            Start writing to get personalized guidance
+                        </template>
                     </p>
                 </div>
             </CollapsibleContent>

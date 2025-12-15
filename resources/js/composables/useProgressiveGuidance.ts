@@ -19,15 +19,17 @@ export interface WritingMilestone {
 }
 
 export interface ProgressiveGuidanceData {
+    guidance_id?: number
     stage: string
     stage_label: string
     completion_percentage: number
     next_steps: ProgressiveStep[]
     contextual_tip: string | null
     writing_milestones: WritingMilestone[]
+    completed_step_ids?: string[]
 }
 
-export function useProgressiveGuidance(projectSlug: string, chapterNumber: number) {
+export function useProgressiveGuidance(projectSlug: string, chapterNumber: number, initialGuidance?: ProgressiveGuidanceData | null) {
     const guidance = ref<ProgressiveGuidanceData | null>(null)
     const isLoadingGuidance = ref(false)
     const lastRequestTime = ref<number>(0)
@@ -113,6 +115,18 @@ export function useProgressiveGuidance(projectSlug: string, chapterNumber: numbe
             return text.slice(-2000)
         } catch {
             return (html || '').slice(-2000)
+        }
+    }
+
+    if (initialGuidance) {
+        guidance.value = initialGuidance
+        const initialCompleted =
+            Array.isArray(initialGuidance.completed_step_ids) && initialGuidance.completed_step_ids.length
+                ? initialGuidance.completed_step_ids
+                : (initialGuidance.next_steps || []).filter((s) => s.completed).map((s) => s.id)
+        if (initialCompleted.length) {
+            lastKnownCompletedIds.value = initialCompleted
+            setStoredCompletedStepIds(initialCompleted)
         }
     }
 
