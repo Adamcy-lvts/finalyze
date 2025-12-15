@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Lightbulb, Bookmark, X } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import SafeHtmlText from '@/components/SafeHtmlText.vue'
+import { hasHtmlContent } from '@/utils/html'
 import type { UserChapterSuggestion, ContentAnalysis } from '@/types'
 
 const props = defineProps<{
@@ -29,6 +32,56 @@ const getSuggestionTypeBadge = (type: string) => {
 }
 
 const badgeInfo = getSuggestionTypeBadge(props.suggestion.suggestion_type)
+
+const stripOuterCodeFence = (value: string) => {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n?```$/)
+  return match ? match[1].trim() : value
+}
+
+const convertPlainTextToHtml = (text: string): string => {
+  const raw = stripOuterCodeFence(text).trim()
+  if (!raw) return ''
+
+  const blocks = raw.split(/\n\s*\n/).filter((block) => block.trim())
+  return blocks
+    .map((block) => {
+      const trimmed = block.trim()
+
+      const lines = trimmed
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+
+      const isBulleted = lines.some((line) => /^[-*•]\s+/.test(line))
+      const isNumbered = lines.some((line) => /^\d+\.\s+/.test(line))
+
+      if (isBulleted || isNumbered) {
+        const items = lines
+          .map((line) => {
+            if (isNumbered && /^\d+\.\s+/.test(line)) return `<li>${line.replace(/^\d+\.\s+/, '')}</li>`
+            if (isBulleted && /^[-*•]\s+/.test(line)) return `<li>${line.replace(/^[-*•]\s+/, '')}</li>`
+            return ''
+          })
+          .filter(Boolean)
+
+        return isNumbered ? `<ol>${items.join('')}</ol>` : `<ul>${items.join('')}</ul>`
+      }
+
+      const paragraph = trimmed.replace(/\n/g, '<br>')
+      return `<p>${paragraph}</p>`
+    })
+    .join('')
+}
+
+const formattedSuggestionContent = computed(() => {
+  const content = props.suggestion?.suggestion_content || ''
+  if (!content) return ''
+
+  const unwrapped = stripOuterCodeFence(content)
+  if (hasHtmlContent(unwrapped)) return unwrapped
+  return convertPlainTextToHtml(unwrapped)
+})
 </script>
 
 <template>
@@ -45,9 +98,11 @@ const badgeInfo = getSuggestionTypeBadge(props.suggestion.suggestion_type)
           </Badge>
         </div>
 
-        <div
-          class="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground leading-relaxed"
-          v-html="suggestion.suggestion_content"
+        <SafeHtmlText
+          as="div"
+          :content="formattedSuggestionContent"
+          class="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground leading-relaxed
+            prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-pre:my-2 prose-code:text-xs"
         />
 
         <div v-if="analysis && analysis.detected_issues.length > 0" class="pt-2 border-t border-border/50">
