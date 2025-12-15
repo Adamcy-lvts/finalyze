@@ -16,6 +16,8 @@ export function useManualChat(chapter: Chapter, initialHistory: ChatMessage[] = 
   const messages = ref<ChatMessage[]>(initialHistory)
   const isLoading = ref(false)
 
+  const onUsageRecorded = ref<null | (() => void | Promise<void>)>(null)
+
   const toggleChat = () => {
     isChatOpen.value = !isChatOpen.value
   }
@@ -54,9 +56,12 @@ export function useManualChat(chapter: Chapter, initialHistory: ChatMessage[] = 
 
       const wordsUsed = countWords(aiContent || '')
       if (wordsUsed > 0) {
-        recordWordUsage(wordsUsed, 'Manual editor: Chat', 'chapter', chapter.id).catch((err) =>
-          console.error('Failed to record word usage (manual chat):', err),
-        )
+        try {
+          await recordWordUsage(wordsUsed, 'Manual editor: Chat', 'chapter', chapter.id)
+          await onUsageRecorded.value?.()
+        } catch (err) {
+          console.error('Failed to record word usage (manual chat):', err)
+        }
       }
     } catch (error) {
       console.error('Failed to send chat message:', error)
@@ -78,5 +83,8 @@ export function useManualChat(chapter: Chapter, initialHistory: ChatMessage[] = 
     isLoading,
     toggleChat,
     sendMessage,
+    setOnUsageRecorded: (callback: null | (() => void | Promise<void>)) => {
+      onUsageRecorded.value = callback
+    },
   }
 }

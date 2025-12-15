@@ -13,6 +13,7 @@ import SmartSuggestionPanel from '@/components/manual-editor/SmartSuggestionPane
 import ProgressiveGuidancePanel from '@/components/manual-editor/ProgressiveGuidancePanel.vue'
 import QuickActionsPanel from '@/components/manual-editor/QuickActionsPanel.vue'
 import MobileNavOverlay from '@/components/manual-editor/MobileNavOverlay.vue'
+import ManualChatSidebar from '@/components/manual-editor/ManualChatSidebar.vue'
 // DefensePreparationPanel DISABLED - causes dark mode issues
 // import DefensePreparationPanel from '@/components/chapter-editor/DefensePreparationPanel.vue'
 import ChapterNavigation from '@/components/chapter-editor/ChapterNavigation.vue'
@@ -31,6 +32,7 @@ import { recordWordUsage, useWordBalance } from '@/composables/useWordBalance'
 // ChatModeLayout DISABLED - causes dark mode issues
 // import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
 import { useAppearance } from '@/composables/useAppearance'
+import { useManualChat } from '@/composables/useManualChat'
 import type { Project, Chapter, UserChapterSuggestion, ChapterContextAnalysis } from '@/types'
 
 interface ChatMessage {
@@ -90,15 +92,28 @@ const { currentSuggestion, currentAnalysis, isAnalyzing, saveSuggestion, clearSu
 
 const { contentHistory, historyIndex, addToHistory, undo, redo, canUndo, canRedo } = useTextHistory(props.chapter.content || '');
 
-// Chat Mode state
-const showChatMode = ref(false)
+const {
+  isChatOpen: showChatMode,
+  messages: chatMessages,
+  isLoading: isChatLoading,
+  toggleChat: toggleChatSidebar,
+  sendMessage: sendChatMessage,
+  setOnUsageRecorded: setChatOnUsageRecorded,
+} = useManualChat(props.chapter, props.chatHistory || [])
+
+setChatOnUsageRecorded(() => refreshBalance())
+
 const chapterTitle = ref(props.chapter.title || '')
 const showPreview = ref(false)
 const isGenerating = ref(false)
 const generationProgress = ref('')
 
 const toggleChatMode = () => {
-  showChatMode.value = !showChatMode.value
+  if (citationOperationMode.value) {
+    exitCitationOperationMode()
+  }
+  showRightSidebar.value = true
+  toggleChatSidebar()
 }
 
 const handleUndo = () => {
@@ -950,7 +965,20 @@ const markAsComplete = async () => {
         leave-from-class="mr-0 opacity-100" leave-to-class="-mr-[400px] opacity-0">
         <aside v-if="showRightSidebar && !isMobile"
           class="w-[400px] border-l bg-background/80 backdrop-blur-xl border-border/50 shadow-2xl z-20 overflow-y-auto custom-scrollbar flex flex-col">
-          <div class="p-4 space-y-6">
+          <div v-if="showChatMode" class="flex-1 overflow-hidden">
+            <div class="h-full border-b border-border/50">
+              <ManualChatSidebar
+                :messages="chatMessages"
+                :is-loading="isChatLoading"
+                :analysis="(currentAnalysis as any)"
+                class="h-full"
+                @send="sendChatMessage"
+                @close="toggleChatMode"
+              />
+            </div>
+          </div>
+
+          <div v-else class="p-4 space-y-6">
             <!-- Smart Suggestion Panel (shown when suggestion exists) -->
             <div v-if="currentSuggestion" class="space-y-2">
               <SmartSuggestionPanel :suggestion="currentSuggestion" :analysis="currentAnalysis" @save="saveSuggestion"
