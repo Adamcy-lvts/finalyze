@@ -154,11 +154,22 @@ class ProgressiveGuidanceService
             ]);
 
             // Parse AI response into steps array
-            return $this->parseStepsFromAI($aiResponse);
+            $steps = $this->parseStepsFromAI($aiResponse);
+            if (! empty($steps)) {
+                return $steps;
+            }
+
+            // If parsing failed, fallback to rule-based steps (avoid showing raw JSON/tags).
+            return $this->getFallbackNextSteps($stage, $analysis);
         } catch (\Exception $e) {
             // Fallback to rule-based steps
             return $this->getFallbackNextSteps($stage, $analysis);
         }
+    }
+
+    public function parseNextStepsResponse(string $aiResponse): array
+    {
+        return $this->parseStepsFromAI($aiResponse);
     }
 
     /**
@@ -345,9 +356,22 @@ PROMPT;
         $steps = [];
 
         // Prefer JSON block.
+        $rawJson = null;
         if (preg_match('/<NEXT_STEPS_JSON>\s*([\s\S]*?)\s*<\/NEXT_STEPS_JSON>/i', $aiResponse, $m)) {
-            $raw = trim($m[1]);
-            $decoded = json_decode($raw, true);
+            $rawJson = trim($m[1]);
+        } elseif (stripos($aiResponse, '<NEXT_STEPS_JSON>') !== false) {
+            // Sometimes models forget the closing tag; treat everything after the opening tag as the payload.
+            $pos = stripos($aiResponse, '<NEXT_STEPS_JSON>');
+            $rawJson = trim(substr($aiResponse, $pos + strlen('<NEXT_STEPS_JSON>')));
+            $rawJson = preg_replace('/<\/NEXT_STEPS_JSON>\s*$/i', '', $rawJson ?? '');
+        }
+
+        if (is_string($rawJson) && $rawJson !== '') {
+            $decoded = json_decode($rawJson, true);
+            if (! is_array($decoded)) {
+                // Handle JSON that is double-escaped (e.g. {\"steps\": ...})
+                $decoded = json_decode(stripcslashes($rawJson), true);
+            }
             if (is_array($decoded) && is_array($decoded['steps'] ?? null)) {
                 foreach ($decoded['steps'] as $item) {
                     if (!is_array($item)) continue;
@@ -377,6 +401,11 @@ PROMPT;
                     ];
                 }
             }
+
+            // If we saw a JSON marker but couldn't parse, treat as failure (fallback will handle).
+            if (stripos($aiResponse, '<NEXT_STEPS_JSON>') !== false && empty($steps)) {
+                return [];
+            }
         }
 
         // Fallback: Split by numbered list patterns (1., 2., etc.)
@@ -405,6 +434,10 @@ PROMPT;
                 $lines = array_filter(array_map('trim', $lines));
                 foreach ($lines as $line) {
                     if (! empty($line)) {
+                        if (stripos($line, '<NEXT_STEPS_JSON>') !== false) {
+                            // Avoid leaking machine-readable blocks into UI.
+                            return [];
+                        }
                         $steps[] = [
                             'id' => $this->stableStepId($line),
                             'text' => $line,

@@ -369,6 +369,28 @@ class ManualEditorController extends Controller
             ->first();
 
         if ($existing) {
+            // If an older cached record contains a raw machine-readable block as text, try to repair it.
+            $suspectText = collect($existing->next_steps ?? [])
+                ->pluck('text')
+                ->filter(fn ($t) => is_string($t) && stripos($t, '<NEXT_STEPS_JSON>') !== false)
+                ->first();
+
+            if (is_string($suspectText) && $suspectText !== '') {
+                $repaired = $this->guidanceService->parseNextStepsResponse($suspectText);
+                if (count($repaired) >= 3) {
+                    $existing->update([
+                        'next_steps' => $repaired,
+                        'completed_step_ids' => [],
+                    ]);
+                } else {
+                    // If repair fails, force a cache miss so we can fall back cleanly.
+                    $existing->delete();
+                    $existing = null;
+                }
+            }
+        }
+
+        if ($existing) {
             $completed = array_values(array_unique(array_merge($existing->completed_step_ids ?? [], $incomingCompleted)));
             if ($completed !== ($existing->completed_step_ids ?? [])) {
                 $existing->update(['completed_step_ids' => $completed]);
