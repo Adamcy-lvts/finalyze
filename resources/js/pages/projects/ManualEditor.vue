@@ -21,6 +21,7 @@ import ExportMenu from '@/components/chapter-editor/ExportMenu.vue'
 // import SafeHtmlText from '@/components/SafeHtmlText.vue'
 import { Toaster } from '@/components/ui/sonner'
 import CitationHelper from '@/components/chapter-editor/CitationHelper.vue'
+import WordBalanceDisplay from '@/components/WordBalanceDisplay.vue'
 import { useManualEditor } from '@/composables/useManualEditor'
 import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggestions'
 import { useProgressiveGuidance } from '@/composables/useProgressiveGuidance'
@@ -70,6 +71,7 @@ watch(
 )
 
 const {
+  wordBalance,
   balance,
   showPurchaseModal,
   requiredWordsForModal,
@@ -857,6 +859,8 @@ const markAsComplete = async () => {
           </div>
 
           <div class="w-px h-4 bg-border/50"></div>
+
+          <WordBalanceDisplay v-if="wordBalance" :balance="wordBalance" compact />
 
           <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
             variant="outline" class="h-9" button-class="rounded-full bg-background/50" />
