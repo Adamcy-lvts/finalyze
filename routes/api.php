@@ -7,6 +7,8 @@ use App\Http\Controllers\DataCollectionController;
 use App\Http\Controllers\DefenseController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
+use App\Http\Controllers\AIAutocompleteController;
+use App\Http\Controllers\ManualEditorController;
 use Illuminate\Support\Facades\Route;
 
 // Simple ping endpoint for connection quality check (no auth required)
@@ -142,6 +144,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::delete('{project_id}/defense/questions/{question}', [DefenseController::class, 'hideQuestion'])
             ->name('api.defense.hide');
     });
+
+    // AI Writing Assistant (manual editor)
+    Route::post('/projects/{project:slug}/chapters/{chapter}/autocomplete', [AIAutocompleteController::class, 'autocomplete'])
+        ->middleware(['prevent.duplicate:5', 'check.words'])
+        ->name('api.projects.chapters.autocomplete');
+
+    Route::post('/projects/{project:slug}/chapters/{chapter}/generate-starter', [ManualEditorController::class, 'generateStarter'])
+        ->middleware(['prevent.duplicate:10', 'check.words'])
+        ->name('api.projects.chapters.generate-starter');
 });
 
 // Project Guidance API

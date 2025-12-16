@@ -11,6 +11,7 @@ import { Progress } from '@/components/ui/progress'
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue'
 import SmartSuggestionPanel from '@/components/manual-editor/SmartSuggestionPanel.vue'
 import QuickActionsPanel from '@/components/manual-editor/QuickActionsPanel.vue'
+import ChapterStarterOverlay from '@/components/manual-editor/ChapterStarterOverlay.vue'
 import MobileNavOverlay from '@/components/manual-editor/MobileNavOverlay.vue'
 import ManualChatSidebar from '@/components/manual-editor/ManualChatSidebar.vue'
 // DefensePreparationPanel DISABLED - causes dark mode issues
@@ -31,6 +32,8 @@ import { recordWordUsage, useWordBalance } from '@/composables/useWordBalance'
 // import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
 import { useAppearance } from '@/composables/useAppearance'
 import { useManualChat } from '@/composables/useManualChat'
+import { useChapterStarter } from '@/composables/useChapterStarter'
+import { useAIAutocomplete } from '@/composables/useAIAutocomplete'
 import type { Project, Chapter, UserChapterSuggestion, ChapterContextAnalysis } from '@/types'
 
 interface ChatMessage {
@@ -90,6 +93,8 @@ const { currentSuggestion, currentAnalysis, isAnalyzing, saveSuggestion, clearSu
 
 const { contentHistory, historyIndex, addToHistory, undo, redo, canUndo, canRedo } = useTextHistory(props.chapter.content || '');
 
+const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null)
+
 const {
   isChatOpen: showChatMode,
   messages: chatMessages,
@@ -131,6 +136,7 @@ const handleRedo = () => {
 const handleContentUpdate = (newContent: string) => {
   updateContent(newContent);
   addToHistory(newContent);
+  maybeRequestAutocomplete()
 };
 
 const isValid = computed(() => {
@@ -158,7 +164,6 @@ const showLeftSidebar = ref(loadSidebarState('manualEditor_showLeftSidebar', !is
 const showRightSidebar = ref(loadSidebarState('manualEditor_showRightSidebar', !isMobile.value))
 const selectedText = ref('')
 const selectionRange = ref<{ from: number; to: number } | null>(null)
-const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null)
 const citationSuggestions = ref<string>('')
 
 // Defense preparation state
@@ -288,6 +293,146 @@ const toggleRightSidebar = () => {
   showRightSidebar.value = !showRightSidebar.value
 }
 
+const ensureStarterBalance = () => checkAndPrompt(200, 'generate chapter starter')
+
+const {
+  starterText,
+  isGenerating: isGeneratingStarter,
+  showStarter,
+  generateStarter,
+  acceptStarter,
+  dismissStarter,
+} = useChapterStarter(props.project.slug, props.chapter, content, {
+  canGenerate: ensureStarterBalance,
+})
+
+const chapterOutline = computed(() => {
+  const structure = (props.facultyChapters || []) as any[]
+  const match =
+    structure.find((c) => c?.chapter_number === props.chapter.chapter_number) ??
+    structure.find((c) => c?.number === props.chapter.chapter_number)
+
+  if (!match) return ''
+  const lines: string[] = []
+  if (match.description) lines.push(String(match.description))
+  if (Array.isArray(match.sections)) {
+    for (const section of match.sections) {
+      if (!section) continue
+      const title = (section.title ?? section.section_title ?? '').toString().trim()
+      const desc = (section.description ?? section.section_description ?? '').toString().trim()
+      if (title && desc) lines.push(`${title}: ${desc}`)
+      else if (title) lines.push(title)
+    }
+  }
+  return lines.join('\n')
+})
+
+const {
+  ghostText: autocompleteGhostText,
+  isLoading: isAutocompleteLoading,
+  debouncedRequest: debouncedAutocomplete,
+  requestCompletion: requestAutocomplete,
+  acceptSuggestion,
+  dismissSuggestion,
+} = useAIAutocomplete(props.project.slug, props.chapter.chapter_number, editorRef as any)
+
+const activeGhostText = computed(() => {
+  if (showStarter.value && starterText.value) return starterText.value
+  return autocompleteGhostText.value
+})
+
+const activeGhostTextFormat = computed(() => {
+  if (showStarter.value && starterText.value) return 'html'
+  return 'text'
+})
+
+function buildAutocompleteContext() {
+  const tiptap = editorRef.value?.editor?.()
+  if (!tiptap) return null
+
+  const selection = tiptap.state.selection
+  if (!selection.empty) return null
+  if (showStarter.value) return null
+
+  const doc = tiptap.state.doc
+  const from = selection.from
+  const to = selection.to
+
+  // Provide more context for coherence (include previous paragraphs/sections).
+  const beforeStart = Math.max(0, from - 2500)
+  const afterEnd = Math.min(doc.content.size, to + 500)
+
+  const textBefore = doc.textBetween(beforeStart, from, '\n', '\n')
+  const textAfter = doc.textBetween(to, afterEnd, '\n', '\n')
+
+  // Determine the current section heading (last heading before cursor).
+  let sectionHeading = ''
+  let lastHeadingPos = 0
+  const scanFrom = Math.max(0, from - 8000)
+  doc.nodesBetween(scanFrom, from, (node, pos) => {
+    if (node.type?.name === 'heading' && pos < from) {
+      sectionHeading = node.textContent || ''
+      lastHeadingPos = pos
+    }
+  })
+
+  // If heading is in another part of the doc (e.g., chapter title far above),
+  // only keep it when it’s relatively close to the cursor.
+  if (sectionHeading && from - lastHeadingPos > 2000) {
+    sectionHeading = ''
+  }
+
+  let sectionOutline = ''
+  if (sectionHeading) {
+    const chapterStruct = (props.facultyChapters || []).find(
+      (c: any) =>
+        c?.chapter_number === props.chapter.chapter_number || c?.number === props.chapter.chapter_number,
+    )
+
+    const sections: any[] = Array.isArray(chapterStruct?.sections) ? chapterStruct.sections : []
+    const normalizedHeading = sectionHeading.trim().toLowerCase()
+    const matched = sections.find((s) => {
+      const title = (s?.title ?? s?.section_title ?? '').toString().trim().toLowerCase()
+      return title && title === normalizedHeading
+    })
+
+    if (matched) {
+      const title = (matched.title ?? matched.section_title ?? '').toString().trim()
+      const desc = (matched.description ?? matched.section_description ?? '').toString().trim()
+      sectionOutline = desc ? `${title}: ${desc}` : title
+    }
+  }
+
+  return {
+    textBefore,
+    textAfter,
+    chapterNumber: props.chapter.chapter_number,
+    chapterTitle: chapterTitle.value || props.chapter.title || '',
+    chapterOutline: chapterOutline.value || '',
+    sectionHeading: sectionHeading.trim(),
+    sectionOutline: sectionOutline.trim(),
+    projectTopic: (props.project as any)?.topic || '',
+  }
+}
+
+function maybeRequestAutocomplete() {
+  if (showStarter.value) return
+  if (isAutocompleteLoading.value) return
+  if (autocompleteGhostText.value) return
+
+  const ctx = buildAutocompleteContext()
+  if (!ctx) return
+  void (debouncedAutocomplete as any)(ctx).catch(() => {})
+}
+
+const regenerateStarter = async () => {
+  try {
+    await generateStarter()
+  } catch (error) {
+    console.error('Failed to generate starter:', error)
+    toast.error('Failed to generate starter')
+  }
+}
 
 
 // Watch sidebar state and save to localStorage (only on desktop)
@@ -403,6 +548,41 @@ const recordManualUsage = async (wordsUsed: number, description: string) => {
   if (!normalized) return
   await recordWordUsage(normalized, description, 'chapter', props.chapter.id)
   await refreshBalance()
+}
+
+const stripTags = (value: string) => value.replace(/<[^>]*>/g, ' ')
+const countWords = (value: string) => stripTags(value).split(/\s+/).filter(Boolean).length
+
+const handleGhostAccepted = async (text: string) => {
+  const wordsUsed = countWords(text)
+  if (showStarter.value) {
+    acceptStarter()
+    await recordManualUsage(wordsUsed, 'chapter starter accepted')
+    return
+  }
+
+  acceptSuggestion()
+  await recordManualUsage(wordsUsed, 'autocomplete accepted')
+}
+
+const handleGhostDismissed = () => {
+  if (showStarter.value) {
+    dismissStarter()
+    return
+  }
+  dismissSuggestion()
+}
+
+const handleGhostManualTrigger = async () => {
+  if (showStarter.value) return
+  const ctx = buildAutocompleteContext()
+  if (!ctx) return
+  try {
+    await requestAutocomplete(ctx as any)
+  } catch (error) {
+    console.error('Failed to autocomplete:', error)
+    toast.error('Autocomplete failed')
+  }
 }
 
 const copyCitationSuggestions = async () => {
@@ -851,13 +1031,18 @@ const markAsComplete = async () => {
           'flex flex-col overflow-hidden',
           citationOperationMode ? 'w-1/2 border-r border-border/50' : 'flex-1'
         ]">
-          <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
-            <RichTextEditor ref="editorRef" :modelValue="content" @update:modelValue="handleContentUpdate"
-              @update:selectedText="selectedText = $event" @update:selectionRange="selectionRange = $event"
-              :manual-mode="true" :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''"
-              class="min-h-full" />
-          </div>
-        </div>
+	          <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
+	            <RichTextEditor ref="editorRef" :modelValue="content" @update:modelValue="handleContentUpdate"
+	              @update:selectedText="selectedText = $event" @update:selectionRange="selectionRange = $event"
+	              :ghost-text="activeGhostText"
+	              :ghost-text-format="activeGhostTextFormat"
+	              @ghost-accepted="handleGhostAccepted"
+	              @ghost-dismissed="handleGhostDismissed"
+	              @ghost-manual-trigger="handleGhostManualTrigger"
+	              :manual-mode="true" :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''"
+	              class="min-h-full" />
+	          </div>
+	        </div>
 
         <!-- Citation Operation Panel (shown in split view) -->
         <div v-if="citationOperationMode" class="w-1/2 flex flex-col bg-background overflow-hidden">
@@ -1010,6 +1195,13 @@ const markAsComplete = async () => {
       :action="actionDescriptionForModal" @update:open="(v) => showPurchaseModal = v" @close="closePurchaseModal" />
     <Toaster position="top-center" />
   </div>
+
+  <ChapterStarterOverlay
+    :show="showStarter && !!starterText"
+    :is-generating="isGeneratingStarter"
+    @regenerate="regenerateStarter"
+    @dismiss="dismissStarter"
+  />
 </template>
 
 <style scoped>

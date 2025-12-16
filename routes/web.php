@@ -446,6 +446,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{chapter}/save', [ManualEditorController::class, 'save'])->name('save');
             Route::post('/{chapter}/mark-complete', [ManualEditorController::class, 'markComplete'])->name('mark-complete');
             Route::post('/{chapter}/analyze', [ManualEditorController::class, 'analyzeAndSuggest'])->middleware(['prevent.duplicate:15', 'check.words'])->name('analyze');
+            Route::post('/{chapter}/generate-starter', [ManualEditorController::class, 'generateStarter'])
+                ->middleware(['prevent.duplicate:10', 'check.words'])
+                ->name('generate-starter');
             if (config('ai.features.progressive_guidance')) {
                 Route::post('/{chapter}/progressive-guidance', [ManualEditorController::class, 'progressiveGuidance'])
                     ->middleware(['prevent.duplicate:15', 'check.words'])

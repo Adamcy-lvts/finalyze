@@ -18,6 +18,7 @@ import { Extension } from '@tiptap/core'
 // import Underline from '@tiptap/extension-underline' // Commented out to avoid duplicate with StarterKit
 import { Citation } from '@/tiptap-extensions/CitationExtension.js'
 import { Mermaid } from '@/tiptap-extensions/MermaidExtension'
+import { GhostTextExtension } from '@/tiptap-extensions/GhostTextExtension'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import TextAlign from '@tiptap/extension-text-align'
 import { common, createLowlight } from 'lowlight'
@@ -95,6 +96,12 @@ interface Props {
   generationPhase?: string
   /** Enable streaming mode for flicker-free append-only updates */
   streamingMode?: boolean
+  /** Ghost text shown after cursor (Tab to accept) */
+  ghostText?: string | null
+  /** Ghost text format */
+  ghostTextFormat?: 'text' | 'html' | null
+  /** Optional explicit render position (doc pos) for ghost text */
+  ghostTextPosition?: number | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -107,7 +114,10 @@ const props = withDefaults(defineProps<Props>(), {
   generationProgress: '',
   generationPercentage: 0,
   generationPhase: '',
-  streamingMode: false
+  streamingMode: false,
+  ghostText: null,
+  ghostTextFormat: 'text',
+  ghostTextPosition: null,
 })
 
 // Streaming mode state - uses throttled updates instead of append-only
@@ -121,6 +131,9 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   'update:selectedText': [value: string]
   'update:selectionRange': [value: { from: number, to: number } | null]
+  'ghost-manual-trigger': []
+  'ghost-accepted': [text: string]
+  'ghost-dismissed': []
 }>()
 
 // Custom FontSize extension
@@ -454,6 +467,11 @@ const baseExtensions = [
   TextAlign.configure({
     types: ['heading', 'paragraph'],
   }),
+  GhostTextExtension.configure({
+    onManualTrigger: () => emit('ghost-manual-trigger'),
+    onAccepted: (text: string) => emit('ghost-accepted', text),
+    onDismissed: () => emit('ghost-dismissed'),
+  }),
 ]
 
 // Filter out any duplicate extension names to avoid tiptap warnings
@@ -530,6 +548,24 @@ watch(() => props.modelValue, (newValue) => {
     })
   }
 })
+
+watch(
+  [() => props.ghostText, () => props.ghostTextFormat, () => props.ghostTextPosition],
+  ([text, format, position]) => {
+    if (!editor.value) return
+    const cleaned = (text ?? '').toString()
+    if (!cleaned) {
+      editor.value.commands.clearGhostText?.()
+      return
+    }
+    editor.value.commands.setGhostText?.({
+      text: cleaned,
+      format: (format ?? 'text') as any,
+      position: typeof position === 'number' ? position : undefined,
+    })
+  },
+  { immediate: true },
+)
 
 // Watch streamingMode prop to initialize/cleanup streaming state
 watch(() => props.streamingMode, (isStreaming) => {
@@ -1514,5 +1550,13 @@ defineExpose({
   blockquote {
     @apply border-primary/50 bg-primary/5;
   }
+}
+
+:deep(.tiptap-ghost-text) {
+  opacity: 0.45;
+  color: currentColor;
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
 }
 </style>

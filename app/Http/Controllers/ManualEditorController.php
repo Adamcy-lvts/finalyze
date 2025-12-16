@@ -550,6 +550,105 @@ class ManualEditorController extends Controller
     }
 
     /**
+     * Generate an AI starter paragraph for an empty chapter.
+     */
+    public function generateStarter(Request $request, Project $project, int $chapterNumber)
+    {
+        $chapter = Chapter::where('project_id', $project->id)
+            ->where('chapter_number', $chapterNumber)
+            ->firstOrFail();
+
+        abort_if($project->mode !== 'manual', 403);
+        abort_if($project->user_id !== $request->user()?->id, 403);
+
+        $structure = $this->facultyStructureService->getChapterStructure($project);
+        $chapterStructure = collect($structure)->firstWhere('number', $chapterNumber)
+            ?? collect($structure)->firstWhere('chapter_number', $chapterNumber);
+
+        $outlineLines = [];
+        if (is_array($chapterStructure)) {
+            if (! empty($chapterStructure['description'])) {
+                $outlineLines[] = trim((string) $chapterStructure['description']);
+            }
+            if (! empty($chapterStructure['sections']) && is_array($chapterStructure['sections'])) {
+                foreach ($chapterStructure['sections'] as $section) {
+                    if (! is_array($section)) {
+                        continue;
+                    }
+                    $title = trim((string) ($section['title'] ?? ''));
+                    $desc = trim((string) ($section['description'] ?? ''));
+                    if ($title !== '' && $desc !== '') {
+                        $outlineLines[] = "{$title}: {$desc}";
+                    } elseif ($title !== '') {
+                        $outlineLines[] = $title;
+                    }
+                }
+            }
+        }
+
+        $outline = trim(implode("\n", array_values(array_filter($outlineLines))));
+        $chapterTitle = $chapterStructure['title'] ?? $chapter->title ?? "Chapter {$chapterNumber}";
+
+        $prompt = <<<PROMPT
+Write an opening for an academic project chapter.
+
+Project title: {$project->title}
+Project topic: {$project->topic}
+Field of study: {$project->field_of_study}
+
+Chapter {$chapterNumber} title: {$chapterTitle}
+Chapter outline (use this to guide the opening): {$outline}
+
+Requirements:
+- Output HTML only.
+- Start with a short chapter header as <h2> using the chapter title.
+- Follow with ONE opening paragraph as <p> (no lists).
+- Academic tone, clear and direct.
+- 90–140 words.
+- Do not mention that you are an AI.
+
+Return ONLY the HTML.
+PROMPT;
+
+        try {
+            $starter = trim($this->aiGenerator->generate($prompt, [
+                'temperature' => 0.7,
+                'max_tokens' => 250,
+            ]));
+
+            // Some models wrap HTML in markdown fences like ```html ... ```
+            $fenced = trim($starter);
+            if (preg_match('/^```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n?```$/', $fenced, $matches)) {
+                $starter = trim($matches[1]);
+            }
+
+            // Some models prefix with "html" before the actual markup.
+            $starter = preg_replace('/^\s*html\s*/i', '', $starter);
+
+            if ($starter !== '' && ! str_contains($starter, '<h')) {
+                $starter = '<h2>'.e($chapterTitle).'</h2><p>'.e($starter).'</p>';
+            } elseif ($starter !== '' && str_contains($starter, '<h') && ! str_contains($starter, '<p')) {
+                $starter .= '<p></p>';
+            }
+
+            return response()->json([
+                'starter' => $starter,
+                'word_count' => str_word_count(strip_tags($starter)),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to generate chapter starter', [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to generate starter. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
      * Improve selected text with AI
      */
     public function improveText(Request $request, Project $project, int $chapterNumber)
