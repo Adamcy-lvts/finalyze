@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Events\WordBalanceUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\WordTransaction;
@@ -143,6 +144,9 @@ class AdminUserController extends Controller
             'reference_type' => WordTransaction::REF_ADMIN,
             'reference_id' => $request->user()->id,
         ]);
+
+        // Broadcast real-time balance update to user's dashboard
+        event(new WordBalanceUpdated($user, 'admin_adjustment'));
 
         return back()->with('success', 'Balance adjusted');
     }

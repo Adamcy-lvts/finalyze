@@ -8,13 +8,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
-import { router } from '@inertiajs/vue3';
-import { Activity, ArrowLeft, ArrowRight, BookOpen, Brain, Clock, Edit, FileText, Play, Target, Zap, Sparkles, AlertTriangle, Check } from 'lucide-vue-next';
+import { router, usePage } from '@inertiajs/vue3';
+import { Activity, ArrowLeft, ArrowRight, BookOpen, Brain, Clock, Edit, FileText, Play, Target, Zap, Sparkles, AlertTriangle, Check, HelpCircle } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 import PurchaseModal from '@/components/PurchaseModal.vue';
 import { useWordBalance } from '@/composables/useWordBalance';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 
 interface Chapter {
     id: number;
@@ -78,6 +80,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const page = usePage();
 
 const activeTab = ref('overview');
 const isGenerating = ref(false);
@@ -579,6 +582,86 @@ const toggleWritingMode = async () => {
 // const goBackToTopicApproval = () => {
 //     showTopicApprovalDialog.value = true;
 // };
+// Tutorial Logic
+const startTour = () => {
+    const steps = [
+        {
+            popover: {
+                title: 'Welcome to Your Writing Hub',
+                description: 'This is where you manage your project. Track progress, switch modes, and manage chapters all in one place.',
+                popoverClass: 'driver-popover-welcome'
+            }
+        },
+        {
+            element: '#mode-switcher',
+            popover: {
+                title: 'AI Generated vs AI Assisted',
+                description: 'Toggle between AI Generated Mode (fully automated chapter generation) and AI Assisted Mode (manual writing with AI tools). You can switch anytime!'
+            }
+        },
+        {
+            element: '#continue-writing-card',
+            popover: {
+                title: 'Resume Quickly',
+                description: 'Jump right back into your most recently edited chapter.'
+            }
+        },
+        {
+            element: '#progress-overview',
+            popover: {
+                title: 'Track Progress',
+                description: 'See your overall completion status, word counts, and chapter breakdowns at a glance.'
+            }
+        },
+        {
+            element: '#action-cards',
+            popover: {
+                title: 'Quick Actions',
+                description: 'Start a new chapter manually or let AI draft the next one for you.'
+            }
+        },
+        {
+            element: '#chapter-tabs',
+            popover: {
+                title: 'Chapter Management',
+                description: 'Use \"Overview\" to see all chapters. \"AI Generation\" offers Progressive (one chapter at a time) or Complete Project generation. \"Edit Chapters\" lets you start writing manually or generate an AI draft first.'
+            }
+        },
+        {
+            element: '#help-button',
+            popover: {
+                title: 'Need Help?',
+                description: 'Click here anytime to restart this tour.'
+            }
+        }
+    ];
+
+    const driverObj = driver({
+        showProgress: true,
+        animate: true,
+        steps: steps
+    });
+
+    driverObj.drive();
+};
+
+onMounted(() => {
+    // Auto-select appropriate tab based on writing mode
+    activeTab.value = currentMode.value === 'auto' ? 'ai-generation' : 'manual-writing';
+
+    // Check if tour has been seen
+    if (props.project.id && page.props.auth?.user?.email) {
+        const tourKey = `writing_hub_tour_seen_${page.props.auth.user.email}`;
+        const hasSeenTour = localStorage.getItem(tourKey);
+
+        if (!hasSeenTour) {
+            setTimeout(() => {
+                startTour();
+                localStorage.setItem(tourKey, 'true');
+            }, 1000);
+        }
+    }
+});
 </script>
 
 <template>
@@ -588,26 +671,30 @@ const toggleWritingMode = async () => {
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <!-- <Button @click="goBackToTopicApproval" variant="ghost" size="sm"
-                        class="text-muted-foreground hover:text-foreground transition-colors">
-                        <ArrowLeft class="mr-2 h-4 w-4" />
-                        Back to Topic Approval
-                    </Button> -->
+	                        class="text-muted-foreground hover:text-foreground transition-colors">
+	                        <ArrowLeft class="mr-2 h-4 w-4" />
+	                        Back to Topic Approval
+	                    </Button> -->
                 </div>
                 <div class="flex items-center gap-2">
                     <Button @click="goToBulkAnalysis" variant="ghost" size="sm" class="gap-2">
-                        <Brain class="h-4 w-4" />
-                        Analyze Chapters
+                        <Brain class="h-4 w-4 shrink-0" />
+                        <span class="hidden sm:inline">Analyze Chapters</span>
                     </Button>
-                    <Button @click="router.visit(route('projects.edit', project.slug))" variant="outline" size="sm">
-                        <Edit class="mr-2 h-4 w-4" />
-                        Edit Project Details
+                    <Button @click="router.visit(route('projects.edit', project.slug))" variant="outline" size="sm"
+                        class="gap-2">
+                        <Edit class="h-4 w-4 shrink-0" />
+                        <span class="hidden sm:inline">Edit Project Details</span>
+                    </Button>
+                    <Button id="help-button" variant="ghost" size="icon" @click="startTour" title="Restart Tutorial">
+                        <HelpCircle class="h-4 w-4" />
                     </Button>
                 </div>
             </div>
 
             <!-- Hero Header -->
             <div
-                class="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-8 md:p-12">
+                class="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-6 md:p-12">
                 <div class="absolute inset-0 bg-grid-primary/5 [mask-image:linear-gradient(0deg,transparent,black)]" />
                 <div class="relative z-10 flex flex-col items-center text-center space-y-6">
                     <div class="flex flex-wrap items-center justify-center gap-3">
@@ -621,14 +708,12 @@ const toggleWritingMode = async () => {
                         </Badge>
                     </div>
 
-                    <SafeHtmlText
-                        as="h1"
+                    <SafeHtmlText as="h1"
                         class="max-w-4xl text-2xl font-bold tracking-tight text-foreground sm:text-3xl md:text-4xl bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70"
-                        :content="project.title"
-                    />
+                        :content="project.title" />
 
                     <!-- Mode Toggle -->
-                    <div
+                    <div id="mode-switcher"
                         class="flex items-center gap-1 sm:gap-2 rounded-full border border-border/50 bg-background/50 p-1 sm:p-1.5 shadow-sm backdrop-blur-sm">
                         <button v-for="mode in ['auto', 'manual']" :key="mode"
                             @click="mode !== currentMode && handleSwitchToggle()"
@@ -637,7 +722,7 @@ const toggleWritingMode = async () => {
                                 ? 'bg-primary text-primary-foreground shadow-md'
                                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'">
                             <component :is="mode === 'auto' ? Brain : Edit" class="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            {{ mode === 'auto' ? 'AI Mode' : 'Manual Mode' }}
+                            {{ mode === 'auto' ? 'AI Generated' : 'AI Assisted' }}
                         </button>
                     </div>
                 </div>
@@ -647,7 +732,7 @@ const toggleWritingMode = async () => {
                 <!-- Main Content Column -->
                 <div class="space-y-8 lg:col-span-2 order-2 lg:order-1">
                     <!-- Continue Writing Card -->
-                    <div v-if="lastWorkedChapter"
+                    <div v-if="lastWorkedChapter" id="continue-writing-card"
                         class="group relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-amber-50/50 to-orange-50/50 p-6 dark:from-amber-950/10 dark:to-orange-950/10 transition-all hover:shadow-md">
                         <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                             <div class="space-y-2">
@@ -676,65 +761,92 @@ const toggleWritingMode = async () => {
                     </div>
 
                     <!-- Quick Actions -->
-                    <div class="grid gap-4 sm:grid-cols-2">
+                    <div id="action-cards" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
                         <!-- Start Writing -->
                         <button @click="nextChapterNumber ? startChapter(nextChapterNumber) : null"
                             :disabled="!canGenerateMoreChapters"
-                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-6 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full">
                             <div
-                                class="rounded-full bg-green-100 p-3 text-green-600 dark:bg-green-900/20 dark:text-green-400">
-                                <Edit class="h-6 w-6" />
+                                class="rounded-full bg-green-100 p-2.5 text-green-600 dark:bg-green-900/20 dark:text-green-400">
+                                <Edit class="h-5 w-5" />
                             </div>
-                            <div>
-                                <h3 class="font-semibold">Start Writing</h3>
-                                <p class="text-sm text-muted-foreground">
-                                    {{ canGenerateMoreChapters ? `Begin Chapter ${nextChapterNumber} manually` : 'All chapters created' }}
+                            <div class="flex-1">
+                                <h3 class="font-semibold text-sm sm:text-base">Start Writing</h3>
+                                <p class="text-xs text-muted-foreground mt-1">
+                                    {{ canGenerateMoreChapters ? `Begin Chapter ${nextChapterNumber} manually` :
+                                        'All chapters created' }}
                                 </p>
                             </div>
                             <div
-                                class="mt-auto flex items-center text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                                class="mt-auto flex items-center text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
                                 Get started
-                                <ArrowRight class="ml-1 h-4 w-4" />
+                                <ArrowRight class="ml-1 h-3.5 w-3.5" />
                             </div>
                         </button>
 
                         <!-- Generate Chapter -->
                         <button v-if="currentMode === 'auto'" @click="generateChapter('progressive')"
                             :disabled="isGenerating || !canGenerateMoreChapters"
-                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-6 text-left shadow-sm transition-all hover:border-purple-500/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-purple-500/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full">
                             <div
-                                class="rounded-full bg-purple-100 p-3 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
-                                <Brain class="h-6 w-6" />
+                                class="rounded-full bg-purple-100 p-2.5 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
+                                <Brain class="h-5 w-5" />
                             </div>
-                            <div>
-                                <h3 class="font-semibold">Generate Chapter</h3>
-                                <p class="text-sm text-muted-foreground">
+                            <div class="flex-1">
+                                <h3 class="font-semibold text-sm sm:text-base">Generate Chapter</h3>
+                                <p class="text-xs text-muted-foreground mt-1">
                                     {{ isGenerating ? 'Generating content...' : 'Let AI draft the next chapter' }}
                                 </p>
                             </div>
                             <div
-                                class="mt-auto flex items-center text-sm font-medium text-purple-600 opacity-0 transition-opacity group-hover:opacity-100">
+                                class="mt-auto flex items-center text-xs font-medium text-purple-600 opacity-0 transition-opacity group-hover:opacity-100">
                                 Start generation
-                                <ArrowRight class="ml-1 h-4 w-4" />
+                                <ArrowRight class="ml-1 h-3.5 w-3.5" />
+                            </div>
+                        </button>
+
+                        <!-- Complete Project Generation (New) -->
+                        <button v-if="currentMode === 'auto'" @click="generateChapter('bulk')"
+                            :disabled="isGenerating || !canGenerateMoreChapters"
+                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-gradient-to-br from-card to-pink-50/50 dark:to-pink-950/10 p-5 text-left shadow-sm transition-all hover:border-pink-500/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full overflow-hidden">
+                            <div
+                                class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <Sparkles class="h-12 w-12 text-pink-500" />
+                            </div>
+                            <div
+                                class="rounded-full bg-pink-100 p-2.5 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400 relative z-10">
+                                <Sparkles class="h-5 w-5" />
+                            </div>
+                            <div class="flex-1 relative z-10">
+                                <h3 class="font-semibold text-sm sm:text-base">Complete Project</h3>
+                                <p class="text-xs text-muted-foreground mt-1">
+                                    Generate all remaining chapters at once
+                                </p>
+                            </div>
+                            <div
+                                class="mt-auto flex items-center text-xs font-medium text-pink-600 opacity-0 transition-opacity group-hover:opacity-100 relative z-10">
+                                Generate all
+                                <ArrowRight class="ml-1 h-3.5 w-3.5" />
                             </div>
                         </button>
 
                         <!-- Manual Mode Info (if manual) -->
-                        <div v-else
-                            class="flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-muted/30 p-6 text-left">
-                            <div class="rounded-full bg-gray-100 p-3 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                                <BookOpen class="h-6 w-6" />
+                        <div v-if="currentMode === 'manual'"
+                            class="flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-muted/30 p-5 text-left sm:col-span-2 lg:col-span-2">
+                            <div
+                                class="rounded-full bg-gray-100 p-2.5 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                <BookOpen class="h-5 w-5" />
                             </div>
                             <div>
-                                <h3 class="font-semibold">Manual Mode Active</h3>
-                                <p class="text-sm text-muted-foreground">Switch to AI mode to enable generation
+                                <h3 class="font-semibold text-sm sm:text-base">Manual Mode Active</h3>
+                                <p class="text-sm text-muted-foreground mt-1">Switch to AI mode to enable generation
                                     features.</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Writing Mode Tabs -->
-                    <Tabs v-model="activeTab" class="space-y-8">
+                    <Tabs id="chapter-tabs" v-model="activeTab" class="space-y-8">
                         <TabsList
                             class="flex h-auto w-full flex-col items-stretch justify-center rounded-2xl bg-muted/30 p-1.5 text-muted-foreground md:inline-flex md:h-14 md:w-auto md:flex-row md:items-center md:rounded-full border border-border/40 backdrop-blur-sm">
                             <TabsTrigger value="overview"
@@ -761,7 +873,8 @@ const toggleWritingMode = async () => {
                                             <div>
                                                 <CardTitle class="text-lg group-hover:text-primary transition-colors">{{
                                                     chapter.title }}</CardTitle>
-                                                <CardDescription>Chapter {{ chapter.chapter_number }}</CardDescription>
+                                                <CardDescription>Chapter {{ chapter.chapter_number }}
+                                                </CardDescription>
                                             </div>
                                             <Badge :class="getChapterStatusBadge(chapter.status)" variant="outline">
                                                 {{ chapter.status.replace('_', ' ') }}
@@ -769,7 +882,7 @@ const toggleWritingMode = async () => {
                                         </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div class="flex items-center justify-between">
+                                        <div class="flex flex-wrap items-center justify-between gap-y-2">
                                             <div class="text-sm text-muted-foreground">{{
                                                 chapter.word_count.toLocaleString() }} words</div>
                                             <div class="flex gap-2">
@@ -807,7 +920,8 @@ const toggleWritingMode = async () => {
                                     class="rounded-xl border-2 border-dashed border-border/50 bg-muted/10 py-12 text-center">
                                     <BookOpen class="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
                                     <p class="mb-4 text-sm text-muted-foreground">
-                                        No chapters created yet. {{ currentMode === 'auto' ? 'Use AI generation to get started.' : 'Create your first chapter manually.' }}
+                                        No chapters created yet. {{ currentMode === 'auto' ? `Use AI generation to
+                                        get started.` : 'Create your first chapter manually.' }}
                                     </p>
                                 </div>
                             </div>
@@ -824,63 +938,97 @@ const toggleWritingMode = async () => {
                                             <Zap class="h-6 w-6 text-yellow-600 dark:text-yellow-500" />
                                         </div>
                                         <div class="space-y-1">
-                                            <CardTitle class="text-xl font-bold tracking-tight">AI Chapter Generation
+                                            <CardTitle class="text-xl font-bold tracking-tight">AI Chapter
+                                                Generation
                                             </CardTitle>
-                                            <CardDescription class="text-base">Choose how you'd like the AI to generate
+                                            <CardDescription class="text-base">Choose how you'd like the AI to
+                                                generate
                                                 your academic chapters.</CardDescription>
                                         </div>
                                     </div>
                                 </CardHeader>
                                 <CardContent class="p-8 space-y-8">
                                     <!-- Generation Type Selection -->
-                                    <div class="space-y-5">
+                                    <div class="space-y-6">
                                         <h4
-                                            class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                                            class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                             Generation Style</h4>
-                                        <div class="grid gap-4 md:grid-cols-2">
+                                        <div class="grid gap-6 md:grid-cols-2">
                                             <label
-                                                class="group relative flex cursor-pointer flex-col gap-4 rounded-2xl border-2 p-6 transition-all duration-300 hover:shadow-lg"
+                                                class="group relative flex cursor-pointer flex-col justify-between gap-6 rounded-3xl border-2 p-6 transition-all duration-300 hover:shadow-xl"
                                                 :class="generationType === 'progressive'
-                                                    ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20'
-                                                    : 'border-border/50 bg-card hover:border-primary/50 hover:bg-accent/5'">
+                                                    ? 'border-blue-500 bg-blue-50/50 shadow-blue-500/10 dark:bg-blue-950/10'
+                                                    : 'border-border/50 bg-card hover:border-blue-500/30 hover:bg-accent/5'">
                                                 <div class="flex items-start justify-between">
                                                     <div
-                                                        class="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                                        <FileText class="h-5 w-5" />
+                                                        class="p-3 rounded-2xl bg-blue-100/80 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 transition-colors group-hover:bg-blue-100 dark:group-hover:bg-blue-900/60">
+                                                        <FileText class="h-6 w-6" />
                                                     </div>
-                                                    <input type="radio" v-model="generationType" value="progressive"
-                                                        class="h-5 w-5 text-primary accent-primary" />
+                                                    <div class="relative flex h-5 w-5 items-center justify-center">
+                                                        <div class="h-5 w-5 rounded-full border-2 transition-colors"
+                                                            :class="generationType === 'progressive' ? 'border-blue-600' : 'border-muted-foreground/30'">
+                                                        </div>
+                                                        <div class="absolute h-2.5 w-2.5 rounded-full bg-blue-600 transition-transform duration-200"
+                                                            :class="generationType === 'progressive' ? 'scale-100' : 'scale-0'">
+                                                        </div>
+                                                        <input type="radio" v-model="generationType" value="progressive"
+                                                            class="sr-only" />
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <p
-                                                        class="font-bold text-foreground group-hover:text-primary transition-colors">
+                                                        class="text-lg font-bold text-foreground group-hover:text-blue-600 transition-colors">
                                                         Progressive Generation</p>
-                                                    <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-                                                        Generate one chapter at a time, building context from previous
-                                                        work.</p>
+                                                    <p class="mt-2 text-sm text-muted-foreground leading-relaxed">
+                                                        Best for control. Generate one chapter at a time, review,
+                                                        and
+                                                        ensure each part aligns with your vision before moving
+                                                        forward.
+                                                    </p>
                                                 </div>
                                             </label>
 
                                             <label
-                                                class="group relative flex cursor-pointer flex-col gap-4 rounded-2xl border-2 p-6 transition-all duration-300 hover:shadow-lg"
+                                                class="group relative flex cursor-pointer flex-col justify-between gap-6 rounded-3xl border-2 p-6 transition-all duration-300 hover:shadow-xl overflow-hidden"
                                                 :class="generationType === 'bulk'
-                                                    ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20'
-                                                    : 'border-border/50 bg-card hover:border-primary/50 hover:bg-accent/5'">
-                                                <div class="flex items-start justify-between">
-                                                    <div
-                                                        class="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                                                        <Sparkles class="h-5 w-5" />
-                                                    </div>
-                                                    <input type="radio" v-model="generationType" value="bulk"
-                                                        class="h-5 w-5 text-primary accent-primary" />
+                                                    ? 'border-pink-500 bg-pink-50/50 shadow-pink-500/10 dark:bg-pink-950/10'
+                                                    : 'border-border/50 bg-card hover:border-pink-500/30 hover:bg-accent/5'">
+
+                                                <!-- Decorative background element for 'premium' feel -->
+                                                <div v-if="generationType === 'bulk'"
+                                                    class="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 blur-2xl">
                                                 </div>
-                                                <div>
-                                                    <p
-                                                        class="font-bold text-foreground group-hover:text-primary transition-colors">
-                                                        Complete Project Generation</p>
-                                                    <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-                                                        Generate entire project with literature, chapters, references,
-                                                        and appendices.</p>
+
+                                                <div class="flex items-start justify-between relative z-10">
+                                                    <div
+                                                        class="p-3 rounded-2xl bg-pink-100/80 text-pink-600 dark:bg-pink-900/40 dark:text-pink-400 transition-colors group-hover:bg-pink-100 dark:group-hover:bg-pink-900/60">
+                                                        <Sparkles class="h-6 w-6" />
+                                                    </div>
+                                                    <div class="relative flex h-5 w-5 items-center justify-center">
+                                                        <div class="h-5 w-5 rounded-full border-2 transition-colors"
+                                                            :class="generationType === 'bulk' ? 'border-pink-600' : 'border-muted-foreground/30'">
+                                                        </div>
+                                                        <div class="absolute h-2.5 w-2.5 rounded-full bg-pink-600 transition-transform duration-200"
+                                                            :class="generationType === 'bulk' ? 'scale-100' : 'scale-0'">
+                                                        </div>
+                                                        <input type="radio" v-model="generationType" value="bulk"
+                                                            class="sr-only" />
+                                                    </div>
+                                                </div>
+                                                <div class="relative z-10">
+                                                    <div class="flex items-center gap-2 mb-1">
+                                                        <p
+                                                            class="text-lg font-bold text-foreground group-hover:text-pink-600 transition-colors">
+                                                            Complete Project</p>
+                                                        <Badge variant="secondary"
+                                                            class="bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 text-[10px] px-1.5 py-0 h-5">
+                                                            POPULAR</Badge>
+                                                    </div>
+
+                                                    <p class="mt-2 text-sm text-muted-foreground leading-relaxed">
+                                                        Fast-track your drafts. Generate the entire project structure,
+                                                        literature, and chapters in one automated workflow.
+                                                    </p>
                                                 </div>
                                             </label>
                                         </div>
@@ -894,7 +1042,8 @@ const toggleWritingMode = async () => {
                                                 class="w-full h-14 text-base font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.01] hover:shadow-indigo-500/40">
                                                 <Play v-if="!isGenerating" class="mr-2 h-5 w-5 fill-current" />
                                                 <Clock v-else class="mr-2 h-5 w-5 animate-spin" />
-                                                {{ isGenerating ? 'Generating Chapter...' : canGenerateMoreChapters ?
+                                                {{ isGenerating ? 'Generating Chapter...' : canGenerateMoreChapters
+                                                    ?
                                                     `Generate Chapter ${nextChapterNumber}` : 'Chapter Limit Reached' }}
                                             </Button>
                                             <p class="text-sm text-center text-muted-foreground">
@@ -902,13 +1051,15 @@ const toggleWritingMode = async () => {
                                                     class="flex items-center justify-center gap-2">
                                                     <Brain class="h-4 w-4 text-indigo-500" />
                                                     AI will generate Chapter <span
-                                                        class="font-mono font-bold text-foreground">{{ nextChapterNumber
+                                                        class="font-mono font-bold text-foreground">{{
+                                                            nextChapterNumber
                                                         }}</span> based on your topic and previous chapters.
                                                 </span>
                                                 <span v-else
                                                     class="text-amber-600 flex items-center justify-center gap-2">
                                                     <AlertTriangle class="h-4 w-4" />
-                                                    You have reached the maximum chapters ({{ maxAllowedChapters }}) for
+                                                    You have reached the maximum chapters ({{ maxAllowedChapters }})
+                                                    for
                                                     this project category.
                                                 </span>
                                             </p>
@@ -919,7 +1070,8 @@ const toggleWritingMode = async () => {
                                                 class="w-full h-14 text-base font-semibold bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-700 hover:via-pink-700 hover:to-rose-700 text-white shadow-lg shadow-pink-500/25 transition-all hover:scale-[1.01] hover:shadow-pink-500/40">
                                                 <Zap v-if="!isGenerating" class="mr-2 h-5 w-5 fill-current" />
                                                 <Clock v-else class="mr-2 h-5 w-5 animate-spin" />
-                                                {{ isGenerating ? 'Generating Complete Project...' : 'Generate Complete Project' }}
+                                                {{ isGenerating ? 'Generating Complete Project...' : `Generate
+                                                Complete Project` }}
                                             </Button>
                                             <p
                                                 class="text-sm text-center text-muted-foreground flex items-center justify-center gap-2">
@@ -941,7 +1093,8 @@ const toggleWritingMode = async () => {
                                         <Brain class="h-5 w-5" />
                                     </div>
                                     <div class="space-y-2">
-                                        <h4 class="font-semibold text-blue-900 dark:text-blue-100">AI Generation Tips
+                                        <h4 class="font-semibold text-blue-900 dark:text-blue-100">AI Generation
+                                            Tips
                                         </h4>
                                         <ul
                                             class="grid gap-2 text-sm text-blue-800/80 dark:text-blue-200/70 sm:grid-cols-2">
@@ -975,15 +1128,17 @@ const toggleWritingMode = async () => {
                                         <Edit class="h-5 w-5" />
                                         Chapter Management
                                     </CardTitle>
-                                    <CardDescription>Create and edit chapters using the full-featured writing editor.
+                                    <CardDescription>Create and edit chapters using the full-featured writing
+                                        editor.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent class="space-y-4">
-                                    <div class="flex gap-3">
+                                    <div class="flex flex-col sm:flex-row gap-3">
                                         <Button @click="nextChapterNumber ? startChapter(nextChapterNumber) : null"
                                             :disabled="!canGenerateMoreChapters" size="lg" class="flex-1">
                                             <Edit class="mr-2 h-5 w-5" />
-                                            {{ canGenerateMoreChapters ? `Start Chapter ${nextChapterNumber}` : 'Chapter Limit Reached' }}
+                                            {{ canGenerateMoreChapters ? `Start Chapter ${nextChapterNumber}` :
+                                                'Chapter Limit Reached' }}
                                         </Button>
 
                                         <Button v-if="currentMode === 'auto'" @click="generateChapter('single')"
@@ -994,7 +1149,9 @@ const toggleWritingMode = async () => {
                                         </Button>
                                     </div>
                                     <p class="text-xs text-muted-foreground text-center">
-                                        {{ currentMode === 'manual' ? 'Use the full-featured editor to write your chapters from scratch.' : 'Write manually or generate an AI draft to edit and improve.' }}
+                                        {{ currentMode === 'manual' ? `Use the full-featured editor to write your
+                                        chapters from scratch.` : `Write manually or generate an AI draft to edit
+                                        and improve.` }}
                                     </p>
                                 </CardContent>
                             </Card>
@@ -1005,7 +1162,8 @@ const toggleWritingMode = async () => {
                                     <Card v-for="i in estimatedChapters" :key="i"
                                         class="group overflow-hidden border border-border/50 shadow-sm transition-all hover:border-primary/20 hover:shadow-md">
                                         <CardContent class="p-4">
-                                            <div class="flex items-center justify-between">
+                                            <div
+                                                class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                                 <div class="flex-1">
                                                     <h5 class="font-medium group-hover:text-primary transition-colors">
                                                         {{ getDefaultChapterTitle(i) }}</h5>
@@ -1057,10 +1215,11 @@ const toggleWritingMode = async () => {
                     </Tabs>
                 </div> <!-- End Main Content Column -->
 
-                <!-- Sidebar Column -->
-                <div class="space-y-6 order-1 lg:order-2">
-                    <!-- Progress Card -->
-                    <div class="rounded-2xl border border-border/50 bg-card p-6 shadow-sm sticky top-6">
+                <!-- Sidebar Column (Progress) -->
+                <div class="space-y-8 lg:col-span-1 order-1 lg:order-2">
+                    <!-- Project Progress -->
+                    <div id="progress-overview"
+                        class="rounded-3xl border border-border/50 bg-card p-6 shadow-sm dark:bg-card/50">
                         <h3 class="mb-6 flex items-center gap-2 font-semibold">
                             <Target class="h-5 w-5 text-primary" />
                             Project Progress
@@ -1099,12 +1258,15 @@ const toggleWritingMode = async () => {
 
             <!-- Mode Change Confirmation Dialog -->
             <Dialog v-model:open="showModeConfirmDialog">
-                <DialogContent class="sm:max-w-[425px] border-border/50 bg-background/80 backdrop-blur-xl shadow-2xl p-0 overflow-hidden gap-0">
+                <DialogContent
+                    class="sm:max-w-[425px] border-border/50 bg-background/80 backdrop-blur-xl shadow-2xl p-0 overflow-hidden gap-0">
                     <!-- Stylish Header Background -->
                     <div class="relative h-32 w-full overflow-hidden bg-gradient-to-br"
                         :class="pendingNewMode === 'auto' ? 'from-blue-600/20 via-indigo-500/10 to-transparent' : 'from-slate-500/20 via-zinc-500/10 to-transparent'">
-                        <div class="absolute inset-0 bg-grid-white/5 [mask-image:linear-gradient(0deg,transparent,black)]"></div>
-                        
+                        <div
+                            class="absolute inset-0 bg-grid-white/5 [mask-image:linear-gradient(0deg,transparent,black)]">
+                        </div>
+
                         <div class="absolute bottom-6 left-6 flex items-center gap-3">
                             <div class="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 shadow-lg backdrop-blur-md"
                                 :class="pendingNewMode === 'auto' ? 'bg-blue-500/20 text-blue-500' : 'bg-zinc-500/20 text-zinc-500'">
@@ -1124,14 +1286,17 @@ const toggleWritingMode = async () => {
                         <div class="rounded-xl border border-border/50 p-4"
                             :class="pendingNewMode === 'auto' ? 'bg-blue-50/50 dark:bg-blue-950/10' : 'bg-zinc-50/50 dark:bg-zinc-900/10'">
                             <div class="flex gap-3">
-                                <AlertTriangle class="h-5 w-5 shrink-0 mt-0.5" 
+                                <AlertTriangle class="h-5 w-5 shrink-0 mt-0.5"
                                     :class="pendingNewMode === 'auto' ? 'text-blue-600' : 'text-zinc-600'" />
                                 <div class="space-y-1">
-                                    <p class="text-sm font-medium" :class="pendingNewMode === 'auto' ? 'text-blue-900 dark:text-blue-100' : 'text-zinc-900 dark:text-zinc-100'">
+                                    <p class="text-sm font-medium"
+                                        :class="pendingNewMode === 'auto' ? 'text-blue-900 dark:text-blue-100' : 'text-zinc-900 dark:text-zinc-100'">
                                         Mode Translation
                                     </p>
                                     <p class="text-xs text-muted-foreground leading-relaxed">
-                                        You are about to facilitate a mode switch. This will update your workspace tools and capabilities.
+                                        You are about to facilitate a mode switch. This will update your workspace
+                                        tools and
+                                        capabilities.
                                     </p>
                                 </div>
                             </div>
@@ -1139,17 +1304,20 @@ const toggleWritingMode = async () => {
 
                         <!-- Feature Changes -->
                         <div class="space-y-3">
-                            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">What changes</h4>
+                            <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">What
+                                changes</h4>
                             <div class="grid gap-2">
                                 <template v-if="pendingNewMode === 'auto'">
                                     <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
-                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400">
+                                        <div
+                                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400">
                                             <Sparkles class="h-3.5 w-3.5" />
                                         </div>
                                         <span>AI Generation & Assistance enabled</span>
                                     </div>
                                     <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
-                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400">
+                                        <div
+                                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400">
                                             <Check class="h-3.5 w-3.5" />
                                         </div>
                                         <span>Existing content preserved</span>
@@ -1157,13 +1325,15 @@ const toggleWritingMode = async () => {
                                 </template>
                                 <template v-else>
                                     <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
-                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                                        <div
+                                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                                             <Edit class="h-3.5 w-3.5" />
                                         </div>
                                         <span>Full manual control enabled</span>
                                     </div>
                                     <div class="flex items-center gap-3 rounded-lg bg-secondary/30 p-2.5 text-sm">
-                                        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400">
+                                        <div
+                                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400">
                                             <Check class="h-3.5 w-3.5" />
                                         </div>
                                         <span>Existing content preserved</span>
@@ -1173,8 +1343,10 @@ const toggleWritingMode = async () => {
                         </div>
                     </div>
 
-                    <div class="border-t border-border/40 bg-muted/20 p-6 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
-                        <Button @click="showModeConfirmDialog = false" variant="ghost" class="w-full sm:w-auto hover:bg-transparent hover:underline">
+                    <div
+                        class="border-t border-border/40 bg-muted/20 p-6 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+                        <Button @click="showModeConfirmDialog = false" variant="ghost"
+                            class="w-full sm:w-auto hover:bg-transparent hover:underline">
                             Cancel
                         </Button>
                         <Button @click="confirmModeChange" :disabled="isTogglingMode"
@@ -1189,72 +1361,114 @@ const toggleWritingMode = async () => {
 
             <!-- Bulk Generation Confirmation Dialog -->
             <Dialog v-model:open="showBulkGenerationDialog">
-                <DialogContent class="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle class="flex items-center gap-2">
-                            <Sparkles class="h-5 w-5 text-purple-600" />
-                            Generate Complete Project
-                        </DialogTitle>
-                        <DialogDescription class="space-y-4 pt-2 text-left">
+                <DialogContent
+                    class="sm:max-w-lg p-0 gap-0 border-border/50 bg-background/80 backdrop-blur-3xl overflow-hidden shadow-2xl rounded-3xl">
+                    <!-- Stylish Header Background -->
+                    <div
+                        class="relative h-36 w-full overflow-hidden bg-gradient-to-br from-purple-600 via-fuchsia-600 to-pink-600">
+                        <!-- Abstract Noise/Texture -->
+                        <div
+                            class="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]">
+                        </div>
+                        <!-- Grid Pattern -->
+                        <div
+                            class="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,transparent,black)]">
+                        </div>
+
+                        <!-- Content -->
+                        <div class="absolute bottom-6 left-6 flex items-center gap-4 z-10">
                             <div
-                                class="rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 p-4 border border-purple-100">
-                                <div class="flex items-start gap-3">
-                                    <Brain class="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
-                                    <div class="space-y-1">
-                                        <p class="font-semibold text-purple-900">Comprehensive AI Generation</p>
-                                        <p class="text-sm text-purple-800/80">
-                                            This will generate a complete project with all {{ maxAllowedChapters
-                                            }}
-                                            chapters,
-                                            literature mining, references, preliminary pages, and appendices.
-                                        </p>
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 border border-white/20 shadow-xl backdrop-blur-md">
+                                <Sparkles class="h-7 w-7 text-white" />
+                            </div>
+                            <div class="text-white">
+                                <h3 class="text-xl font-bold tracking-tight text-white mb-0.5 shadow-sm">
+                                    Complete Project
+                                </h3>
+                                <p class="text-xs font-medium text-white/80">AI Automated Workflow</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 md:p-8 space-y-6">
+                        <!-- Description Box -->
+                        <div
+                            class="rounded-2xl border border-purple-100 bg-purple-50/50 p-5 dark:border-purple-900/30 dark:bg-purple-950/10">
+                            <p class="text-sm text-purple-900 dark:text-purple-100 leading-relaxed font-medium">
+                                "This will kickstart a comprehensive generation process. The AI will research, draft,
+                                and format
+                                your entire project based on the approved topic."
+                            </p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Generation
+                                Components
+                            </h4>
+                            <div class="grid grid-cols-1 gap-3">
+                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                                    <div
+                                        class="h-8 w-8 rounded-full bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 flex items-center justify-center shrink-0">
+                                        <BookOpen class="h-4 w-4" />
+                                    </div>
+                                    <div class="text-sm">
+                                        <span class="font-semibold text-foreground block">Full Chapter Generation</span>
+                                        <span class="text-muted-foreground text-xs">Drafting sections 1-{{
+                                            maxAllowedChapters }}
+                                            with context.</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                                    <div
+                                        class="h-8 w-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center shrink-0">
+                                        <FileText class="h-4 w-4" />
+                                    </div>
+                                    <div class="text-sm">
+                                        <span class="font-semibold text-foreground block">Literature Integration</span>
+                                        <span class="text-muted-foreground text-xs">Finding and citing relevant academic
+                                            sources.</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                                    <div
+                                        class="h-8 w-8 rounded-full bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center shrink-0">
+                                        <Edit class="h-4 w-4" />
+                                    </div>
+                                    <div class="text-sm">
+                                        <span class="font-semibold text-foreground block">Formatting & Appendices</span>
+                                        <span class="text-muted-foreground text-xs">Structuring preliminary pages and
+                                            references.</span>
                                     </div>
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="space-y-3">
-                                <p class="text-sm font-medium text-foreground">What will be generated:</p>
-                                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                    <div
-                                        class="flex items-center gap-2 rounded-lg border border-border/50 p-2 text-sm text-muted-foreground">
-                                        <Check class="h-4 w-4 text-green-500" />
-                                        All {{ maxAllowedChapters }} chapters
-                                    </div>
-                                    <div
-                                        class="flex items-center gap-2 rounded-lg border border-border/50 p-2 text-sm text-muted-foreground">
-                                        <Check class="h-4 w-4 text-green-500" />
-                                        Literature & Citations
-                                    </div>
-                                    <div
-                                        class="flex items-center gap-2 rounded-lg border border-border/50 p-2 text-sm text-muted-foreground">
-                                        <Check class="h-4 w-4 text-green-500" />
-                                        Preliminary Pages
-                                    </div>
-                                    <div
-                                        class="flex items-center gap-2 rounded-lg border border-border/50 p-2 text-sm text-muted-foreground">
-                                        <Check class="h-4 w-4 text-green-500" />
-                                        Appendices & References
-                                    </div>
-                                </div>
+                        <div
+                            class="flex items-center gap-3 rounded-xl bg-purple-50/80 p-4 border border-purple-100 dark:bg-purple-900/10 dark:border-purple-800/30">
+                            <Clock class="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
+                            <div class="text-sm">
+                                <p class="font-semibold text-purple-900 dark:text-purple-200">Estimated Duration</p>
+                                <p class="text-purple-700/80 dark:text-purple-300/80 text-xs">Approximately 15-20
+                                    minutes to
+                                    complete.</p>
                             </div>
+                        </div>
+                    </div>
 
-                            <div
-                                class="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg border border-border/50">
-                                <Clock class="h-4 w-4 text-primary" />
-                                <span>Estimated time: <strong>15-20 minutes</strong></span>
-                            </div>
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter class="flex-col gap-2 sm:flex-row">
-                        <Button @click="showBulkGenerationDialog = false" variant="outline" class="w-full sm:w-auto">
+                    <div
+                        class="border-t border-border/40 bg-muted/20 p-6 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+                        <Button @click="showBulkGenerationDialog = false" variant="ghost"
+                            class="w-full sm:w-auto hover:bg-transparent hover:underline">
                             Cancel
                         </Button>
                         <Button @click="confirmBulkGeneration"
-                            class="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700">
+                            class="w-full sm:w-auto h-11 px-8 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:scale-[1.02] transition-all font-semibold">
                             <Sparkles class="mr-2 h-4 w-4" />
                             Start Generation
                         </Button>
-                    </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -1299,14 +1513,12 @@ const toggleWritingMode = async () => {
             </Dialog>
 
             <!-- Credit balance modal -->
-            <PurchaseModal
-                :open="showPurchaseModal"
-                :current-balance="balance"
-                :required-words="requiredWordsForModal"
-                :action="actionDescriptionForModal"
-                @update:open="(v) => showPurchaseModal = v"
-                @close="closePurchaseModal"
-            />
+            <PurchaseModal :open="showPurchaseModal" :current-balance="balance" :required-words="requiredWordsForModal"
+                :action="actionDescriptionForModal" @update:open="(v) => showPurchaseModal = v"
+                @close="closePurchaseModal" />
         </div>
+
+
+
     </AppLayout>
 </template>

@@ -10,10 +10,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 // SafeHtmlText DISABLED - causes dark mode issues
 // import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search } from 'lucide-vue-next';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -799,6 +801,143 @@ const handleDefensePanelToggle = async (isOpen: boolean) => {
     }
 };
 
+// Tutorial Logic
+const startTour = () => {
+    const steps = [
+        {
+            popover: {
+                title: 'Welcome to the AI Assisted Editor',
+                description: 'Experience a powerful writing environment enhanced by AI. Generate an entire chapter with one click and access a suite of AI tools to refine your content.',
+                popoverClass: 'driver-popover-welcome'
+            }
+        },
+        {
+            element: '#back-to-project-btn',
+            popover: {
+                title: 'Back to Project',
+                description: 'Return to your project dashboard.'
+            }
+        },
+        {
+            element: '#left-sidebar-panel',
+            popover: {
+                title: 'Chapter Navigation',
+                description: 'Use the Table of Contents to switch between chapters.'
+            },
+            onHighlightStarted: () => {
+                isLeftSidebarCollapsed.value = false;
+            },
+            showOnMobile: false
+        },
+        {
+            element: '#manual-editor-toolbar', /* Note: ChapterEditor might not have this ID in toolbars unless I added it? Checked IDs: I didn't add manual-editor-toolbar. I added view-controls. */
+            /* Checking what formatting toolbar exists. ChapterEditor uses RichTextEditor which has its own toolbar. */
+            /* I'll skip formatting toolbar for now or assume user finds it.*/
+            /* Let's focus on main controls */
+            element: '#view-controls',
+            popover: {
+                title: 'View Options',
+                description: 'Customize your view with Preview, AI Chat, Fullscreen, and Dark Mode.'
+            }
+        },
+        {
+            element: '#toggle-chat-mode',
+            popover: {
+                title: 'AI Chat Assistant',
+                description: 'Open the AI assistant to help you write, brainstorm, or refine your content.'
+            }
+        },
+        {
+            element: '#export-menu-container',
+            popover: {
+                title: 'Export',
+                description: 'Export your chapter or entire project.'
+            }
+        },
+        {
+            element: '#analyze-button',
+            popover: {
+                title: 'Bulk Analysis',
+                description: 'Analyze content across chapters.'
+            }
+        },
+        {
+            element: '#save-button',
+            popover: {
+                title: 'Save Work',
+                description: 'Manually save your chapter. Auto-save is also active!'
+            }
+        },
+        {
+            element: '#mark-complete-btn',
+            popover: {
+                title: 'Mark as Complete',
+                description: 'Finished writing? Mark the chapter as complete.'
+            }
+        },
+        {
+            element: '#toggle-right-sidebar',
+            popover: {
+                title: 'AI Tools Sidebar',
+                description: 'Toggle the sidebar to access AI tools like Smart Suggestions and Citation Helper.'
+            },
+            showOnMobile: false
+        },
+        {
+            element: '#right-sidebar-panel',
+            popover: {
+                title: 'AI Assistant Tools',
+                description: 'Access powerful AI features here.'
+            },
+            onHighlightStarted: () => {
+                isRightSidebarCollapsed.value = false;
+            },
+            showOnMobile: false
+        },
+        {
+            element: '#editor-footer',
+            popover: {
+                title: 'Writing Stats',
+                description: 'Track your word count, quality score, and readiness.'
+            }
+        },
+        {
+            element: '#reset-tour-button',
+            popover: {
+                title: 'Need Help?',
+                description: 'Click here anytime to restart this tour.'
+            }
+        }
+    ];
+
+    const driverObj = driver({
+        showProgress: true,
+        animate: true,
+        steps: isMobile.value
+            ? steps.filter(s => s.showOnMobile !== false)
+            : steps
+    });
+
+    driverObj.drive();
+};
+
+onMounted(() => {
+    // Check if tour has been seen
+    if (page.props.auth?.user?.email) {
+        const tourKey = `chapter_editor_tour_seen_${page.props.auth.user.email}`;
+        const hasSeenTour = localStorage.getItem(tourKey);
+
+        if (!hasSeenTour) {
+            // Short delay to ensure UI is ready
+            setTimeout(() => {
+                startTour();
+                localStorage.setItem(tourKey, 'true');
+            }, 1000);
+        }
+    }
+});
+
+
 watch(chapterContent, handleContentChange);
 watch(chapterTitle, triggerAutoSave);
 
@@ -1019,27 +1158,27 @@ watch(globalIsDark, () => {
                     </div>
                 </div>
             </AppLayout>
-	        </template>
+        </template>
 
-	        <template v-else>
-	            <!-- Chat Mode Layout -->
-	            <ChatModeLayout v-if="showChatMode" :project="memoizedProject" :chapter="memoizedChapter"
-	                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
-	                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
-	                :writing-quality-score="writingQualityScore" :is-valid="isValid" :is-saving="isSaving"
-	                :show-preview="showPreview" :is-generating="isGenerating" :generation-progress="generationProgress"
-	                :history-index="historyIndex" :content-history-length="contentHistory.length"
-	                :selected-text="selectedText" @update:chapter-title="chapterTitle = $event"
-	                @update:chapter-content="chapterContent = $event" @update:selected-text="selectedText = $event"
-	                @update:show-preview="showPreview = $event" @save="(autoSave) => saveChapter(autoSave)"
-	                @undo="handleUndo" @redo="handleRedo" @exit-chat-mode="exitChatMode" />
-	            <CitationVerificationLayout v-else-if="showCitationMode" :project="memoizedProject" :chapter="memoizedChapter"
-	                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
-	                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
-	                @exit-citation-mode="exitCitationMode" />
+        <template v-else>
+            <!-- Chat Mode Layout -->
+            <ChatModeLayout v-if="showChatMode" :project="memoizedProject" :chapter="memoizedChapter"
+                :chapter-title="chapterTitle" :chapter-content="chapterContent" :current-word-count="currentWordCount"
+                :target-word-count="targetWordCount" :progress-percentage="progressPercentage"
+                :writing-quality-score="writingQualityScore" :is-valid="isValid" :is-saving="isSaving"
+                :show-preview="showPreview" :is-generating="isGenerating" :generation-progress="generationProgress"
+                :history-index="historyIndex" :content-history-length="contentHistory.length"
+                :selected-text="selectedText" @update:chapter-title="chapterTitle = $event"
+                @update:chapter-content="chapterContent = $event" @update:selected-text="selectedText = $event"
+                @update:show-preview="showPreview = $event" @save="(autoSave) => saveChapter(autoSave)"
+                @undo="handleUndo" @redo="handleRedo" @exit-chat-mode="exitChatMode" />
+            <CitationVerificationLayout v-else-if="showCitationMode" :project="memoizedProject"
+                :chapter="memoizedChapter" :chapter-title="chapterTitle" :chapter-content="chapterContent"
+                :current-word-count="currentWordCount" :target-word-count="targetWordCount"
+                :progress-percentage="progressPercentage" @exit-citation-mode="exitCitationMode" />
 
-	            <!-- Fullscreen Layout with Sidebars -->
-	            <!-- Fullscreen Layout with Sidebars -->
+            <!-- Fullscreen Layout with Sidebars -->
+            <!-- Fullscreen Layout with Sidebars -->
             <div v-else-if="isNativeFullscreen"
                 class="flex h-screen flex-col overflow-hidden bg-background dark:bg-background font-sans selection:bg-primary/20 transition-colors duration-300">
                 <!-- Ambient Background Effects -->
@@ -1109,26 +1248,26 @@ watch(globalIsDark, () => {
                             </Button>
                         </div>
 
-	                        <!-- Right Actions -->
-	                        <div class="flex items-center gap-2">
-	                            <!-- Stats DISABLED in ChapterEditor -->
+                        <!-- Right Actions -->
+                        <div class="flex items-center gap-2">
+                            <!-- Stats DISABLED in ChapterEditor -->
 
-	                            <Tooltip>
-	                                <TooltipTrigger asChild>
-	                                    <Button @click="toggleChatMode" variant="ghost" size="icon"
-	                                        class="h-9 w-9 rounded-full transition-all hover:bg-muted">
-	                                        <MessageSquare class="h-4.5 w-4.5 text-blue-500" />
-	                                    </Button>
-	                                </TooltipTrigger>
-	                                <TooltipContent>
-	                                    <p>Open AI Chat</p>
-	                                </TooltipContent>
-	                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button @click="toggleChatMode" variant="ghost" size="icon"
+                                        class="h-9 w-9 rounded-full transition-all hover:bg-muted">
+                                        <MessageSquare class="h-4.5 w-4.5 text-blue-500" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Open AI Chat</p>
+                                </TooltipContent>
+                            </Tooltip>
 
-	                            <Tooltip>
-	                                <TooltipTrigger asChild>
-	                                    <Button @click="toggleNativeFullscreen"
-	                                        :variant="isNativeFullscreen ? 'secondary' : 'ghost'" size="icon"
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button @click="toggleNativeFullscreen"
+                                        :variant="isNativeFullscreen ? 'secondary' : 'ghost'" size="icon"
                                         class="h-9 w-9 rounded-full transition-all hover:bg-muted">
                                         <Minimize2 v-if="isNativeFullscreen" class="h-4.5 w-4.5" />
                                         <Maximize2 v-else class="h-4.5 w-4.5" />
@@ -1330,7 +1469,7 @@ watch(globalIsDark, () => {
                     </div>
 
                     <!-- Left Sidebar (Navigation) -->
-                    <aside v-show="!isLeftSidebarCollapsed"
+                    <aside id="left-sidebar-panel" v-show="!isLeftSidebarCollapsed"
                         class="hidden lg:flex w-80 flex-col border-r border-border/40 bg-background/60 backdrop-blur-xl z-20 transition-all duration-300">
                         <div class="h-14 flex items-center justify-between px-4 border-b border-border/40 shrink-0">
                             <span class="text-sm font-semibold tracking-tight text-foreground">Navigation</span>
@@ -1363,7 +1502,7 @@ watch(globalIsDark, () => {
                             <div class="flex items-center gap-2 flex-shrink-0 order-1">
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon"
+                                        <Button id="back-to-project-btn-mobile" variant="ghost" size="icon"
                                             class="h-9 w-9 text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/50 rounded-full"
                                             @click="router.visit(route('projects.writing', props.project.slug))">
                                             <ArrowLeft class="w-4 h-4" />
@@ -1464,7 +1603,7 @@ watch(globalIsDark, () => {
                                 <div class="flex items-center gap-1">
                                     <Tooltip>
                                         <TooltipTrigger asChild>
-                                            <Button variant="ghost" size="icon"
+                                            <Button id="back-to-project-btn" variant="ghost" size="icon"
                                                 class="h-8 w-8 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full"
                                                 @click="router.visit(route('projects.writing', props.project.slug))">
                                                 <ArrowLeft class="w-4 h-4" />
@@ -1475,7 +1614,7 @@ watch(globalIsDark, () => {
 
                                     <div class="h-4 w-px bg-border/50 mx-1"></div>
 
-                                    <Button variant="ghost" size="icon"
+                                    <Button id="toggle-left-sidebar" variant="ghost" size="icon"
                                         @click="isLeftSidebarCollapsed = !isLeftSidebarCollapsed"
                                         class="text-muted-foreground hover:text-foreground h-8 w-8 rounded-full">
                                         <PanelLeftClose v-if="!isLeftSidebarCollapsed" class="h-4 w-4" />
@@ -1486,7 +1625,7 @@ watch(globalIsDark, () => {
                                 <!-- Center/Right: Tools & Actions -->
                                 <div class="flex items-center gap-3">
                                     <!-- Tools Group -->
-                                    <div
+                                    <div id="view-controls"
                                         class="flex items-center bg-background/50 rounded-full border border-border/50 p-1 backdrop-blur-sm shadow-sm">
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -1507,7 +1646,8 @@ watch(globalIsDark, () => {
 
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button @click="toggleChatMode" variant="ghost" size="sm"
+                                                <Button id="toggle-chat-mode" @click="toggleChatMode" variant="ghost"
+                                                    size="sm"
                                                     class="h-7 px-3 text-xs gap-2 text-muted-foreground hover:text-foreground rounded-full">
                                                     <MessageSquare class="h-3.5 w-3.5 text-blue-500" />
                                                     <span class="hidden xl:inline text-foreground">AI Chat</span>
@@ -1551,13 +1691,13 @@ watch(globalIsDark, () => {
 
                                     <!-- Actions Group -->
                                     <div class="flex items-center gap-2">
-                                        <ExportMenu :project="memoizedProject" :current-chapter="memoizedChapter"
-                                            :all-chapters="memoizedAllChapters" size="sm" variant="outline"
-                                            trigger-element="button"
+                                        <ExportMenu id="export-menu-container" :project="memoizedProject"
+                                            :current-chapter="memoizedChapter" :all-chapters="memoizedAllChapters"
+                                            size="sm" variant="outline" trigger-element="button"
                                             button-class="h-9 gap-2 px-3 rounded-full bg-background/50 backdrop-blur-sm"
                                             class="text-zinc-700 dark:text-zinc-300" />
 
-                                        <Button variant="outline" size="sm"
+                                        <Button id="analyze-button" variant="outline" size="sm"
                                             class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground bg-background/50 backdrop-blur-sm rounded-full"
                                             @click="goToBulkAnalysis" title="Open bulk analysis">
                                             <Search class="w-4 h-4" />
@@ -1566,22 +1706,35 @@ watch(globalIsDark, () => {
                                     </div>
 
                                     <div class="flex items-center gap-2 pl-2 border-l border-border/50">
-                                        <Button @click="save(false)" :disabled="isSaving"
+                                        <Button id="save-button" @click="save(false)" :disabled="isSaving"
                                             :variant="isValid ? 'default' : 'secondary'" size="sm"
                                             class="h-9 px-4 text-xs shadow-sm gap-2 rounded-full min-w-[32px]">
                                             <Save class="h-3.5 w-3.5" />
                                             <span class="inline">{{ isSaving ? 'Saving' : 'Save' }}</span>
                                         </Button>
 
-                                        <Button @click="markAsComplete" :disabled="isSaving" size="sm"
-                                            class="h-9 px-4 text-xs shadow-sm gap-2 rounded-full">
+                                        <Button id="mark-complete-btn" @click="markAsComplete" :disabled="isSaving"
+                                            size="sm" class="h-9 px-4 text-xs shadow-sm gap-2 rounded-full">
                                             <CheckCircle class="h-3.5 w-3.5" />
                                             <span>Mark Complete</span>
                                         </Button>
 
                                         <div class="w-px h-4 bg-border/50 mx-1"></div>
 
-                                        <Button variant="ghost" size="icon"
+                                        <div class="w-px h-4 bg-border/50 mx-1"></div>
+
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button id="reset-tour-button" variant="ghost" size="icon"
+                                                    @click="startTour"
+                                                    class="text-muted-foreground hover:text-foreground h-9 w-9 hover:bg-muted/50 rounded-full">
+                                                    <HelpCircle class="h-4.5 w-4.5" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Restart Tutorial</TooltipContent>
+                                        </Tooltip>
+
+                                        <Button id="toggle-right-sidebar" variant="ghost" size="icon"
                                             @click="isRightSidebarCollapsed = !isRightSidebarCollapsed"
                                             class="hidden lg:flex text-muted-foreground hover:text-foreground h-9 w-9 hover:bg-muted/50 rounded-full">
                                             <PanelRightClose v-if="!isRightSidebarCollapsed" class="h-4.5 w-4.5" />
@@ -1591,6 +1744,7 @@ watch(globalIsDark, () => {
                                 </div>
                             </div>
                         </div>
+
 
                         <!-- Main Editor Area -->
                         <div class="flex-1 overflow-hidden relative group bg-background/20">
@@ -1657,13 +1811,13 @@ watch(globalIsDark, () => {
                         </div>
 
                         <!-- Footer Info -->
-                        <div
+                        <div id="editor-footer"
                             class="h-7 border-t border-border/30 bg-background/40 backdrop-blur-sm flex items-center justify-between px-4 text-[10px] text-muted-foreground shrink-0">
                             <div class="flex items-center gap-3">
                                 <span>Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
                                 <span class="hidden sm:inline">Last saved: {{ isSaving ? 'Saving...' : `Just
                                     now`
-                                }}</span>
+                                    }}</span>
                             </div>
                             <div class="flex items-center gap-2">
                                 <span>Quality: <span
@@ -1677,7 +1831,7 @@ watch(globalIsDark, () => {
 
                     </main>
                     <!-- Right Sidebar (Tools) -->
-                    <ChapterEditorRightSidebar :is-collapsed="isRightSidebarCollapsed"
+                    <ChapterEditorRightSidebar id="right-sidebar-panel" :is-collapsed="isRightSidebarCollapsed"
                         :container-class="'hidden lg:flex w-96 flex-col border-l border-border/40 bg-background/60 backdrop-blur-xl z-20 transition-all duration-300'"
                         v-bind="rightSidebarCommonProps" />
                 </div>
@@ -1740,6 +1894,22 @@ watch(globalIsDark, () => {
         </template>
     </TooltipProvider>
 </template>
+
+<style>
+.driver-popover-welcome {
+    max-width: 500px !important;
+    width: 500px !important;
+}
+
+.driver-popover-welcome .driver-popover-title {
+    font-size: 1.25rem !important;
+}
+
+.driver-popover-welcome .driver-popover-description {
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+}
+</style>
 
 <style scoped>
 /* Custom scrollbar for sidebar */

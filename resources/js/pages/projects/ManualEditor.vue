@@ -3,7 +3,9 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { Head, router, usePage } from '@inertiajs/vue3'
 import { route } from 'ziggy-js'
 import { toast } from 'vue-sonner'
-import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle, Brain, Moon, Sun } from 'lucide-vue-next'
+import { MessageSquare, Loader2, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, ChevronLeft, ChevronRight, ArrowLeft, Menu, Save, Maximize2, Minimize2, CheckCircle, Brain, Moon, Sun, HelpCircle } from 'lucide-vue-next'
+import { driver } from 'driver.js'
+import 'driver.js/dist/driver.css'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -192,7 +194,7 @@ const enterCitationOperationMode = () => {
   showRightSidebar.value = false // Hide normal sidebar
   try {
     localStorage.setItem('citationOperationMode', 'true')
-  } catch {}
+  } catch { }
 }
 
 const exitCitationOperationMode = () => {
@@ -200,7 +202,7 @@ const exitCitationOperationMode = () => {
   showRightSidebar.value = true // Restore sidebar
   try {
     localStorage.setItem('citationOperationMode', 'false')
-  } catch {}
+  } catch { }
 }
 
 // Fullscreen state - DISABLED due to dark mode issues
@@ -422,7 +424,7 @@ function maybeRequestAutocomplete() {
 
   const ctx = buildAutocompleteContext()
   if (!ctx) return
-  void (debouncedAutocomplete as any)(ctx).catch(() => {})
+  void (debouncedAutocomplete as any)(ctx).catch(() => { })
 }
 
 const regenerateStarter = async () => {
@@ -603,37 +605,37 @@ const handleInsertCitation = (citation: string, claimText?: string) => {
   if (claimText && content.value) {
     // Clean up the claim text for searching
     const cleanClaimText = claimText.trim()
-    
+
     // For HTML content, we need to find the text within the HTML structure
     // First, create a temporary DOM element to parse the content
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = content.value
     const plainText = tempDiv.textContent || tempDiv.innerText || ''
-    
+
     // Find the claim text in plain text
     const claimStart = plainText.indexOf(cleanClaimText)
-    
+
     if (claimStart !== -1) {
       // Find the end of the sentence containing the claim
       const claimEnd = claimStart + cleanClaimText.length
       const afterClaim = plainText.substring(claimEnd)
-      
+
       // Find the next sentence ending
       const sentenceEndMatch = afterClaim.match(/^[^.!?]*[.!?]/)
       let insertPosition: number
-      
+
       if (sentenceEndMatch) {
         insertPosition = claimEnd + sentenceEndMatch[0].length
       } else {
         insertPosition = claimEnd
       }
-      
+
       // Now we need to find this position in the HTML content
       // Walk through the HTML to find where to insert
       let htmlPos = 0
       let textPos = 0
       const htmlContent = content.value
-      
+
       while (htmlPos < htmlContent.length && textPos < insertPosition) {
         if (htmlContent[htmlPos] === '<') {
           // Skip HTML tag
@@ -656,13 +658,13 @@ const handleInsertCitation = (citation: string, claimText?: string) => {
           textPos++
         }
       }
-      
+
       // Insert the citation at the found HTML position
       if (htmlPos > 0) {
         const before = htmlContent.substring(0, htmlPos)
         const after = htmlContent.substring(htmlPos)
         const newContent = `${before} ${citation}${after}`
-        
+
         handleContentUpdate(newContent)
         toast.success('Citation inserted at claim location')
         return
@@ -772,6 +774,174 @@ const markAsComplete = async () => {
     toast.error('Failed to save chapter before marking complete')
   }
 }
+
+// Tutorial Logic
+const startTour = () => {
+  const steps = [
+    {
+      popover: {
+        title: 'Welcome to the AI Assisted Editor',
+        description: 'Experience a powerful writing environment enhanced by AI. Use the Smart Chapter Starter to kickstart your writing, leverage auto-completion for faster drafting, and access a suite of AI tools to refine your content.',
+        popoverClass: 'driver-popover-welcome'
+      }
+    },
+    {
+      element: '#back-to-project-btn',
+      popover: {
+        title: 'Back to Project',
+        description: 'Return to your project dashboard.'
+      }
+    },
+    {
+      element: '#left-sidebar-panel',
+      popover: {
+        title: 'Chapter Navigation',
+        description: 'Use the Table of Contents to switch between chapters.'
+      },
+      onHighlightStarted: () => {
+        showLeftSidebar.value = true;
+      },
+      showOnMobile: false
+    },
+    {
+      element: '#save-status',
+      popover: {
+        title: 'Status & Word Count',
+        description: 'Check your save status and current word count at a glance.'
+      }
+    },
+    {
+      element: '#manual-editor-toolbar',
+      popover: {
+        title: 'Formatting Tools',
+        description: 'Use these tools to format your text, add links, headings, and lists.'
+      }
+    },
+    {
+      element: '#view-controls',
+      popover: {
+        title: 'View Options',
+        description: 'Customize your writing experience with dark mode, full screen, AI chat, and tool sidebars.'
+      }
+    },
+    {
+      element: '#toggle-chat-mode',
+      popover: {
+        title: 'AI Chat Assistant',
+        description: 'Open the AI assistant to help you write, brainstorm, or refine your content.'
+      }
+    },
+    {
+      element: '#toggle-right-sidebar',
+      popover: {
+        title: 'Writing Tools Sidebar',
+        description: 'Toggle this sidebar to access efficient writing tools.'
+      },
+      showOnMobile: false
+    },
+    {
+      element: '#right-sidebar-panel',
+      popover: {
+        title: 'Writing Tools',
+        description: 'Access quick tools like Smart Suggestions, Quick Actions (Expand, Rephrase), and more.'
+      },
+      onHighlightStarted: () => {
+        showRightSidebar.value = true;
+      },
+      showOnMobile: false
+    },
+    {
+      element: '#credit-display',
+      popover: {
+        title: 'Credits',
+        description: 'Keep track of your AI credits. Remember, using AI tools consumes credits.'
+      }
+    },
+    {
+      element: '#top-up-btn',
+      popover: {
+        title: 'Top Up',
+        description: 'Running low? Click here to purchase more credits.'
+      }
+    },
+    {
+      element: '#export-menu-container',
+      popover: {
+        title: 'Export',
+        description: 'Export your chapter or entire project in various formats.'
+      }
+    },
+    {
+      element: '#analyze-button',
+      popover: {
+        title: 'Bulk Analysis',
+        description: 'Analyze multiple chapters at once for comprehensive insights.'
+      }
+    },
+    {
+      element: '#progress-bar-section',
+      popover: {
+        title: 'Writing Progress',
+        description: 'Track your progress towards the chapter word count goal.'
+      }
+    },
+    {
+      element: '#editor-footer',
+      popover: {
+        title: 'Footer Controls',
+        description: 'View detailed stats like citations and quality metrics, and clear actions.'
+      }
+    },
+    {
+      element: '#mark-complete-btn',
+      popover: {
+        title: 'Mark as Complete',
+        description: 'Finished writing? Mark the chapter as complete to proceed.'
+      }
+    },
+    {
+      element: '#save-button',
+      popover: {
+        title: 'Save Work',
+        description: 'Manually save your chapter. Auto-save is also active!'
+      }
+    },
+    {
+      element: '#reset-tour-button',
+      popover: {
+        title: 'Need Help?',
+        description: 'Click here anytime to restart this tour.'
+      }
+    }
+  ];
+
+  const driverObj = driver({
+    showProgress: true,
+    animate: true,
+    steps: isMobile.value
+      ? steps.filter(s => s.showOnMobile !== false)
+      : steps
+  });
+
+  driverObj.drive();
+
+  const user = page.props.auth.user;
+  if (user?.email) {
+    localStorage.setItem(`manual_editor_tour_seen_${user.email}`, 'true');
+  }
+};
+
+onMounted(() => {
+  const user = page.props.auth.user;
+  if (user?.email) {
+    const hasSeenTour = localStorage.getItem(`manual_editor_tour_seen_${user.email}`);
+    if (!hasSeenTour) {
+      setTimeout(() => {
+        startTour();
+      }, 1000);
+    }
+  }
+});
 </script>
 
 <template>
@@ -847,14 +1017,17 @@ const markAsComplete = async () => {
     <div
       class="hidden md:flex flex-col w-full z-50 sticky top-0 bg-background/80 backdrop-blur-md transition-all duration-200 border-b">
       <!-- Top Row: Navigation & Context -->
-      <div class="h-10 border-b border-border/40 flex items-center justify-center px-4 bg-background/60 relative">
+      <div id="editor-header"
+        class="h-10 border-b border-border/40 flex items-center justify-center px-4 bg-background/60 relative">
         <!-- Title & Badge -->
         <div class="flex items-center gap-2">
-          <h1 class="text-sm font-bold text-foreground cursor-pointer hover:text-primary transition-colors"
+          <h1 id="project-title-link"
+            class="text-sm font-bold text-foreground cursor-pointer hover:text-primary transition-colors"
             @click="router.visit(route('projects.show', project.slug))">
             {{ project.title }}
           </h1>
-          <Badge variant="secondary" class="h-5 px-2 text-[10px] rounded-full">Ch {{ chapter.chapter_number }}</Badge>
+          <Badge id="chapter-badge" variant="secondary" class="h-5 px-2 text-[10px] rounded-full">Ch {{
+            chapter.chapter_number }}</Badge>
         </div>
 
         <!-- Quick Nav (Right aligned in center block or absolute right?) 
@@ -863,7 +1036,7 @@ const markAsComplete = async () => {
                   I'll place it slightly separated or keep it if it fits cleanliness.
                   The user asked to remove "chapter title". Quick Nav is navigation. 
                   I'll keep it but make it subtle. -->
-        <div class="flex items-center gap-1 absolute right-4">
+        <div id="chapter-nav-buttons" class="flex items-center gap-1 absolute right-4">
           <Button v-if="prevChapter" variant="ghost" size="sm"
             class="h-6 px-2 text-zinc-500 hover:text-foreground gap-1 rounded-full text-[10px]"
             @click="goToChapter(prevChapter.chapter_number)" :title="`Previous: ${prevChapter.title}`">
@@ -883,10 +1056,10 @@ const markAsComplete = async () => {
       <!-- Bottom Row: Tools & Actions -->
       <div class="h-12 flex items-center justify-between px-4 bg-background/40">
         <!-- Left: Nav & Status -->
-        <div class="flex items-center gap-3">
+        <div id="left-controls" class="flex items-center gap-3">
           <!-- Nav Controls (Moved here) -->
           <div class="flex items-center gap-1">
-            <Button variant="ghost" size="icon"
+            <Button id="back-to-project-btn" variant="ghost" size="icon"
               class="h-8 w-8 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full"
               @click="router.visit(route('projects.show', project.slug))" title="Back to Project">
               <ArrowLeft class="w-4 h-4" />
@@ -894,7 +1067,7 @@ const markAsComplete = async () => {
 
             <div class="h-4 w-px bg-border/50 mx-1"></div>
 
-            <Button @click="toggleLeftSidebar" variant="ghost" size="icon"
+            <Button id="toggle-left-sidebar" @click="toggleLeftSidebar" variant="ghost" size="icon"
               class="h-8 w-8 transition-all duration-300 rounded-full"
               :class="showLeftSidebar ? 'text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
               title="Toggle Chapter Navigation">
@@ -906,7 +1079,8 @@ const markAsComplete = async () => {
           <div class="h-4 w-px bg-border/50"></div>
 
           <!-- Status -->
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/30 border border-border/40">
+          <div id="save-status"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/30 border border-border/40">
             <div class="flex items-center gap-1.5">
               <div class="w-2 h-2 rounded-full transition-colors duration-300"
                 :class="isDirty ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"></div>
@@ -933,7 +1107,7 @@ const markAsComplete = async () => {
         <!-- Right: Actions -->
         <div class="flex items-center gap-3">
           <!-- View Controls -->
-          <div class="flex items-center gap-1 bg-muted/30 p-1 rounded-full border border-border/40">
+          <div id="view-controls" class="flex items-center gap-1 bg-muted/30 p-1 rounded-full border border-border/40">
             <Button variant="ghost" size="icon"
               class="h-7 w-7 rounded-full text-zinc-700 dark:text-zinc-300 hover:text-foreground"
               @click="toggleEditorTheme" :title="isEditorDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
@@ -948,14 +1122,14 @@ const markAsComplete = async () => {
               <Maximize2 v-else class="w-4 h-4" />
             </Button>
 
-            <Button @click="toggleChatMode" variant="ghost" size="icon"
+            <Button id="toggle-chat-mode" @click="toggleChatMode" variant="ghost" size="icon"
               class="h-7 w-7 rounded-full transition-all duration-300"
               :class="showChatMode ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
               title="Toggle AI Chat Mode">
               <MessageSquare class="w-4 h-4" />
             </Button>
 
-            <Button @click="toggleRightSidebar" variant="ghost" size="icon"
+            <Button id="toggle-right-sidebar" @click="toggleRightSidebar" variant="ghost" size="icon"
               class="h-7 w-7 rounded-full transition-all duration-300"
               :class="showRightSidebar ? 'bg-background shadow-sm text-primary' : 'text-zinc-700 dark:text-zinc-300 hover:text-foreground'"
               title="Toggle Tools Sidebar">
@@ -966,30 +1140,41 @@ const markAsComplete = async () => {
 
           <div class="w-px h-4 bg-border/50"></div>
 
-          <WordBalanceDisplay v-if="wordBalance" :balance="wordBalance" compact />
+          <div id="credit-display">
+            <WordBalanceDisplay v-if="wordBalance" :balance="wordBalance" compact />
+          </div>
 
-          <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
-            variant="outline" class="h-9" button-class="rounded-full bg-background/50" />
+          <div id="export-menu-container">
+            <ExportMenu :project="project" :current-chapter="chapter" :all-chapters="allChapters" size="sm"
+              variant="outline" class="h-9" button-class="rounded-full bg-background/50" />
+          </div>
 
-          <Button variant="ghost" size="sm"
+          <Button id="analyze-button" variant="ghost" size="sm"
             class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full bg-background/50 border border-transparent hover:border-border/50"
             @click="goToBulkAnalysis" title="Open bulk analysis">
             <Brain class="w-4 h-4" />
             <span class="text-xs font-medium">Analyze</span>
           </Button>
 
-          <Button variant="outline" size="sm"
+          <Button id="save-button" variant="outline" size="sm"
             class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground rounded-full bg-background/50"
             @click="handleManualSave" :disabled="isSaving" title="Save (Ctrl+S)">
             <Save class="w-4 h-4" />
             <span class="text-xs font-medium">{{ isSaving ? 'Saving...' : 'Save' }}</span>
           </Button>
+
+          <!-- Reset Tour Button (Hidden but accessible via ID) -->
+          <Button id="reset-tour-button" variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground"
+            @click="startTour" title="Restart Tour">
+            <HelpCircle class="w-4 h-4" />
+          </Button>
+
         </div>
       </div>
     </div>
 
     <!-- Progress Bar Section -->
-    <div class="w-full bg-background border-b px-3 md:px-6 py-2 flex flex-col gap-1">
+    <div id="progress-bar-section" class="w-full bg-background border-b px-3 md:px-6 py-2 flex flex-col gap-1">
       <div class="flex justify-between items-center text-xs text-muted-foreground mb-1">
         <span class="font-medium">Writing Progress</span>
         <span>{{ currentAnalysis?.word_count ?? chapter.word_count }} / {{ chapter.target_word_count }} words</span>
@@ -1004,7 +1189,7 @@ const markAsComplete = async () => {
         enter-from-class="-ml-[320px] opacity-0" enter-to-class="ml-0 opacity-100"
         leave-active-class="transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)"
         leave-from-class="ml-0 opacity-100" leave-to-class="-ml-[320px] opacity-0">
-        <aside v-if="showLeftSidebar && !isMobile"
+        <aside id="left-sidebar-panel" v-if="showLeftSidebar && !isMobile"
           class="w-[320px] border-r bg-background/80 backdrop-blur-xl border-border/50 shadow-xl z-20 overflow-y-auto custom-scrollbar">
           <div class="p-4">
             <div class="mb-3">
@@ -1031,18 +1216,15 @@ const markAsComplete = async () => {
           'flex flex-col overflow-hidden',
           citationOperationMode ? 'w-1/2 border-r border-border/50' : 'flex-1'
         ]">
-	          <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
-	            <RichTextEditor ref="editorRef" :modelValue="content" @update:modelValue="handleContentUpdate"
-	              @update:selectedText="selectedText = $event" @update:selectionRange="selectionRange = $event"
-	              :ghost-text="activeGhostText"
-	              :ghost-text-format="activeGhostTextFormat"
-	              @ghost-accepted="handleGhostAccepted"
-	              @ghost-dismissed="handleGhostDismissed"
-	              @ghost-manual-trigger="handleGhostManualTrigger"
-	              :manual-mode="true" :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''"
-	              class="min-h-full" />
-	          </div>
-	        </div>
+          <div class="flex-1 overflow-auto p-2 md:p-6 bg-background">
+            <RichTextEditor ref="editorRef" :modelValue="content" @update:modelValue="handleContentUpdate"
+              @update:selectedText="selectedText = $event" @update:selectionRange="selectionRange = $event"
+              :ghost-text="activeGhostText" :ghost-text-format="activeGhostTextFormat"
+              @ghost-accepted="handleGhostAccepted" @ghost-dismissed="handleGhostDismissed"
+              @ghost-manual-trigger="handleGhostManualTrigger" :manual-mode="true"
+              :toolbar-teleport-target="!isMobile ? '#manual-editor-toolbar' : ''" class="min-h-full" />
+          </div>
+        </div>
 
         <!-- Citation Operation Panel (shown in split view) -->
         <div v-if="citationOperationMode" class="w-1/2 flex flex-col bg-background overflow-hidden">
@@ -1059,18 +1241,12 @@ const markAsComplete = async () => {
         enter-from-class="-mr-[400px] opacity-0" enter-to-class="mr-0 opacity-100"
         leave-active-class="transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)"
         leave-from-class="mr-0 opacity-100" leave-to-class="-mr-[400px] opacity-0">
-        <aside v-if="showRightSidebar && !isMobile"
+        <aside id="right-sidebar-panel" v-if="showRightSidebar && !isMobile"
           class="w-[400px] border-l bg-background/80 backdrop-blur-xl border-border/50 shadow-2xl z-20 overflow-y-auto custom-scrollbar flex flex-col">
           <div v-if="showChatMode" class="flex-1 overflow-hidden">
             <div class="h-full border-b border-border/50">
-              <ManualChatSidebar
-                :messages="chatMessages"
-                :is-loading="isChatLoading"
-                :analysis="(currentAnalysis as any)"
-                class="h-full"
-                @send="sendChatMessage"
-                @close="toggleChatMode"
-              />
+              <ManualChatSidebar :messages="chatMessages" :is-loading="isChatLoading"
+                :analysis="(currentAnalysis as any)" class="h-full" @send="sendChatMessage" @close="toggleChatMode" />
             </div>
           </div>
 
@@ -1138,23 +1314,22 @@ const markAsComplete = async () => {
         :target-word-count="chapter.target_word_count" :chapter-content-length="content?.length || 0"
         :selected-text="selectedText" :is-analyzing="isAnalyzing" :is-saving="isSaving"
         :current-suggestion="currentSuggestion" :current-analysis="currentAnalysis" :chapter-content="content"
-        :show-citation-helper="showCitationHelper"
-        :ensure-balance="ensureQuickActionBalance" :on-usage="recordManualUsage"
-        @update:show-left-sidebar="showLeftSidebar = $event" @update:show-right-sidebar="showRightSidebar = $event"
+        :show-citation-helper="showCitationHelper" :ensure-balance="ensureQuickActionBalance"
+        :on-usage="recordManualUsage" @update:show-left-sidebar="showLeftSidebar = $event"
+        @update:show-right-sidebar="showRightSidebar = $event"
         @update:show-citation-helper="showCitationHelper = $event" @go-to-chapter="goToChapter"
         @generate-next-chapter="generateNextChapter" @delete-chapter="deleteChapter" @save-suggestion="saveSuggestion"
-        @clear-suggestion="clearSuggestion" @apply-suggestion="applySuggestion"
-        @text-improved="handleTextImproved" @text-expanded="handleTextExpanded"
-        @citations-suggested="handleCitationsSuggested" @text-rephrased="handleTextRephrased"
-        @insert-citation="handleInsertCitation" />
+        @clear-suggestion="clearSuggestion" @apply-suggestion="applySuggestion" @text-improved="handleTextImproved"
+        @text-expanded="handleTextExpanded" @citations-suggested="handleCitationsSuggested"
+        @text-rephrased="handleTextRephrased" @insert-citation="handleInsertCitation" />
     </div>
 
     <!-- Footer -->
-    <footer class="border-t p-2 md:p-3 flex flex-col gap-3 text-xs md:text-sm bg-muted/30">
+    <footer id="editor-footer" class="border-t p-2 md:p-3 flex flex-col gap-3 text-xs md:text-sm bg-muted/30">
       <!-- Stats & Actions Row -->
       <div class="flex flex-col sm:flex-row justify-between gap-3 sm:gap-2 items-start sm:items-center w-full">
         <!-- Left: Stats -->
-        <div class="flex gap-2 md:gap-4 flex-wrap items-center">
+        <div id="footer-stats" class="flex gap-2 md:gap-4 flex-wrap items-center">
           <span class="text-muted-foreground">
             <span class="hidden sm:inline">Words: </span><strong class="text-foreground">{{ currentAnalysis?.word_count
               ?? chapter.word_count }}</strong> / {{ chapter.target_word_count }}
@@ -1180,8 +1355,8 @@ const markAsComplete = async () => {
           </Button>
 
           <!-- Mark Complete Button -->
-          <Button variant="default" size="sm" class="h-8 md:h-9 gap-2 flex-1 sm:flex-initial" @click="markAsComplete"
-            :disabled="isSaving" title="Save and mark chapter as complete">
+          <Button id="mark-complete-btn" variant="default" size="sm" class="h-8 md:h-9 gap-2 flex-1 sm:flex-initial"
+            @click="markAsComplete" :disabled="isSaving" title="Save and mark chapter as complete">
             <CheckCircle class="w-3.5 h-3.5 md:w-4 md:h-4" />
             <span class="text-xs font-medium hidden sm:inline">Mark Complete</span>
             <span class="text-xs font-medium sm:hidden">Complete</span>
@@ -1196,13 +1371,26 @@ const markAsComplete = async () => {
     <Toaster position="top-center" />
   </div>
 
-  <ChapterStarterOverlay
-    :show="showStarter && !!starterText"
-    :is-generating="isGeneratingStarter"
-    @regenerate="regenerateStarter"
-    @dismiss="dismissStarter"
-  />
+  <ChapterStarterOverlay :show="showStarter && !!starterText" :is-generating="isGeneratingStarter"
+    @regenerate="regenerateStarter" @dismiss="dismissStarter" />
 </template>
+
+
+<style>
+.driver-popover-welcome {
+  max-width: 500px !important;
+  width: 500px !important;
+}
+
+.driver-popover-welcome .driver-popover-title {
+  font-size: 1.25rem !important;
+}
+
+.driver-popover-welcome .driver-popover-description {
+  font-size: 1rem !important;
+  line-height: 1.6 !important;
+}
+</style>
 
 <style scoped>
 /* Custom scrollbar for sidebar */

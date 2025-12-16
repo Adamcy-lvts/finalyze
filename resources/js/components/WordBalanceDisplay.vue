@@ -48,7 +48,7 @@ const props = withDefaults(defineProps<Props>(), {
             </PopoverContent>
         </Popover>
 
-        <Link v-if="showTopUp" :href="route('pricing')">
+        <Link v-if="showTopUp" :href="route('pricing')" id="top-up-btn">
             <Button variant="ghost" size="icon" class="h-8 w-8 text-foreground">
                 <Plus class="w-4 h-4" />
             </Button>
