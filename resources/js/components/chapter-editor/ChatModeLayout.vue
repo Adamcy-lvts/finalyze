@@ -551,12 +551,12 @@ const toggleContentPreview = () => {
                                 <RichTextEditor :model-value="chapterContent"
                                     @update:model-value="emit('update:chapterContent', $event)"
                                     placeholder="Start writing your chapter..." min-height="400px"
-                                    class="text-sm leading-relaxed" />
+                                    class="text-lg leading-relaxed" />
                             </ScrollArea>
 
                             <!-- Preview Mode -->
                             <ScrollArea class="min-h-0 flex-1" v-show="showContentPreview">
-                                <RichTextViewer :content="chapterContent" class="p-4"
+                                <RichTextViewer :content="chapterContent" class="p-4 text-lg"
                                     style="font-family: 'Times New Roman', serif; line-height: 1.6" />
                             </ScrollArea>
                         </div>
@@ -589,7 +589,7 @@ const toggleContentPreview = () => {
             <!-- Right Panel - Chat Assistant (Desktop) -->
             <div v-if="!isMobileView" :class="[
                 'flex min-h-0 flex-col bg-muted/20 border-l transition-all duration-300 ease-in-out',
-                isChatMinimized ? 'w-[60px]' : 'w-[450px] xl:w-[500px]'
+                isChatMinimized ? 'w-[60px]' : 'w-[600px] xl:w-[800px]'
             ]">
                 <ChatAssistant :is-minimized="isChatMinimized" :messages="chatMessages" :is-typing="isTyping"
                     :selected-text="selectedText" :chapter-content="chapterContent"

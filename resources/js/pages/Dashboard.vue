@@ -7,8 +7,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router } from '@inertiajs/vue3';
-import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info, HelpCircle } from 'lucide-vue-next';
+import { computed, onMounted } from 'vue';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 
 interface Props {
     user: {
@@ -55,7 +57,7 @@ interface Props {
 import CreditBalanceCard from '@/components/CreditBalanceCard.vue';
 import { useWordBalance } from '@/composables/useWordBalance';
 
-defineProps<Props>();
+const props = defineProps<Props>();
 
 // Use composable for real-time balance updates
 const { wordBalance } = useWordBalance();
@@ -97,6 +99,106 @@ const needsTopicWork = (project: Props['activeProject']) => {
     if (!project) return false;
     return ['topic_selection', 'topic_pending_approval', 'topic_approved', 'guidance'].includes(project.status);
 };
+
+const startTour = () => {
+    const steps = [
+        {
+            element: '#dashboard-header',
+            popover: {
+                title: 'Welcome to your Dashboard',
+                description: 'This is your central command center where you can manage all your writing projects and track your progress.'
+            }
+        },
+        {
+            element: '#app-sidebar',
+            popover: {
+                title: 'Navigation',
+                description: 'Navigate between projects, access the topic library, buy credits, and manage your account settings.'
+            }
+        },
+        {
+            element: '#app-header',
+            popover: {
+                title: 'Top Bar',
+                description: 'Toggle the sidebar, switch between light and dark themes, check your credit balance, and use the + button to top up.'
+            }
+        },
+        {
+            element: '#stats-overview',
+            popover: {
+                title: 'Stats Overview',
+                description: 'Keep track of your total projects, words written, research papers processed, and time invested at a glance.'
+            }
+        }
+    ];
+
+    if (props.activeProject) {
+        steps.push({
+            element: '#quick-actions',
+            popover: {
+                title: 'Quick Actions',
+                description: 'Jump straight back into your latest work or manage your project with a single click.'
+            }
+        });
+        steps.push({
+            element: '#active-project-section',
+            popover: {
+                title: 'Active Project',
+                description: 'Quickly access your current project, check its status, and continue where you left off.'
+            }
+        });
+    } else {
+        steps.push({
+            element: '#active-project-section',
+            popover: {
+                title: 'Start a Project',
+                description: 'Ready to begin? Click here to create your first project and start writing.'
+            }
+        });
+    }
+
+    steps.push(
+        {
+            element: '#credit-balance-card',
+            popover: {
+                title: 'Credit Balance',
+                description: 'Track your available credits for AI generation. "Purchased" shows credits you\'ve bought, while "Bonus" includes free or promotional credits. Credits are consumed when you use AI tools to write or edit content.'
+            }
+        },
+        {
+            element: '#recent-activity-card',
+            popover: {
+                title: 'Recent Activity',
+                description: 'Stay updated with a timeline of your recent actions and milestones.'
+            }
+        },
+        {
+            element: '#help-button',
+            popover: {
+                title: 'Need Help?',
+                description: 'You can restart this tour anytime by clicking here.'
+            }
+        }
+    );
+
+    const driverObj = driver({
+        showProgress: true,
+        animate: true,
+        steps: steps
+    });
+
+    driverObj.drive();
+    localStorage.setItem(`dashboard_tour_seen_${props.user.email}`, 'true');
+};
+
+onMounted(() => {
+    // Small delay to ensure DOM is ready and animations are settled
+    setTimeout(() => {
+        if (!localStorage.getItem(`dashboard_tour_seen_${props.user.email}`)) {
+            startTour();
+        }
+    }, 1000);
+});
 </script>
 
 <template>
@@ -106,7 +208,8 @@ const needsTopicWork = (project: Props['activeProject']) => {
                 <TooltipProvider>
                     <div class="space-y-8">
                         <!-- Header Section -->
-                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div id="dashboard-header"
+                            class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div class="space-y-1">
                                 <h1
                                     class="text-3xl md:text-3xl font-bold tracking-tight text-foreground bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
@@ -114,33 +217,42 @@ const needsTopicWork = (project: Props['activeProject']) => {
                                 </h1>
                                 <p class="text-muted-foreground">Here's what's happening with your projects today.</p>
                             </div>
-                            <div v-if="activeProject" class="w-full md:w-auto">
-                                <!-- Show Complete Setup only for projects in setup phase -->
-                                <Button v-if="needsSetupCompletion(activeProject)"
-                                    @click="() => router.visit(route('projects.show', activeProject!.slug))"
-                                    class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
-                                    <span class="mr-2">🚀</span>
-                                    Complete Setup
-                                </Button>
-                                <!-- Show Continue Writing for projects in writing phase -->
-                                <Button v-else-if="isInWritingPhase(activeProject)"
-                                    @click="() => router.visit(route('projects.writing', activeProject!.slug))"
-                                    class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
-                                    <PenTool class="mr-2 h-4 w-4" />
-                                    Continue Writing
-                                </Button>
-                                <!-- Show View Project for other statuses (topic selection, guidance, etc.) -->
-                                <Button v-else
-                                    @click="() => router.visit(route('projects.show', activeProject!.slug))"
-                                    class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
-                                    <Target class="mr-2 h-4 w-4" />
-                                    View Project
+                            <div class="flex items-center gap-2 w-full md:w-auto">
+                                <div id="quick-actions" v-if="activeProject" class="flex gap-2 w-full md:w-auto">
+                                    <!-- Show Complete Setup only for projects in setup phase -->
+                                    <Button v-if="needsSetupCompletion(activeProject)"
+                                        @click="() => router.visit(route('projects.show', activeProject!.slug))"
+                                        class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
+                                        <span class="mr-2">🚀</span>
+                                        Complete Setup
+                                    </Button>
+                                    <!-- Show Continue Writing for projects in writing phase -->
+                                    <Button v-else-if="isInWritingPhase(activeProject)"
+                                        @click="() => router.visit(route('projects.writing', activeProject!.slug))"
+                                        class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
+                                        <PenTool class="mr-2 h-4 w-4" />
+                                        Continue Writing
+                                    </Button>
+                                    <!-- Show View Project for other statuses (topic selection, guidance, etc.) -->
+                                    <Button v-else
+                                        @click="() => router.visit(route('projects.show', activeProject!.slug))"
+                                        class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
+                                        <Target class="mr-2 h-4 w-4" />
+
+                                        View Project
+                                    </Button>
+                                </div>
+                                <Button id="help-button" variant="outline" size="icon" @click="startTour"
+                                    title="Start Tour">
+                                    <HelpCircle class="h-4 w-4" />
                                 </Button>
                             </div>
                         </div>
 
+
+
                         <!-- Stats Overview (Premium Cards) -->
-                        <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                        <div id="stats-overview" class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                             <!-- Total Projects -->
                             <Card
                                 class="shadow-sm border-border/50 bg-card/50 backdrop-blur-sm relative overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
@@ -177,7 +289,7 @@ const needsTopicWork = (project: Props['activeProject']) => {
                                     <div>
                                         <p class="text-sm font-medium text-muted-foreground">Words Written</p>
                                         <h3 class="text-2xl font-bold tracking-tight">{{ formatNumber(stats.totalWords)
-                                            }}</h3>
+                                        }}</h3>
                                         <p class="text-xs text-muted-foreground mt-0.5">
                                             ~{{ formatNumber(stats.avgWordsPerChapter) }}/chapter
                                         </p>
@@ -239,7 +351,7 @@ const needsTopicWork = (project: Props['activeProject']) => {
 
                         <div class="grid gap-8 lg:grid-cols-3">
                             <!-- Main Content Area -->
-                            <div class="lg:col-span-2 space-y-8">
+                            <div id="active-project-section" class="lg:col-span-2 space-y-8">
 
                                 <!-- Active Project Card Refined -->
                                 <div v-if="activeProject"
@@ -271,7 +383,7 @@ const needsTopicWork = (project: Props['activeProject']) => {
                                             <div
                                                 class="text-left md:text-right bg-primary/5 p-3 rounded-lg border border-primary/10">
                                                 <div class="text-3xl font-bold text-primary">{{ activeProject.progress
-                                                    }}%</div>
+                                                }}%</div>
                                                 <div
                                                     class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
                                                     Completion</div>
@@ -447,10 +559,13 @@ const needsTopicWork = (project: Props['activeProject']) => {
                             <!-- Sidebar -->
                             <div class="space-y-6">
                                 <!-- Credit Balance Card -->
-                                <CreditBalanceCard v-if="wordBalance" :balance="wordBalance" />
+                                <div id="credit-balance-card">
+                                    <CreditBalanceCard v-if="wordBalance" :balance="wordBalance" />
+                                </div>
 
                                 <!-- Recent Activity Refined -->
-                                <Card class="border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
+                                <Card id="recent-activity-card"
+                                    class="border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
                                     <CardHeader class="pb-2">
                                         <CardTitle class="text-base font-semibold flex items-center gap-2">
                                             <div class="p-1.5 rounded-md bg-muted text-muted-foreground">

@@ -41,7 +41,7 @@ import {
     BookOpen,
     Lightbulb,
 } from 'lucide-vue-next';
-import { computed, nextTick, onMounted, ref, watch, withDefaults } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
 interface Message {
     id: number;
@@ -349,21 +349,21 @@ const stopGeneration = () => {
     ]">
         <!-- Chat Header -->
         <div :class="[
-            'flex flex-shrink-0 items-center justify-between border-b bg-muted/30',
-            isMobile ? 'p-3' : 'p-2'
+            'flex flex-shrink-0 items-center justify-between border-b bg-background/80 backdrop-blur-md sticky top-0 z-10',
+            isMobile ? 'p-3' : 'px-4 py-3'
         ]">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-3">
                 <!-- Mode Toggle -->
-                <div v-if="!isMinimized" class="flex rounded-md border bg-background p-0.5">
+                <div v-if="!isMinimized" class="flex items-center rounded-full border bg-muted/40 p-0.5 shadow-inner">
                     <Button @click="emit('change-mode', 'assist')"
-                        :variant="currentMode === 'assist' ? 'secondary' : 'ghost'" size="sm"
-                        class="h-7 px-2 text-xs gap-1.5">
+                        :variant="currentMode === 'assist' ? 'default' : 'ghost'" size="sm"
+                        class="h-7 rounded-full px-3 text-xs font-medium gap-1.5 transition-all duration-200">
                         <PenTool class="h-3.5 w-3.5" />
                         Assist
                     </Button>
                     <Button @click="emit('change-mode', 'review')"
-                        :variant="currentMode === 'review' ? 'secondary' : 'ghost'" size="sm"
-                        class="h-7 px-2 text-xs gap-1.5">
+                        :variant="currentMode === 'review' ? 'default' : 'ghost'" size="sm"
+                        class="h-7 rounded-full px-3 text-xs font-medium gap-1.5 transition-all duration-200">
                         <Search class="h-3.5 w-3.5" />
                         Review
                     </Button>
@@ -371,34 +371,41 @@ const stopGeneration = () => {
             </div>
 
             <div class="flex items-center gap-1">
-                <Button @click="startNewSession" variant="ghost" size="icon" class="h-8 w-8" title="New Session">
+                <Button @click="startNewSession" variant="ghost" size="icon"
+                    class="h-8 w-8 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full transition-colors"
+                    title="New Session">
                     <Plus class="h-4 w-4" />
                 </Button>
 
-                <div class="h-4 w-px bg-border mx-1"></div>
+                <div class="h-4 w-px bg-border/60 mx-1"></div>
 
                 <Button @click="toggleSearch" variant="ghost" size="icon"
-                    :class="['h-8 w-8', { 'bg-muted': showSearch }]" title="Search">
+                    :class="['h-8 w-8 rounded-full transition-colors', showSearch ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground hover:text-foreground']"
+                    title="Search">
                     <Search class="h-4 w-4" />
                 </Button>
 
                 <Button @click="toggleHistory" variant="ghost" size="icon"
-                    :class="['h-8 w-8', { 'bg-muted': showHistory }]" title="History">
+                    :class="['h-8 w-8 rounded-full transition-colors', showHistory ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground hover:text-foreground']"
+                    title="History">
                     <Clock class="h-4 w-4" />
                 </Button>
 
                 <Button @click="toggleFileUpload" variant="ghost" size="icon"
-                    :class="['h-8 w-8', { 'bg-muted': showFileUpload }]" title="Upload Context">
+                    :class="['h-8 w-8 rounded-full transition-colors', showFileUpload ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground hover:text-foreground']"
+                    title="Upload Context">
                     <FileText class="h-4 w-4" />
                 </Button>
 
-                <Button v-if="!isMobile" @click="emit('toggle-minimize')" variant="ghost" size="icon" class="h-8 w-8">
+                <Button v-if="!isMobile" @click="emit('toggle-minimize')" variant="ghost" size="icon"
+                    class="h-8 w-8 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full transition-colors">
                     <Minimize2 v-if="!isMinimized" class="h-4 w-4" />
                     <Maximize2 v-else class="h-4 w-4" />
                 </Button>
 
                 <!-- Mobile Close Button -->
-                <Button v-if="isMobile" @click="emit('toggle-minimize')" variant="ghost" size="icon" class="h-8 w-8">
+                <Button v-if="isMobile" @click="emit('toggle-minimize')" variant="ghost" size="icon"
+                    class="h-8 w-8 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full">
                     <X class="h-4 w-4" />
                 </Button>
             </div>
@@ -439,94 +446,103 @@ const stopGeneration = () => {
                     <div v-if="!showSearch && !showHistory && !showFileUpload" key="chat" class="flex flex-col h-full">
                         <!-- Enhanced Quick Actions Bar -->
                         <div :class="[
-                            'flex-shrink-0 border-b bg-muted/20',
-                            isMobile ? 'p-2' : 'p-1.5'
+                            'flex-shrink-0 border-b bg-background px-4 py-3',
                         ]">
                             <!-- Review Mode Actions -->
                             <div v-if="currentMode === 'review'" :class="[
-                                'flex flex-wrap gap-1',
-                                isMobile ? 'justify-center' : 'justify-start'
+                                'flex flex-wrap gap-2',
+                                isMobile ? 'justify-start overflow-x-auto pb-2 noscrollbar' : 'justify-start'
                             ]">
-                                <Button @click="handleQuickAction('overall-review')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <BarChart3 :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('overall-review')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <BarChart3 class="mr-1.5 h-3.5 w-3.5 text-blue-500" />
                                     Overall Review
                                 </Button>
-                                <Button @click="handleQuickAction('test-knowledge')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <HelpCircle :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('test-knowledge')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <HelpCircle class="mr-1.5 h-3.5 w-3.5 text-purple-500" />
                                     Test Knowledge
                                 </Button>
-                                <Button @click="handleQuickAction('find-weaknesses')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <Target :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('find-weaknesses')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <Target class="mr-1.5 h-3.5 w-3.5 text-red-500" />
                                     Find Weaknesses
                                 </Button>
-                                <Button @click="handleQuickAction('citation-check')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <BookCheck :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('citation-check')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <BookCheck class="mr-1.5 h-3.5 w-3.5 text-amber-500" />
                                     Check Citations
                                 </Button>
-                                <Button @click="handleQuickAction('structure-review')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <Building2 :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('structure-review')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <Building2 class="mr-1.5 h-3.5 w-3.5 text-indigo-500" />
                                     Review Structure
                                 </Button>
                             </div>
 
                             <!-- Assist Mode Actions -->
                             <div v-else :class="[
-                                'flex flex-wrap gap-1',
-                                isMobile ? 'justify-center' : 'justify-start'
+                                'flex flex-wrap gap-2',
+                                isMobile ? 'justify-start overflow-x-auto pb-2 noscrollbar' : 'justify-start'
                             ]">
-                                <Button @click="handleQuickAction('improve-writing')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <PenTool :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('improve-writing')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <PenTool class="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
                                     Improve Writing
                                 </Button>
-                                <Button @click="handleQuickAction('expand-section')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <Zap :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('expand-section')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <Zap class="mr-1.5 h-3.5 w-3.5 text-yellow-500" />
                                     Expand Section
                                 </Button>
-                                <Button @click="handleQuickAction('fix-grammar')" size="sm" variant="ghost"
-                                    :class="isMobile ? 'h-9 px-3 text-xs' : 'h-7 px-2.5 text-xs'">
-                                    <Type :class="isMobile ? 'mr-1.5 h-3.5 w-3.5' : 'mr-1 h-3 w-3'" />
+                                <Button @click="handleQuickAction('fix-grammar')" size="sm" variant="outline"
+                                    class="h-8 rounded-full px-3 text-xs bg-card hover:bg-muted/50 border-input transition-all">
+                                    <Type class="mr-1.5 h-3.5 w-3.5 text-blue-500" />
                                     Fix Grammar
                                 </Button>
                             </div>
                         </div>
 
                         <!-- Chapter Context Panel -->
-                        <div
-                            class="flex-shrink-0 border-b bg-gradient-to-r from-green-50 to-blue-50 p-2 dark:from-green-950/20 dark:to-blue-950/20">
-                            <div class="flex items-start gap-2">
-                                <Brain class="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600 dark:text-green-400" />
-                                <div class="min-w-0 flex-1">
-                                    <p class="text-xs font-medium text-green-700 dark:text-green-300">AI Context:</p>
-                                    <p class="text-xs text-green-600 dark:text-green-400">
-                                        I can see your full chapter content ({{ Math.round(chapterContent.length / 1000)
-                                        }}k chars) and will provide specific
-                                        advice
-                                    </p>
-                                </div>
+                        <div class="flex-shrink-0 border-b bg-muted/20 px-4 py-2">
+                            <div class="flex items-center gap-2">
+                                <Badge variant="secondary"
+                                    class="h-5 px-1.5 text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 gap-1 border-0">
+                                    <Brain class="h-3 w-3" />
+                                    Context Active
+                                </Badge>
+                                <span class="text-[10px] text-muted-foreground truncate">
+                                    Analyzing {{ Math.round(chapterContent.length / 1000) }}k characters of content
+                                </span>
                             </div>
                         </div>
 
                         <!-- Selected Text Context -->
-                        <div v-if="hasSelectedText" class="flex-shrink-0 border-b bg-blue-50 p-2 dark:bg-blue-950/20">
-                            <div class="flex items-start gap-2">
-                                <Sparkles class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
-                                <div class="min-w-0 flex-1">
-                                    <p class="text-xs font-medium text-blue-700 dark:text-blue-300">Selected text:</p>
-                                    <p class="truncate text-xs text-blue-600 dark:text-blue-400">
-                                        "{{ selectedText.substring(0, 60) }}{{ selectedText.length > 60 ? '...' : '' }}"
-                                    </p>
+                        <Transition name="slide-down">
+                            <div v-if="hasSelectedText"
+                                class="flex-shrink-0 border-b bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2">
+                                <div class="flex items-start gap-3">
+                                    <div
+                                        class="mt-0.5 p-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400">
+                                        <Sparkles class="h-3.5 w-3.5" />
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <p class="text-xs font-medium text-blue-700 dark:text-blue-300">Selected
+                                                text context</p>
+                                            <Button @click="suggestWithSelectedText" size="sm" variant="ghost"
+                                                class="h-5 px-2 text-[10px] hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400">
+                                                Ask AI
+                                            </Button>
+                                        </div>
+                                        <p
+                                            class="text-xs text-muted-foreground italic line-clamp-2 border-l-2 border-blue-200 dark:border-blue-800 pl-2">
+                                            "{{ selectedText }}"
+                                        </p>
+                                    </div>
                                 </div>
-                                <Button @click="suggestWithSelectedText" size="sm" variant="outline"
-                                    class="h-6 px-2 text-xs"> Help </Button>
                             </div>
-                        </div>
+                        </Transition>
 
                         <!-- File Upload Panel -->
                         <Transition name="slide-down" appear>
@@ -543,58 +559,59 @@ const stopGeneration = () => {
                             <div class="min-h-full space-y-4 p-3">
                                 <TransitionGroup name="message-list" tag="div" class="space-y-4">
                                     <div v-for="message in messages" :key="message.id"
-                                        :class="['flex gap-3', message.type === 'user' ? 'justify-end' : 'justify-start']">
+                                        :class="['flex gap-4 group', message.type === 'user' ? 'justify-end' : 'justify-start']">
                                         <!-- AI/System Message -->
-                                        <div v-if="message.type !== 'user'" class="flex max-w-[85%] gap-2">
+                                        <div v-if="message.type !== 'user'" class="flex max-w-[90%] gap-3">
                                             <div :class="[
-                                                'mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full',
-                                                message.type === 'ai' ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-orange-500',
+                                                'mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full shadow-sm border border-border/50',
+                                                message.type === 'ai' ? 'bg-gradient-to-br from-indigo-500 to-violet-600' : 'bg-orange-500',
                                             ]">
-                                                <Bot v-if="message.type === 'ai'" class="h-3 w-3 text-white" />
-                                                <AlertCircle v-else class="h-3 w-3 text-white" />
+                                                <Bot v-if="message.type === 'ai'" class="h-4 w-4 text-white" />
+                                                <AlertCircle v-else class="h-4 w-4 text-white" />
                                             </div>
 
-                                            <div class="flex-1">
+                                            <div class="flex-1 min-w-0">
                                                 <div :class="[
-                                                    'rounded-lg p-3 text-sm',
+                                                    'rounded-2xl rounded-tl-none px-6 py-4 shadow-sm transition-all duration-200',
                                                     message.type === 'ai'
-                                                        ? 'border bg-muted'
-                                                        : 'border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20',
+                                                        ? 'bg-card border border-border/50 text-card-foreground'
+                                                        : 'border border-orange-200 bg-orange-50/50 dark:border-orange-900/50 dark:bg-orange-950/20',
                                                 ]">
                                                     <!-- Show content or streaming indicator -->
                                                     <RichTextViewer v-if="message.content" :content="message.content"
-                                                        class="prose prose-sm dark:prose-invert max-w-none chat-message-ai" />
+                                                        class="prose dark:prose-invert max-w-none chat-message-ai leading-relaxed text-lg" />
 
                                                     <!-- Streaming Indicator for empty messages -->
                                                     <div v-else-if="message.isStreaming"
-                                                        class="flex items-center gap-2 py-2">
-                                                        <div class="flex gap-1">
+                                                        class="flex items-center gap-2 py-1">
+                                                        <div class="flex gap-1.5">
                                                             <div
-                                                                class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60">
+                                                                class="h-2 w-2 animate-bounce rounded-full bg-primary/40">
                                                             </div>
-                                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60"
+                                                            <div class="h-2 w-2 animate-bounce rounded-full bg-primary/40"
                                                                 style="animation-delay: 0.1s"></div>
-                                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60"
+                                                            <div class="h-2 w-2 animate-bounce rounded-full bg-primary/40"
                                                                 style="animation-delay: 0.2s"></div>
                                                         </div>
                                                         <span
-                                                            class="text-xs text-muted-foreground/80">Thinking...</span>
+                                                            class="text-xs text-muted-foreground font-medium">Thinking...</span>
                                                     </div>
 
                                                     <!-- Enhanced Message Actions -->
                                                     <div v-if="message.type === 'ai'"
-                                                        class="mt-2 flex items-center justify-between border-t border-border/50 pt-2">
+                                                        class="mt-3 flex items-center justify-between border-t border-border/40 pt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                                         <div class="flex items-center gap-1">
                                                             <!-- Retry button for failed messages -->
                                                             <Button v-if="message.failed" @click="retryMessage(message)"
-                                                                size="sm" variant="outline"
-                                                                class="h-6 px-2 text-xs border-orange-300 text-orange-600 hover:bg-orange-50">
+                                                                size="sm" variant="ghost"
+                                                                class="h-6 px-2 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30">
                                                                 <RotateCcwIcon class="mr-1 h-3 w-3" />
                                                                 Try Again
                                                             </Button>
 
                                                             <Button @click="copyMessage(message)" size="sm"
-                                                                variant="ghost" class="h-6 px-2 text-xs"
+                                                                variant="ghost"
+                                                                class="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
                                                                 :disabled="copiedMessageId === message.id || copiedMessageId === -1">
                                                                 <Copy
                                                                     v-if="copiedMessageId !== message.id && copiedMessageId !== -1"
@@ -609,111 +626,132 @@ const stopGeneration = () => {
                                                                 <span v-else>Copy</span>
                                                             </Button>
                                                             <Button @click="emit('rate-message', message.id, 1)"
-                                                                size="sm" variant="ghost" class="h-6 px-2 text-xs">
+                                                                size="sm" variant="ghost"
+                                                                class="h-6 px-2 text-xs text-muted-foreground hover:text-foreground">
                                                                 <ThumbsUp class="h-3 w-3" />
                                                             </Button>
                                                             <Button @click="emit('rate-message', message.id, -1)"
-                                                                size="sm" variant="ghost" class="h-6 px-2 text-xs">
+                                                                size="sm" variant="ghost"
+                                                                class="h-6 px-2 text-xs text-muted-foreground hover:text-foreground">
                                                                 <ThumbsDown class="h-3 w-3" />
                                                             </Button>
                                                         </div>
 
                                                         <!-- Model indicator -->
-                                                        <Badge variant="outline" class="text-xs">
-                                                            {{ currentMode === 'review' ? 'GPT-4o' : 'GPT-4o-mini' }}
-                                                        </Badge>
+                                                        <span
+                                                            class="text-[10px] uppercase font-semibold text-muted-foreground/60 tracking-wider">
+                                                            AI Assistant
+                                                        </span>
                                                     </div>
                                                 </div>
 
-                                                <p class="mt-1 px-1 text-xs text-muted-foreground">
+                                                <p
+                                                    class="mt-1.5 px-1 text-[10px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                     {{ formatTimestamp(message.timestamp) }}
                                                 </p>
                                             </div>
                                         </div>
 
                                         <!-- User Message -->
-                                        <div v-else class="flex max-w-[85%] gap-2">
-                                            <div class="flex-1 text-right">
-                                                <div
-                                                    class="inline-block rounded-lg bg-primary p-3 text-sm text-primary-foreground">
-                                                    <RichTextViewer :content="message.content"
-                                                        class="prose prose-sm prose-invert max-w-none chat-message-user" />
-                                                </div>
-                                                <p class="mt-1 px-1 text-xs text-muted-foreground">
-                                                    {{ formatTimestamp(message.timestamp) }}
-                                                </p>
+                                        <div v-else class="flex max-w-[85%] gap-3 flex-row-reverse">
+                                            <div
+                                                class="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary shadow-sm">
+                                                <User class="h-4 w-4 text-primary-foreground" />
                                             </div>
 
-                                            <div
-                                                class="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary">
-                                                <User class="h-3 w-3 text-primary-foreground" />
+                                            <div class="flex-1 text-right">
+                                                <div
+                                                    class="inline-block rounded-2xl rounded-tr-sm bg-primary px-6 py-4 text-primary-foreground shadow-md text-left">
+                                                    <RichTextViewer :content="message.content"
+                                                        class="prose max-w-none chat-message-user leading-relaxed text-lg break-words text-primary-foreground grayscale-0" />
+                                                </div>
+                                                <p
+                                                    class="mt-1.5 px-1 text-[10px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                    {{ formatTimestamp(message.timestamp) }}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
                                 </TransitionGroup>
-
-                                <!-- Typing Indicator -->
-                                <Transition name="fade">
-                                    <div v-if="isTyping" class="flex gap-2">
-                                        <div
-                                            class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600">
-                                            <Bot class="h-3 w-3 text-white" />
-                                        </div>
-                                        <div class="max-w-[85%] rounded-lg border bg-muted p-3">
-                                            <div class="flex items-center gap-1">
-                                                <div class="flex gap-1">
-                                                    <div
-                                                        class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground">
-                                                    </div>
-                                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
-                                                        style="animation-delay: 0.1s"></div>
-                                                    <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
-                                                        style="animation-delay: 0.2s"></div>
-                                                </div>
-                                                <span class="ml-2 text-xs text-muted-foreground">AI is
-                                                    thinking...</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Transition>
                             </div>
                         </ScrollArea>
 
-                        <!-- Input Area -->
-                        <div class="flex-shrink-0 border-t bg-background p-3">
-                            <div class="relative">
+
+
+                        <!-- Typing Indicator -->
+                        <Transition name="fade">
+                            <div v-if="isTyping" class="flex gap-2">
+                                <div
+                                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 shadow-md">
+                                    <Bot class="h-4 w-4 text-white" />
+                                </div>
+                                <div class="max-w-[85%] rounded-lg border bg-muted p-3">
+                                    <div class="flex items-center gap-1">
+                                        <div class="flex gap-1">
+                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground">
+                                            </div>
+                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
+                                                style="animation-delay: 0.1s"></div>
+                                            <div class="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
+                                                style="animation-delay: 0.2s"></div>
+                                        </div>
+                                        <span class="ml-2 text-xs text-muted-foreground">AI is
+                                            thinking...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </Transition>
+
+
+
+                        <!-- Enhanced Input Area -->
+                        <div class="flex-shrink-0 border-t bg-background/50 backdrop-blur-sm p-4">
+                            <div
+                                class="relative rounded-xl border bg-background shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                                 <CompactRichTextEditor ref="inputRef" :model-value="input"
                                     @update:model-value="emit('update:input', $event)" @submit="handleSendMessage"
                                     @keydown="handleKeydown" :disabled="isTyping" :show-toolbar="false"
-                                    placeholder="Ask about your chapter..." class="pr-12" />
+                                    placeholder="Ask anything about your chapter..."
+                                    class="pr-12 min-h-[50px] max-h-[150px] py-1" />
 
                                 <!-- Send/Stop Button -->
-                                <div class="absolute right-2 top-1/2 -translate-y-1/2">
-                                    <Button v-if="!isTyping" @click="handleSendMessage" size="sm" variant="ghost"
-                                        class="h-8 w-8 p-0 rounded-full hover:bg-primary hover:text-primary-foreground"
+                                <div class="absolute right-2 bottom-2">
+                                    <Button v-if="!isTyping" @click="handleSendMessage" size="icon"
+                                        class="h-8 w-8 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
                                         :disabled="!input.trim()">
                                         <Send class="h-4 w-4" />
                                     </Button>
-                                    <Button v-else @click="stopGeneration" size="sm" variant="ghost"
-                                        class="h-8 w-8 p-0 rounded-full hover:bg-destructive hover:text-destructive-foreground">
+                                    <Button v-else @click="stopGeneration" size="icon" variant="destructive"
+                                        class="h-8 w-8 rounded-lg shadow-sm animate-pulse">
                                         <Square class="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
 
-                            <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                                <span v-if="!isTyping">Press Enter to send, Shift+Enter for new line</span>
-                                <span v-else class="flex items-center gap-1">
-                                    <div class="h-3 w-3 animate-spin rounded-full border-b border-current"></div>
-                                    Generating response...
-                                </span>
+                            <div class="mt-2 flex items-center justify-between px-1">
                                 <div class="flex items-center gap-2">
-                                    <Button @click="startNewSession" variant="outline" size="sm"
-                                        class="h-6 px-2 text-xs" :disabled="isTyping || messages.length === 0">
-                                        <Plus class="mr-1 h-3 w-3" />
-                                        New Session
+                                    <span v-if="!isTyping" class="text-[10px] text-muted-foreground">
+                                        <span class="font-medium text-foreground/80">Tip:</span> Press <kbd
+                                            class="px-1 py-0.5 rounded bg-muted font-mono text-[9px]">Enter</kbd> to
+                                        send
+                                    </span>
+                                    <span v-else class="flex items-center gap-1.5 text-[10px] text-primary font-medium">
+                                        <span class="relative flex h-2 w-2">
+                                            <span
+                                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                        </span>
+                                        AI is writing...
+                                    </span>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <Button @click="startNewSession" variant="ghost" size="sm"
+                                        class="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                                        :disabled="isTyping">
+                                        <Plus class="h-3 w-3" />
+                                        Clear Chat
                                     </Button>
-                                    <Badge variant="secondary" class="text-xs"> {{ messages.length }} messages </Badge>
                                 </div>
                             </div>
                         </div>
@@ -728,16 +766,16 @@ const stopGeneration = () => {
 /* Chat Message Font Styles */
 :deep(.chat-message-ai) {
     font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-    font-size: 0.875rem;
-    line-height: 1.6;
+    font-size: 1.125rem;
+    line-height: 1.7;
     font-weight: 400;
     letter-spacing: 0.01em;
 }
 
 :deep(.chat-message-ai p) {
-    margin-bottom: 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.6;
+    margin-bottom: 0.85rem;
+    font-size: 1.125rem;
+    line-height: 1.7;
 }
 
 :deep(.chat-message-ai p:last-child) {
@@ -773,19 +811,62 @@ const stopGeneration = () => {
     line-height: 1.5;
 }
 
-/* User Message Styles */
+/* User Message Styles - Enforce Primary Foreground Color */
 :deep(.chat-message-user) {
+    background-color: transparent !important;
     font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-    font-size: 0.875rem;
-    line-height: 1.5;
+    font-size: 1.125rem;
+    line-height: 1.6;
     font-weight: 400;
     letter-spacing: 0.01em;
+
+    /* Override prose colors to match primary-foreground (e.g. white text on black bubble, or black text on white bubble) */
+    --tw-prose-body: hsl(var(--primary-foreground));
+    --tw-prose-headings: hsl(var(--primary-foreground));
+    --tw-prose-lead: hsl(var(--primary-foreground));
+    --tw-prose-links: hsl(var(--primary-foreground));
+    --tw-prose-bold: hsl(var(--primary-foreground));
+    --tw-prose-counters: hsl(var(--primary-foreground));
+    --tw-prose-bullets: hsl(var(--primary-foreground));
+    --tw-prose-hr: hsl(var(--primary-foreground));
+    --tw-prose-quotes: hsl(var(--primary-foreground));
+    --tw-prose-quote-borders: hsl(var(--primary-foreground));
+    --tw-prose-captions: hsl(var(--primary-foreground));
+    --tw-prose-code: hsl(var(--primary-foreground));
+    --tw-prose-pre-code: hsl(var(--primary-foreground));
+    --tw-prose-pre-bg: transparent;
+    /* Remove distinctive code block backgrounds in bubbles */
+    --tw-prose-th-borders: hsl(var(--primary-foreground));
+    --tw-prose-td-borders: hsl(var(--primary-foreground));
+    color: hsl(var(--primary-foreground));
+}
+
+:deep(.chat-message-user .ProseMirror),
+:deep(.chat-message-user .ProseMirror p),
+:deep(.chat-message-user .ProseMirror h1),
+:deep(.chat-message-user .ProseMirror h2),
+:deep(.chat-message-user .ProseMirror h3),
+:deep(.chat-message-user .ProseMirror ul),
+:deep(.chat-message-user .ProseMirror ol),
+:deep(.chat-message-user .ProseMirror li) {
+    background-color: transparent !important;
+    color: hsl(var(--primary-foreground)) !important;
+}
+
+/* Fix AI Message Background as well to blend with card */
+:deep(.chat-message-ai) {
+    background-color: transparent !important;
+}
+
+:deep(.chat-message-ai .ProseMirror) {
+    background-color: transparent !important;
 }
 
 :deep(.chat-message-user p) {
     margin-bottom: 0.5rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: inherit;
 }
 
 :deep(.chat-message-user p:last-child) {
@@ -797,12 +878,12 @@ const stopGeneration = () => {
 
     :deep(.chat-message-ai),
     :deep(.chat-message-user) {
-        font-size: 0.8rem;
+        font-size: 0.9rem;
     }
 
     :deep(.chat-message-ai p),
     :deep(.chat-message-user p) {
-        font-size: 0.8rem;
+        font-size: 0.9rem;
     }
 }
 

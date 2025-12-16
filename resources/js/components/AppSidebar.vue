@@ -37,11 +37,11 @@ const mainNavItems: NavItem[] = [
 ];
 
 const footerNavItems: NavItem[] = [
-    {
-        title: 'Github Repo',
-        href: 'https://github.com/Adamcy-lvts/finalyze',
-        icon: Folder,
-    },
+    // {
+    //     title: 'Github Repo',
+    //     href: 'https://github.com/Adamcy-lvts/finalyze',
+    //     icon: Folder,
+    // },
     {
         title: 'Documentation',
         href: '#',
@@ -51,7 +51,7 @@ const footerNavItems: NavItem[] = [
 </script>
 
 <template>
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar id="app-sidebar" collapsible="icon" variant="inset">
         <SidebarHeader>
             <SidebarMenu>
                 <SidebarMenuItem>
