@@ -205,7 +205,7 @@ const handleContentInsert = (text: string, position?: { from: number; to: number
                     />
 
                     <CitationHelper v-model:show-citation-helper="showCitationHelper" :chapter-content="content"
-                        @insert-citation="(c) => handleContentInsert(c)" />
+                        :chapter-id="chapter.id" @insert-citation="(c) => handleContentInsert(c)" />
 
                     <!-- NEW: SmartSuggestionPanel -->
                     <SmartSuggestionPanel v-if="currentSuggestion" :suggestion="currentSuggestion"

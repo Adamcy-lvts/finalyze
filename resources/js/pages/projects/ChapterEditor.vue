@@ -14,7 +14,7 @@ import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 // SafeHtmlText DISABLED - causes dark mode issues
 // import SafeHtmlText from '@/components/SafeHtmlText.vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -59,6 +59,7 @@ import { useChapterAnalysis } from '@/composables/useChapterAnalysis';
 
 
 const props = defineProps<ChapterEditorProps>();
+const page = usePage();
 
 const richTextEditor = ref<{ editor?: any } | null>(null);
 const richTextEditorFullscreen = ref<{ editor?: any } | null>(null);

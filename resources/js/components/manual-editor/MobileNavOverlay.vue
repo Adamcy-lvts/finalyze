@@ -205,13 +205,14 @@ const handleInsertCitation = (citation: string) => emit('insertCitation', citati
 
               <Separator class="bg-border/50" />
 
-              <!-- Citation Helper -->
-              <CitationHelper
-                v-model:show-citation-helper="localShowCitationHelper"
-                :chapter-content="chapterContent"
-                @insert-citation="handleInsertCitation"
-                @update:show-citation-helper="handleUpdateShowCitationHelper"
-              />
+	              <!-- Citation Helper -->
+	              <CitationHelper
+	                v-model:show-citation-helper="localShowCitationHelper"
+	                :chapter-content="chapterContent"
+	                :chapter-id="currentChapter?.id || 0"
+	                @insert-citation="handleInsertCitation"
+	                @update:show-citation-helper="handleUpdateShowCitationHelper"
+	              />
 
               <Separator class="bg-border/50" />
 

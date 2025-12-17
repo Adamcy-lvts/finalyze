@@ -49,6 +49,7 @@ interface WizardData {
 interface ResumeProject {
     id: number;
     current_step: number;
+    setup_step?: number;
     wizard_data: WizardData;
 }
 
@@ -762,16 +763,20 @@ function onSubmit(values: any) {
 
 <template>
     <AppLayout title="Create New Project">
-        <div class="mx-auto max-w-4xl space-y-6">
-            <div>
-                <h1 class="text-3xl font-bold">Create Your Project</h1>
-                <p class="text-muted-foreground">Set up your final year project in just a few steps</p>
-                <div v-if="currentStep > 1"
-                    class="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-600">
-                    💡 <strong>Tip:</strong> You can click on any previous step to go back and make changes. Your
-                    progress is automatically saved!
+        <div class="min-h-screen bg-gradient-to-b from-background via-background/95 to-muted/20">
+            <div class="mx-auto max-w-4xl space-y-6 p-6 pb-20 lg:p-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div>
+                    <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">Create Your Project</h1>
+                    <p class="text-muted-foreground mt-2 text-lg">Set up your final year project in just a few steps</p>
+                    <div v-if="currentStep > 1"
+                        class="mt-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4 text-sm text-blue-600 backdrop-blur-sm flex items-start gap-3 shadow-sm">
+                        <span class="text-lg">💡</span>
+                        <div>
+                            <strong>Tip:</strong> You can click on any previous step to go back and make changes. Your
+                        progress is automatically saved!
+                        </div>
+                    </div>
                 </div>
-            </div>
 
             <Card>
                 <CardContent class="pt-6">
@@ -1282,5 +1287,6 @@ function onSubmit(values: any) {
         <WizardDebugPanel v-if="isDevelopment" :current-step="currentStep" :project-id="currentProjectId"
             :form-values="currentFormValues" :saved-values="lastSavedValues" :is-initializing="isInitializing"
             @force-save="() => saveProgress(currentStep, currentFormValues)" @reset-form="() => { }" />
+        </div>
     </AppLayout>
 </template>

@@ -37,7 +37,9 @@ import {
     AlertCircle,
     Check,
     Loader2,
-    LogOut
+    LogOut,
+    School,
+    Lightbulb
 } from 'lucide-vue-next';
 
 // Types
@@ -403,8 +405,88 @@ onMounted(() => {
             }
         });
 
-        // Refresh ScrollTrigger to ensure positions are correct
         ScrollTrigger.refresh();
+
+        // Journey Section Animation (Detailed Loop)
+        const journeySteps = document.querySelectorAll('.journey-step-item');
+        const journeyLine = document.querySelector('.journey-line-progress');
+
+        if (journeySteps.length > 0) {
+            // Colors for each step
+            const stepColors = ['#818cf8', '#c084fc', '#fbbf24', '#34d399']; // Indigo, Purple, Amber, Emerald
+
+            // Initial Timeline (Entrance)
+            const entryTl = gsap.timeline({
+                scrollTrigger: {
+                    trigger: '#how-it-works',
+                    start: 'top 75%',
+                    onEnter: () => startJourneyLoop()
+                }
+            });
+
+            entryTl.from(journeySteps, {
+                y: 50,
+                opacity: 0,
+                duration: 0.8,
+                stagger: 0.2,
+                ease: 'back.out(1.7)'
+            });
+
+            // Master Loop function
+            function startJourneyLoop() {
+                const masterTl = gsap.timeline({ repeat: -1, repeatDelay: 1 });
+
+                // Reset State
+                masterTl.set(journeyLine, { width: '0%', opacity: 1 })
+                        .set('.processing-ring', { opacity: 0, rotation: 0 })
+                        .set('.step-completed-bg', { opacity: 0 })
+                        .set('.mobile-line-progress', { height: '0%' })
+                        .set('.journey-step-icon', { color: '#71717a', scale: 1 }) // zinc-500
+                        .set('.journey-step-icon-bg', { borderColor: '#27272a' }); // zinc-800
+
+                journeySteps.forEach((step, index) => {
+                    // Use querySelectorAll to target BOTH desktop and mobile versions of elements
+                    const rings = step.querySelectorAll('.processing-ring');
+                    const iconBgs = step.querySelectorAll('.journey-step-icon-bg');
+                    const icons = step.querySelectorAll('.journey-step-icon');
+                    const completedBgs = step.querySelectorAll('.step-completed-bg');
+                    const mobileLine = step.querySelector('.mobile-line-progress');
+                    const color = stepColors[index];
+
+                    // Set mobile line color
+                    if (mobileLine) {
+                        gsap.set(mobileLine, { backgroundColor: color });
+                    }
+
+                    // Step Processing State
+                    masterTl.addLabel(`step-${index}`)
+                            .to(rings, { opacity: 1, duration: 0.3 }, `step-${index}`)
+                            .to(rings, { rotation: 360, duration: 2, ease: 'linear', repeat: 0 }, `step-${index}`) // Rotate once per step duration
+                            .to(icons, { color: color, scale: 1.2, duration: 0.5, yoyo: true, repeat: 3 }, `step-${index}`)
+                            .to(iconBgs, { borderColor: color, duration: 0.5 }, `step-${index}`);
+
+                    // Step Completion State
+                    masterTl.to(rings, { opacity: 0, duration: 0.3 })
+                            .to(completedBgs, { opacity: 1, duration: 0.5 }, "<")
+                            .to(icons, { color: color, scale: 1, duration: 0.5 }, "<");
+
+                    // Animate Line to next segment
+                    if (index < journeySteps.length - 1) {
+                         // e.g. 0 -> 33%, 33% -> 66%, 66% -> 100%
+                         const nextWidth = ((index + 1) / (journeySteps.length - 1)) * 100;
+                         masterTl.to(journeyLine, { width: `${nextWidth}%`, duration: 0.8, ease: 'power2.inOut' });
+                         
+                         // Animate Mobile Line
+                         if (mobileLine) {
+                             masterTl.to(mobileLine, { height: '100%', duration: 0.8, ease: 'power2.inOut' }, "<");
+                         }
+                    }
+                });
+
+                // End of Loop: Fade out line to restart
+                masterTl.to(journeyLine, { opacity: 0, duration: 0.5, delay: 0.5 });
+            }
+        }
     });
 });
 
@@ -730,6 +812,136 @@ onUnmounted(() => {
                                 Real-time checks for academic tone, clarity, and argument flow to help you aim for that
                                 distinction.
                             </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- How It Works (Journey) -->
+            <section id="how-it-works" class="py-24 relative overflow-hidden bg-[#0c0c0e]">
+                <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+                    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-[100px]"></div>
+                </div>
+
+                <div class="max-w-7xl mx-auto px-6 relative z-10">
+                    <div class="text-center max-w-3xl mx-auto mb-20 gsap-fade-up">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900/50 border border-white/10 text-indigo-400 text-xs font-medium mb-6 backdrop-blur-md">
+                            <span class="flex h-2 w-2 relative">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                            </span>
+                            Simple Workflow
+                        </div>
+                        <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white tracking-tight">
+                            From Idea to Approval in <span class="text-indigo-500">Minutes</span>
+                        </h2>
+                        <p class="text-zinc-400 text-lg">
+                            Stop worrying about "what to write". Finalyze guides you from a blank page to a signed-off topic.
+                        </p>
+                    </div>
+
+                    <div class="relative">
+                        <!-- Connecting Line (Desktop) -->
+                        <div class="hidden md:block absolute top-[2.5rem] left-[12.5%] w-[75%] h-0.5 bg-zinc-800/50">
+                            <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 w-0 journey-line-progress"></div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 relative journey-steps">
+                            <!-- Step 1: Profile -->
+                            <div class="relative group journey-step-item">
+                                <div class="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-[#09090b] border border-zinc-800 relative z-10 mx-auto mb-8 transition-all duration-300 journey-step-icon-bg">
+                                    <div class="absolute inset-[-4px] rounded-2xl border-2 border-dashed border-indigo-500/50 opacity-0 processing-ring"></div>
+                                    <div class="absolute inset-0 bg-indigo-500/10 rounded-2xl opacity-0 transition-opacity step-completed-bg"></div>
+                                    <School class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
+                                </div>
+                                <!-- Mobile connector -->
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-48px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                    <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
+                                </div>
+
+                                <div class="pl-16 md:pl-0 md:text-center relative">
+                                    <div class="md:hidden absolute left-0 top-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#09090b] border border-zinc-800 z-10 journey-step-icon-bg">
+                                        <div class="absolute inset-[-4px] rounded-lg border-2 border-dashed border-indigo-500/50 opacity-0 processing-ring"></div>
+                                        <div class="absolute inset-0 bg-indigo-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
+                                        <School class="w-5 h-5 text-indigo-400 transition-colors relative z-10 journey-step-icon" />
+                                    </div>
+                                    <h3 class="text-xl font-bold text-white mb-2">1. Profile Setup</h3>
+                                    <p class="text-sm text-zinc-400 leading-relaxed">
+                                        Tell us your university, faculty, and level. We tailor the AI to your specific institution's standards.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: Discovery -->
+                            <div class="relative group journey-step-item">
+                                <div class="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-[#09090b] border border-zinc-800 relative z-10 mx-auto mb-8 transition-all duration-300 journey-step-icon-bg">
+                                    <div class="absolute inset-[-4px] rounded-2xl border-2 border-dashed border-purple-500/50 opacity-0 processing-ring"></div>
+                                    <div class="absolute inset-0 bg-purple-500/10 rounded-2xl opacity-0 transition-opacity step-completed-bg"></div>
+                                    <Lightbulb class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
+                                </div>
+                                <!-- Mobile connector -->
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-48px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                    <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
+                                </div>
+
+                                <div class="pl-16 md:pl-0 md:text-center relative">
+                                    <div class="md:hidden absolute left-0 top-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#09090b] border border-zinc-800 z-10 journey-step-icon-bg">
+                                        <div class="absolute inset-[-4px] rounded-lg border-2 border-dashed border-purple-500/50 opacity-0 processing-ring"></div>
+                                        <div class="absolute inset-0 bg-purple-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
+                                        <Lightbulb class="w-5 h-5 text-purple-400 transition-colors relative z-10 journey-step-icon" />
+                                    </div>
+                                    <h3 class="text-xl font-bold text-white mb-2">2. Topic Discovery</h3>
+                                    <p class="text-sm text-zinc-400 leading-relaxed">
+                                        Our AI analyzes your field to generate 5 novel, feasible research topics with descriptions.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Step 3: Proposal -->
+                            <div class="relative group journey-step-item">
+                                <div class="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-[#09090b] border border-zinc-800 relative z-10 mx-auto mb-8 transition-all duration-300 journey-step-icon-bg">
+                                    <div class="absolute inset-[-4px] rounded-2xl border-2 border-dashed border-amber-500/50 opacity-0 processing-ring"></div>
+                                    <div class="absolute inset-0 bg-amber-500/10 rounded-2xl opacity-0 transition-opacity step-completed-bg"></div>
+                                    <FileText class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
+                                </div>
+                                <!-- Mobile connector -->
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-48px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                    <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
+                                </div>
+
+                                <div class="pl-16 md:pl-0 md:text-center relative">
+                                    <div class="md:hidden absolute left-0 top-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#09090b] border border-zinc-800 z-10 journey-step-icon-bg">
+                                        <div class="absolute inset-[-4px] rounded-lg border-2 border-dashed border-amber-500/50 opacity-0 processing-ring"></div>
+                                        <div class="absolute inset-0 bg-amber-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
+                                        <FileText class="w-5 h-5 text-amber-400 transition-colors relative z-10 journey-step-icon" />
+                                    </div>
+                                    <h3 class="text-xl font-bold text-white mb-2">3. Supervisor Proposal</h3>
+                                    <p class="text-sm text-zinc-400 leading-relaxed">
+                                        Download a professional PDF proposal to present to your supervisor. Get sign-off with confidence.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Step 4: Approval -->
+                            <div class="relative group journey-step-item">
+                                <div class="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-[#09090b] border border-zinc-800 relative z-10 mx-auto mb-8 transition-all duration-300 journey-step-icon-bg">
+                                    <div class="absolute inset-[-4px] rounded-2xl border-2 border-dashed border-emerald-500/50 opacity-0 processing-ring"></div>
+                                    <div class="absolute inset-0 bg-emerald-500/10 rounded-2xl opacity-0 transition-opacity step-completed-bg"></div>
+                                    <CheckCircle class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
+                                </div>
+
+                                <div class="pl-16 md:pl-0 md:text-center relative">
+                                    <div class="md:hidden absolute left-0 top-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#09090b] border border-zinc-800 z-10 journey-step-icon-bg">
+                                        <div class="absolute inset-[-4px] rounded-lg border-2 border-dashed border-emerald-500/50 opacity-0 processing-ring"></div>
+                                        <div class="absolute inset-0 bg-emerald-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
+                                        <CheckCircle class="w-5 h-5 text-emerald-400 transition-colors relative z-10 journey-step-icon" />
+                                    </div>
+                                    <h3 class="text-xl font-bold text-white mb-2">4. Start Writing</h3>
+                                    <p class="text-sm text-zinc-400 leading-relaxed">
+                                        Once approved, the AI unlocks the Chapter Editor. It knows your context, so it writes like you—only better.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
