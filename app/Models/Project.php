@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ChapterStatus;
 use App\Enums\ProjectStatus;
 use App\Enums\ProjectTopicStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,11 +12,38 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Enums\ChapterStatus;
 
 class Project extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $project) {
+            $type = strtolower((string) ($project->type ?? ''));
+            if (! in_array($type, ['undergraduate', 'postgraduate'], true)) {
+                return;
+            }
+
+            $degreeAbbreviation = trim((string) ($project->degree_abbreviation ?? ''));
+            $degree = trim((string) ($project->degree ?? ''));
+
+            if ($degreeAbbreviation === '') {
+                $project->degree_abbreviation = $type === 'postgraduate' ? 'M.Sc.' : 'B.Sc.';
+                $degreeAbbreviation = $project->degree_abbreviation;
+            }
+
+            if ($degree === '') {
+                if ($type === 'postgraduate') {
+                    $abbr = strtolower($degreeAbbreviation);
+                    $isDoctoral = str_contains($abbr, 'phd') || str_contains($abbr, 'ph.d') || str_contains($abbr, 'doctor');
+                    $project->degree = $isDoctoral ? 'Doctor of Philosophy' : 'Master of Science';
+                } else {
+                    $project->degree = 'Bachelor of Science';
+                }
+            }
+        });
+    }
 
     protected $fillable = [
         'user_id',
@@ -75,6 +103,48 @@ class Project extends Model
         'tables' => 'array',
         'abbreviations' => 'array',
     ];
+
+    public function getProjectTypeAttribute(): ?string
+    {
+        return $this->type;
+    }
+
+    public function getAcademicLevelAttribute(): string
+    {
+        $rawType = strtolower((string) ($this->type ?? ''));
+
+        return match ($rawType) {
+            'hnd', 'nd', 'undergraduate', 'bachelor', 'honors' => 'undergraduate',
+            'postgraduate', 'masters', 'msc', 'ma', 'mba', 'phd', 'doctorate' => 'postgraduate',
+            default => 'undergraduate',
+        };
+    }
+
+    public function getDocumentTypeAttribute(): string
+    {
+        $rawType = strtolower((string) ($this->type ?? ''));
+
+        if (in_array($rawType, ['phd', 'doctorate'], true)) {
+            return 'thesis';
+        }
+
+        if (in_array($rawType, ['masters', 'msc', 'ma', 'mba'], true)) {
+            return 'dissertation';
+        }
+
+        if (in_array($rawType, ['undergraduate', 'bachelor', 'honors', 'hnd', 'nd'], true)) {
+            return 'project';
+        }
+
+        if ($rawType === 'postgraduate') {
+            $degreeText = strtolower((string) ($this->degree_abbreviation ?: $this->degree ?: ''));
+            $isDoctoral = str_contains($degreeText, 'phd') || str_contains($degreeText, 'doctor');
+
+            return $isDoctoral ? 'thesis' : 'dissertation';
+        }
+
+        return 'project';
+    }
 
     public function user(): BelongsTo
     {
@@ -307,7 +377,7 @@ class Project extends Model
         }
 
         $completedOutlines = $requiredOutlines
-            ->filter(fn($outline) => $outline->is_complete)
+            ->filter(fn ($outline) => $outline->is_complete)
             ->count();
 
         return round(($completedOutlines / $totalOutlines) * 100, 2);
@@ -354,7 +424,7 @@ class Project extends Model
         $counter = 1;
 
         while (static::where('slug', $slug)->where('id', '!=', $this->id)->exists()) {
-            $slug = $baseSlug . '-' . $counter;
+            $slug = $baseSlug.'-'.$counter;
             $counter++;
         }
 
@@ -371,7 +441,7 @@ class Project extends Model
         $counter = 1;
 
         while (static::where('slug', $slug)->where('id', '!=', $this->id)->exists()) {
-            $slug = $baseSlug . '-' . $counter;
+            $slug = $baseSlug.'-'.$counter;
             $counter++;
         }
 
@@ -506,6 +576,8 @@ class Project extends Model
             'course' => $finalData['course'] ?? $setupData['course'],
             'fieldOfStudy' => $finalData['field_of_study'] ?? $setupData['fieldOfStudy'],
             'academicSession' => $finalData['academic_session'] ?? $setupData['academicSession'],
+            'degree' => $finalData['degree'] ?? $setupData['degree'],
+            'degreeAbbreviation' => $finalData['degree_abbreviation'] ?? $setupData['degreeAbbreviation'],
             'workingMode' => $finalData['mode'] ?? $setupData['workingMode'],
             'supervisorName' => $finalData['supervisor_name'] ?? $setupData['supervisorName'],
             'matricNumber' => $finalData['matric_number'] ?? $setupData['matricNumber'],
@@ -523,6 +595,7 @@ class Project extends Model
             'departmentId',
             'course',
             'academicSession',
+            'degreeAbbreviation',
             'workingMode',
         ];
 
@@ -537,6 +610,8 @@ class Project extends Model
             'topic_status' => 'topic_selection',
             'setup_step' => 4,
             'type' => $allData['projectType'],
+            'degree' => $allData['degree'] ?? null,
+            'degree_abbreviation' => $allData['degreeAbbreviation'] ?? null,
             'project_category_id' => $allData['projectCategoryId'],
             'university_id' => $allData['universityId'],
             'faculty_id' => $allData['facultyId'],
@@ -582,7 +657,7 @@ class Project extends Model
         $requiredFields = [
             1 => ['projectType', 'projectCategoryId'],
             2 => ['universityId', 'facultyId', 'departmentId', 'course'],
-            3 => ['fieldOfStudy', 'academicSession', 'workingMode'],
+            3 => ['academicSession', 'degreeAbbreviation', 'workingMode'],
         ];
 
         if (! isset($requiredFields[$step])) {
@@ -647,6 +722,8 @@ class Project extends Model
             'supervisorName' => '',
             'matricNumber' => '',
             'academicSession' => '',
+            'degree' => '',
+            'degreeAbbreviation' => '',
             'workingMode' => '',
             'aiAssistanceLevel' => 'moderate',
         ];
@@ -671,6 +748,8 @@ class Project extends Model
                 'faculty' => $this->faculty,
                 'course' => $this->course,
                 'fieldOfStudy' => $this->field_of_study,
+                'degree' => $this->degree,
+                'degreeAbbreviation' => $this->degree_abbreviation,
                 'supervisorName' => $this->supervisor_name,
                 'workingMode' => $this->mode,
                 'department' => $this->settings['department'] ?? null,
@@ -812,6 +891,7 @@ class Project extends Model
         if (! $this->relationLoaded('facultyRelation')) {
             return null; // DO NOT load it automatically
         }
+
         return $this->facultyRelation->name ?? null;
     }
 
@@ -820,6 +900,7 @@ class Project extends Model
         if (! $this->relationLoaded('departmentRelation')) {
             return null;
         }
+
         return $this->departmentRelation->name ?? null;
     }
 
@@ -828,9 +909,9 @@ class Project extends Model
         if (! $this->relationLoaded('universityRelation')) {
             return null;
         }
+
         return $this->universityRelation->name ?? null;
     }
-
 
     /**
      * Boot the model and set up event listeners

@@ -273,22 +273,28 @@ class FacultyStructureService
 
     private function determineAcademicLevel(Project $project): string
     {
-        // Map project types to academic levels
-        $typeMapping = [
-            'undergraduate' => 'undergraduate',
-            'bachelor' => 'undergraduate',
-            'honors' => 'undergraduate',
-            'masters' => 'masters',
-            'msc' => 'masters',
-            'ma' => 'masters',
-            'mba' => 'masters',
-            'phd' => 'phd',
-            'doctorate' => 'phd',
-        ];
+        $rawType = strtolower((string) ($project->type ?? ''));
 
-        $projectType = strtolower($project->type);
+        if (in_array($rawType, ['undergraduate', 'bachelor', 'honors', 'hnd', 'nd'], true)) {
+            return 'undergraduate';
+        }
 
-        return $typeMapping[$projectType] ?? 'undergraduate';
+        if (in_array($rawType, ['masters', 'msc', 'ma', 'mba'], true)) {
+            return 'masters';
+        }
+
+        if (in_array($rawType, ['phd', 'doctorate'], true)) {
+            return 'phd';
+        }
+
+        if ($rawType === 'postgraduate') {
+            $degreeText = strtolower((string) ($project->degree_abbreviation ?: $project->degree ?: ''));
+            $isDoctoral = str_contains($degreeText, 'phd') || str_contains($degreeText, 'doctor');
+
+            return $isDoctoral ? 'phd' : 'masters';
+        }
+
+        return 'undergraduate';
     }
 
     private function getCustomChapterStructure(Project $project): array

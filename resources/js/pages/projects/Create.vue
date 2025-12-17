@@ -63,7 +63,7 @@ const props = defineProps<Props>();
 const formSchemas = [
     // Step 1: Academic Level & Project Type
     z.object({
-        projectType: z.enum(['undergraduate', 'postgraduate', 'hnd', 'nd']),
+        projectType: z.enum(['undergraduate', 'postgraduate']),
         projectCategoryId: z.number({ required_error: 'Please select a project category' }),
     }),
 
@@ -81,6 +81,8 @@ const formSchemas = [
         supervisorName: z.string().optional(),
         matricNumber: z.string().optional(),
         academicSession: z.string().min(1, 'Academic session is required'),
+        degree: z.string().min(2, 'Degree is required'),
+        degreeAbbreviation: z.string().min(2, 'Degree abbreviation is required'),
         workingMode: z.enum(['auto', 'manual']),
         aiAssistanceLevel: z.enum(['minimal', 'moderate', 'maximum']).optional(),
     }),
@@ -121,6 +123,75 @@ const isLoadingUniversities = ref(false);
 const isLoadingFaculties = ref(false);
 const isLoadingDepartments = ref(false);
 const selectedFacultyId = ref<number | null>(null);
+const lastAppliedDegreeSuggestion = ref<{ degree: string; degreeAbbreviation: string } | null>(null);
+
+const getDegreeSuggestion = (
+    academicLevel: string | undefined,
+    facultyId: number | undefined,
+    departmentId: number | undefined,
+): { degree: string; degreeAbbreviation: string } => {
+    const normalize = (value: unknown) => String(value ?? '').toLowerCase();
+
+    const facultyName = faculties.value.find((f) => f.id === facultyId)?.name ?? '';
+    const departmentName = departments.value.find((d) => d.id === departmentId)?.name ?? '';
+    const context = `${normalize(facultyName)} ${normalize(departmentName)}`;
+
+    const level = normalize(academicLevel);
+    const defaultUndergrad = { degree: 'Bachelor of Science', degreeAbbreviation: 'B.Sc.' };
+    const defaultPostgrad = { degree: 'Master of Science', degreeAbbreviation: 'M.Sc.' };
+
+    const presets = [
+        {
+            keywords: ['engineering', 'engineer'],
+            undergraduate: { degree: 'Bachelor of Engineering', degreeAbbreviation: 'B.Eng.' },
+            postgraduate: { degree: 'Master of Engineering', degreeAbbreviation: 'M.Eng.' },
+        },
+        {
+            keywords: ['technology', 'polytechnic', 'technological'],
+            undergraduate: { degree: 'Bachelor of Technology', degreeAbbreviation: 'B.Tech.' },
+            postgraduate: { degree: 'Master of Technology', degreeAbbreviation: 'M.Tech.' },
+        },
+        {
+            keywords: ['management', 'business', 'administration', 'accounting', 'finance', 'marketing', 'economics'],
+            undergraduate: defaultUndergrad,
+            postgraduate: { degree: 'Master of Business Administration', degreeAbbreviation: 'MBA' },
+        },
+        {
+            keywords: ['education'],
+            undergraduate: { degree: 'Bachelor of Education', degreeAbbreviation: 'B.Ed.' },
+            postgraduate: { degree: 'Master of Education', degreeAbbreviation: 'M.Ed.' },
+        },
+        {
+            keywords: ['law', 'legal', 'jurisprud'],
+            undergraduate: { degree: 'Bachelor of Laws', degreeAbbreviation: 'LL.B.' },
+            postgraduate: { degree: 'Master of Laws', degreeAbbreviation: 'LL.M.' },
+        },
+        {
+            keywords: ['arts', 'humanities', 'history', 'linguistics', 'language', 'philosophy', 'literature'],
+            undergraduate: { degree: 'Bachelor of Arts', degreeAbbreviation: 'B.A.' },
+            postgraduate: { degree: 'Master of Arts', degreeAbbreviation: 'M.A.' },
+        },
+        {
+            keywords: ['agric', 'agriculture', 'forestry'],
+            undergraduate: { degree: 'Bachelor of Agriculture', degreeAbbreviation: 'B.Agric.' },
+            postgraduate: { degree: 'Master of Agriculture', degreeAbbreviation: 'M.Agric.' },
+        },
+        {
+            keywords: ['medicine', 'medical', 'health', 'nursing', 'pharmacy', 'dentistry'],
+            undergraduate: { degree: 'Bachelor of Medicine, Bachelor of Surgery', degreeAbbreviation: 'MBBS' },
+            postgraduate: defaultPostgrad,
+        },
+    ];
+
+    const isPostgraduate = level === 'postgraduate';
+    for (const preset of presets) {
+        if (preset.keywords.some((keyword) => context.includes(keyword))) {
+            return isPostgraduate ? preset.postgraduate : preset.undergraduate;
+        }
+    }
+
+    return isPostgraduate ? defaultPostgrad : defaultUndergrad;
+};
 
 // Popover open states
 const universityPopoverOpen = ref(false);
@@ -160,7 +231,7 @@ const isStepComplete = (step: number, data: Record<string, any>): boolean => {
     const requiredFields = {
         1: ['projectType', 'projectCategoryId'],
         2: ['universityId', 'facultyId', 'departmentId', 'course'],
-        3: ['academicSession', 'workingMode'], // fieldOfStudy is now optional
+        3: ['academicSession', 'degreeAbbreviation', 'workingMode'], // fieldOfStudy is now optional
     };
 
     const required = requiredFields[step as keyof typeof requiredFields] || [];
@@ -192,11 +263,62 @@ watch(currentStep, (newStep) => {
 
     // Force form re-render with current step data
     nextTick(() => {
-        initialFormValues.value = getCurrentStepData(newStep);
+        const stepData = getCurrentStepData(newStep);
+        const allData = getAllStepsData();
+
+        if (newStep === 3) {
+            const degreeDefaults = getDegreeSuggestion(allData.projectType, allData.facultyId, allData.departmentId);
+
+            const normalize = (value: unknown) => String(value ?? '').trim();
+            const currentDegree = normalize(stepData.degree);
+            const currentAbbr = normalize(stepData.degreeAbbreviation);
+            if (
+                ! lastAppliedDegreeSuggestion.value &&
+                currentDegree === degreeDefaults.degree &&
+                currentAbbr === degreeDefaults.degreeAbbreviation
+            ) {
+                lastAppliedDegreeSuggestion.value = degreeDefaults;
+            }
+            const matchesLastApplied =
+                lastAppliedDegreeSuggestion.value &&
+                currentDegree === lastAppliedDegreeSuggestion.value.degree &&
+                currentAbbr === lastAppliedDegreeSuggestion.value.degreeAbbreviation;
+
+            const genericUndergrad =
+                (currentDegree === 'Bachelor of Science' && currentAbbr === 'B.Sc.') ||
+                currentDegree === '' ||
+                currentAbbr === '';
+
+            const genericPostgrad =
+                (currentDegree === 'Master of Science' && currentAbbr === 'M.Sc.') ||
+                currentDegree === '' ||
+                currentAbbr === '';
+
+            const isPostgraduate = String(allData.projectType ?? '') === 'postgraduate';
+            const isMismatch =
+                (isPostgraduate && currentAbbr === 'B.Sc.') || (!isPostgraduate && (currentAbbr === 'M.Sc.' || currentAbbr === 'M.Eng.' || currentAbbr === 'MBA'));
+
+            const shouldApplySuggestion = isMismatch || matchesLastApplied || (isPostgraduate ? genericPostgrad : genericUndergrad);
+
+            const mergedStepData = shouldApplySuggestion
+                ? {
+                      ...stepData,
+                      ...degreeDefaults,
+                  }
+                : stepData;
+
+            if (JSON.stringify(mergedStepData) !== JSON.stringify(stepData)) {
+                setCurrentStepData(newStep, mergedStepData);
+                lastAppliedDegreeSuggestion.value = degreeDefaults;
+            }
+
+            initialFormValues.value = mergedStepData;
+        } else {
+            initialFormValues.value = stepData;
+        }
         formKey.value++;
 
         // Sync selectedProjectType for category filtering
-        const stepData = getCurrentStepData(newStep);
         if (stepData.projectType) {
             selectedProjectType.value = stepData.projectType;
         }
@@ -525,7 +647,16 @@ const getCurrentStepFields = (values: Record<string, any>, step: number): Record
     const stepFieldsMap = {
         1: ['projectType', 'projectCategoryId'], // Step 1: Academic Level & Project Type
         2: ['universityId', 'facultyId', 'departmentId', 'course'], // Step 2: University Details
-        3: ['fieldOfStudy', 'supervisorName', 'matricNumber', 'academicSession', 'workingMode', 'aiAssistanceLevel'], // Step 3: Research Details
+        3: [
+            'fieldOfStudy',
+            'supervisorName',
+            'matricNumber',
+            'academicSession',
+            'degree',
+            'degreeAbbreviation',
+            'workingMode',
+            'aiAssistanceLevel',
+        ], // Step 3: Research Details
     };
 
     const relevantFields = stepFieldsMap[step as keyof typeof stepFieldsMap] || [];
@@ -604,6 +735,8 @@ function onSubmit(values: any) {
         supervisor_name: allStepsData.supervisorName,
         matric_number: allStepsData.matricNumber,
         academic_session: allStepsData.academicSession,
+        degree: allStepsData.degree,
+        degree_abbreviation: allStepsData.degreeAbbreviation,
         mode: allStepsData.workingMode,
         ai_assistance_level: allStepsData.aiAssistanceLevel,
     };
@@ -746,24 +879,6 @@ function onSubmit(values: any) {
                                                                     <p class="text-sm font-medium">Postgraduate</p>
                                                                     <p class="text-xs text-muted-foreground">MSc/PhD
                                                                         thesis</p>
-                                                                </div>
-                                                            </label>
-                                                            <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
-                                                                <RadioGroupItem value="hnd" />
-                                                                <div class="space-y-1">
-                                                                    <p class="text-sm font-medium">HND</p>
-                                                                    <p class="text-xs text-muted-foreground">Higher
-                                                                        National Diploma</p>
-                                                                </div>
-                                                            </label>
-                                                            <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
-                                                                <RadioGroupItem value="nd" />
-                                                                <div class="space-y-1">
-                                                                    <p class="text-sm font-medium">ND</p>
-                                                                    <p class="text-xs text-muted-foreground">National
-                                                                        Diploma</p>
                                                                 </div>
                                                             </label>
                                                         </div>
@@ -1066,6 +1181,30 @@ function onSubmit(values: any) {
                                                     <FormLabel>Academic Session</FormLabel>
                                                     <FormControl>
                                                         <Input type="text" placeholder="e.g., 2024/2025"
+                                                            v-bind="componentField" />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+                                        </div>
+
+                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <FormField v-slot="{ componentField }" name="degree">
+                                                <FormItem>
+                                                    <FormLabel>Degree</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="text" placeholder="e.g., Bachelor of Science"
+                                                            v-bind="componentField" />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+
+                                            <FormField v-slot="{ componentField }" name="degreeAbbreviation">
+                                                <FormItem>
+                                                    <FormLabel>Degree Abbreviation</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="text" placeholder="e.g., B.Sc., M.Sc."
                                                             v-bind="componentField" />
                                                     </FormControl>
                                                     <FormMessage />

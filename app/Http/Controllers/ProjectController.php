@@ -2,19 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ChapterStatus;
 use App\Http\Requests\Projects\CreateProjectRequest;
 use App\Http\Requests\Projects\SaveWizardProgressRequest;
 use App\Http\Requests\Projects\TopicSelectionRequest;
 use App\Models\Chapter;
 use App\Models\Project;
 use App\Models\ProjectCategory;
-use App\Models\ProjectTopic;
+use App\Services\PreliminaryPageTemplateService;
 use App\Services\Projects\ProjectReadService;
 use App\Services\Projects\ProjectTopicService;
 use App\Services\Projects\ProjectWizardService;
 use App\Services\Projects\ProjectWritingService;
-use App\Services\PreliminaryPageTemplateService;
-use App\Enums\ChapterStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -26,8 +25,7 @@ class ProjectController extends Controller
         private ProjectTopicService $projectTopicService,
         private ProjectWizardService $projectWizardService,
         private ProjectWritingService $projectWritingService,
-    ) {
-    }
+    ) {}
 
     public function index()
     {
@@ -175,7 +173,7 @@ class ProjectController extends Controller
         Log::info('PROJECT COMPLETION - Setup Analysis', [
             'user_id' => auth()->id(),
             'all_setup_projects' => $allSetupProjects->count(),
-            'setup_projects_details' => $allSetupProjects->map(fn($p) => [
+            'setup_projects_details' => $allSetupProjects->map(fn ($p) => [
                 'id' => $p->id,
                 'status' => $p->status,
                 'is_active' => $p->is_active,
@@ -215,6 +213,8 @@ class ProjectController extends Controller
             $project = auth()->user()->projects()->create([
                 'project_category_id' => $validated['project_category_id'],
                 'type' => $validated['type'],
+                'degree' => $validated['degree'] ?? null,
+                'degree_abbreviation' => $validated['degree_abbreviation'] ?? null,
                 'university_id' => $validated['university_id'],
                 'faculty_id' => $validated['faculty_id'],
                 'department_id' => $validated['department_id'],
@@ -365,7 +365,6 @@ class ProjectController extends Controller
 
         return Inertia::render('projects/TopicSelection', $payload);
     }
-
 
     /**
      * TOPIC APPROVAL PAGE

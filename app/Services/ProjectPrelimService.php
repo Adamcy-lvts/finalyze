@@ -87,7 +87,7 @@ HTML;
         if ($project->certification_signatories && count($project->certification_signatories) > 0) {
             $entries = '<p>
     This is to certify that this {{project_type}} entitled "{{project_title}}"
-    has been duly carried out and presented by {{student_name}} ({{student_id:or:[Student ID]}})
+    has been duly carried out and presented by {{student_name}}{{student_id_inline}}
     in the Department of {{course}}, Faculty of {{faculty}},
     {{full_university_name}}, under my supervision.
 </p>';
@@ -112,7 +112,7 @@ HTML;
         return <<<'HTML'
 <p>
     This is to certify that this {{project_type}} entitled "{{project_title}}"
-    has been duly carried out and presented by {{student_name}} ({{student_id:or:[Student ID]}})
+    has been duly carried out and presented by {{student_name}}{{student_id_inline}}
     in the Department of {{course}}, Faculty of {{faculty}},
     {{full_university_name}}, under my supervision.
 </p>

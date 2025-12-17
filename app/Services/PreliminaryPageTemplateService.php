@@ -87,15 +87,30 @@ HTML;
     public function getCertificationTemplate(): string
     {
         return <<<'HTML'
-<p>This is to certify that this {{project_type}} entitled <strong>"{{project_title}}"</strong> has been duly carried out and presented by <strong>{{student_name}}</strong> ({{student_id}}) in the Department of {{course}}, Faculty of {{faculty}}, {{full_university_name}}, under my supervision.</p>
+<div class="certification-content">
+    <p>
+        This is to certify that this <strong>{{project_type}}</strong> entitled <strong>"{{project_title}}"</strong> has been duly
+        carried out and presented by <strong>{{student_name}}</strong>{{student_id_inline}} in the Department of {{department:or:[Department]}},
+        Faculty of {{faculty:or:[Faculty]}}, {{full_university_name:or:[University]}}, under my supervision.
+    </p>
 
-<p>The work is original and has met the required standards for academic research at this institution.</p>
+    <p>
+        The work is original and has met the required standards for academic research at this institution.
+    </p>
 
-<div class="certification-signatures">
-    <div class="signature-block">
-        <p><strong>{{supervisor_name}}</strong></p>
-        <p>Supervisor</p>
-        <p>Signature: _____________________ Date: _____________________</p>
+    <div class="certification-signatures">
+        <div class="signature-block">
+            <div class="signature-name"><strong>{{supervisor_name:or:[Supervisor Name]}}</strong></div>
+            <div class="signature-role">Supervisor</div>
+            <table class="signature-table" role="presentation">
+                <tr>
+                    <td class="label">Signature:</td>
+                    <td class="line"></td>
+                    <td class="label">Date:</td>
+                    <td class="line"></td>
+                </tr>
+            </table>
+        </div>
     </div>
 </div>
 HTML;

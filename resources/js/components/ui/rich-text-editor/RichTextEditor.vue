@@ -18,6 +18,8 @@ import { Extension } from '@tiptap/core'
 // import Underline from '@tiptap/extension-underline' // Commented out to avoid duplicate with StarterKit
 import { Citation } from '@/tiptap-extensions/CitationExtension.js'
 import { Mermaid } from '@/tiptap-extensions/MermaidExtension'
+import { ResizableImage } from '@/tiptap-extensions/ImageExtension'
+import axios from 'axios'
 import { GhostTextExtension } from '@/tiptap-extensions/GhostTextExtension'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import TextAlign from '@tiptap/extension-text-align'
@@ -80,7 +82,9 @@ import {
   Columns,
   Rows,
   Trash2,
-  Loader2
+  Loader2,
+  Image as ImageIcon,
+  Upload
 } from 'lucide-vue-next'
 
 interface Props {
@@ -464,6 +468,9 @@ const baseExtensions = [
   // Underline, // Commented out - StarterKit might include this
   Citation,
   Mermaid,
+  ResizableImage.configure({
+    maxWidth: 800,
+  }),
   TextAlign.configure({
     types: ['heading', 'paragraph'],
   }),
@@ -692,6 +699,10 @@ onMounted(() => {
       updateCurrentFontSize()
     }
   }, 100)
+
+  // Add image event listeners
+  document.addEventListener('tiptap-image-drop', handleImageDrop as EventListener)
+  document.addEventListener('tiptap-image-paste', handleImagePaste as EventListener)
 })
 
 // Cleanup
@@ -705,6 +716,10 @@ onBeforeUnmount(() => {
   if (editor.value) {
     editor.value.destroy()
   }
+
+  // Remove image event listeners
+  document.removeEventListener('tiptap-image-drop', handleImageDrop as EventListener)
+  document.removeEventListener('tiptap-image-paste', handleImagePaste as EventListener)
 
   stopTeleportObserver()
 })
@@ -862,6 +877,90 @@ const applyColor = () => {
 
 const removeTextColor = () => {
   editor.value?.chain().focus().unsetColor().run()
+}
+
+// Image dialog state
+const imageDialogOpen = ref(false)
+const imageUrl = ref('')
+const imageUploading = ref(false)
+const imageUploadProgress = ref(0)
+const imageUploadError = ref('')
+const imageFileInput = ref<HTMLInputElement | null>(null)
+
+// Image functionality
+const openImageDialog = () => {
+  imageUrl.value = ''
+  imageUploadError.value = ''
+  imageDialogOpen.value = true
+}
+
+const insertImageFromUrl = () => {
+  if (!imageUrl.value) return
+
+  editor.value?.chain().focus().setImage({ src: imageUrl.value }).run()
+  imageDialogOpen.value = false
+}
+
+const handleImageFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    uploadImage(file)
+  }
+}
+
+const uploadImage = async (file: File) => {
+  if (!file.type.startsWith('image/')) {
+    imageUploadError.value = 'Please select an image file'
+    return
+  }
+
+  imageUploading.value = true
+  imageUploadError.value = ''
+  imageUploadProgress.value = 0
+
+  try {
+    const formData = new FormData()
+    formData.append('image', file)
+
+    const response = await axios.post('/editor/images', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          imageUploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        }
+      },
+    })
+
+    if (response.data.success) {
+      editor.value?.chain().focus().setImage({
+        src: response.data.url,
+        width: response.data.width,
+        height: response.data.height,
+      }).run()
+      imageDialogOpen.value = false
+    }
+  } catch (error: any) {
+    imageUploadError.value = error.response?.data?.message || 'Upload failed'
+  } finally {
+    imageUploading.value = false
+    imageUploadProgress.value = 0
+    // Reset file input
+    if (imageFileInput.value) {
+      imageFileInput.value.value = ''
+    }
+  }
+}
+
+// Handle image drop/paste events from the extension
+const handleImageDrop = (event: CustomEvent) => {
+  const { file } = event.detail
+  uploadImage(file)
+}
+
+const handleImagePaste = (event: CustomEvent) => {
+  const { file } = event.detail
+  uploadImage(file)
 }
 
 // Highlight functionality
@@ -1336,6 +1435,13 @@ defineExpose({
           <LinkIcon class="h-4 w-4" />
         </Button>
 
+        <Button variant="ghost" size="icon"
+          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+          title="Insert image"
+          @click="openImageDialog">
+          <ImageIcon class="h-4 w-4" />
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon"
@@ -1446,6 +1552,70 @@ defineExpose({
         <DialogFooter>
           <Button variant="outline" @click="removeTextColor">Reset</Button>
           <Button @click="applyColor">Apply</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Image Dialog -->
+    <Dialog :open="imageDialogOpen" @update:open="imageDialogOpen = $event">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Insert Image</DialogTitle>
+          <DialogDescription>Upload an image or enter a URL.</DialogDescription>
+        </DialogHeader>
+        <div class="grid gap-4 py-4">
+          <!-- File Upload -->
+          <div class="grid gap-2">
+            <Label>Upload from computer</Label>
+            <div class="flex items-center gap-2">
+              <input
+                ref="imageFileInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleImageFileSelect"
+              />
+              <Button
+                variant="outline"
+                class="w-full"
+                :disabled="imageUploading"
+                @click="imageFileInput?.click()"
+              >
+                <Upload class="w-4 h-4 mr-2" />
+                {{ imageUploading ? 'Uploading...' : 'Choose File' }}
+              </Button>
+            </div>
+            <Progress v-if="imageUploading" :model-value="imageUploadProgress" class="h-2" />
+            <p v-if="imageUploadError" class="text-sm text-destructive">{{ imageUploadError }}</p>
+          </div>
+
+          <div class="relative">
+            <div class="absolute inset-0 flex items-center">
+              <span class="w-full border-t" />
+            </div>
+            <div class="relative flex justify-center text-xs uppercase">
+              <span class="bg-background px-2 text-muted-foreground">Or</span>
+            </div>
+          </div>
+
+          <!-- URL Input -->
+          <div class="grid gap-2">
+            <Label for="image-url">Image URL</Label>
+            <div class="flex gap-2">
+              <Input
+                id="image-url"
+                v-model="imageUrl"
+                placeholder="https://example.com/image.jpg"
+                @keydown.enter="insertImageFromUrl"
+              />
+              <Button @click="insertImageFromUrl" :disabled="!imageUrl">
+                Insert
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="imageDialogOpen = false">Cancel</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

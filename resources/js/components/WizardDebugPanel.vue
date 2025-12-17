@@ -16,6 +16,10 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const emit = defineEmits<{
+    (e: 'force-save'): void;
+    (e: 'reset-form'): void;
+}>();
 const showDebug = ref(false);
 const autoRefresh = ref(true);
 
@@ -182,8 +186,8 @@ watch(
                 <div class="space-y-2">
                     <div class="font-semibold">Debug Actions</div>
                     <div class="flex gap-2">
-                        <Button size="sm" variant="outline" @click="$emit('force-save')"> Force Save </Button>
-                        <Button size="sm" variant="outline" @click="$emit('reset-form')"> Reset Form </Button>
+                        <Button size="sm" variant="outline" @click="emit('force-save')"> Force Save </Button>
+                        <Button size="sm" variant="outline" @click="emit('reset-form')"> Reset Form </Button>
                     </div>
                 </div>
             </CardContent>

@@ -20,7 +20,7 @@ class ProjectTopicFactory extends Factory
             'department' => $this->faker->randomElement(['Computer Science', 'Mechanical Engineering', 'Business Administration']),
             'course' => $this->faker->randomElement(['Software Engineering', 'Thermodynamics', 'Marketing Strategy']),
             'university' => $this->faker->company,
-            'academic_level' => $this->faker->randomElement(['undergraduate', 'postgraduate', 'hnd', 'nd']),
+            'academic_level' => $this->faker->randomElement(['undergraduate', 'postgraduate']),
             'title' => $this->faker->sentence(6),
             'description' => $this->faker->paragraph,
             'difficulty' => $this->faker->randomElement(['easy', 'medium', 'hard']),

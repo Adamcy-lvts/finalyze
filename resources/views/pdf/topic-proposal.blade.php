@@ -192,7 +192,7 @@
             @if($project->type)
             <tr>
                 <td class="info-label">Level:</td>
-                <td class="info-value">{{ ucfirst($project->type) }}</td>
+                <td class="info-value">{{ ucfirst($project->academic_level) }}</td>
             </tr>
             @endif
             @if($project->session)

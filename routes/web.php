@@ -4,16 +4,17 @@ use App\Http\Controllers\Admin\AdminAIController;
 use App\Http\Controllers\Admin\AdminAnalyticsController;
 use App\Http\Controllers\Admin\AdminAuditController;
 use App\Http\Controllers\Admin\AdminDashboardController;
-use App\Http\Controllers\Admin\AdminRegistrationInviteController;
 use App\Http\Controllers\Admin\AdminNotificationController;
 use App\Http\Controllers\Admin\AdminPackageController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminProjectController;
+use App\Http\Controllers\Admin\AdminRegistrationInviteController;
 use App\Http\Controllers\Admin\AdminSystemController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\ImageUploadController;
 use App\Http\Controllers\ManualEditorController;
 use App\Http\Controllers\ProjectAnalysisController;
 use App\Http\Controllers\ProjectController;
@@ -113,39 +114,39 @@ Route::get('/theme-test', function () {
     // Load heavy data similar to ManualEditor to test theme behavior with large Inertia props
     $user = auth()->user();
     $heavyData = [];
-    
+
     if ($user) {
         // Get a project with all relations (heavy load)
         $project = \App\Models\Project::where('user_id', $user->id)
             ->with([
                 'category',
                 'universityRelation',
-                'facultyRelation', 
+                'facultyRelation',
                 'departmentRelation',
                 'chapters',
                 'outlines.sections',
             ])
             ->first();
-            
+
         if ($project) {
             $heavyData['project'] = $project;
             $heavyData['allChapters'] = $project->chapters()->orderBy('chapter_number')->get();
             $heavyData['chapter'] = $project->chapters()->first();
-            
+
             // Add more heavy data
             $heavyData['allProjects'] = \App\Models\Project::where('user_id', $user->id)
                 ->with(['chapters', 'category'])
                 ->get();
         }
     }
-    
+
     // Also load some general heavy data
     $heavyData['sampleData'] = [
         'loremIpsum' => str_repeat('Lorem ipsum dolor sit amet, consectetur adipiscing elit. ', 100),
         'numbers' => range(1, 1000),
         'nestedData' => array_fill(0, 50, [
             'id' => rand(1, 10000),
-            'name' => 'Sample Item ' . rand(1, 1000),
+            'name' => 'Sample Item '.rand(1, 1000),
             'description' => str_repeat('This is a sample description. ', 20),
             'children' => array_fill(0, 10, [
                 'childId' => rand(1, 10000),
@@ -153,7 +154,7 @@ Route::get('/theme-test', function () {
             ]),
         ]),
     ];
-    
+
     return Inertia::render('ThemeTest', [
         'heavyData' => $heavyData,
         'dataSize' => strlen(json_encode($heavyData)),
@@ -271,6 +272,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard - Main landing page after login
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+    // Editor image upload and deletion
+    Route::post('/editor/images', [ImageUploadController::class, 'store'])->name('editor.images.store');
+    Route::delete('/editor/images', [ImageUploadController::class, 'destroy'])->name('editor.images.destroy');
+
     // Projects - Basic project management (no state checking needed)
     Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
     Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
@@ -343,22 +348,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
                     ]),
                 ],
             ];
-            
+
             return \Inertia\Inertia::render('ThemeTest', [
                 'heavyData' => $heavyData,
                 'dataSize' => strlen(json_encode($heavyData)),
                 'insideMiddleware' => true,
             ]);
         })->name('projects.theme-test');
-        
+
         // ManualEditor Debug Route - renders the same data as real ManualEditor
         Route::get('/projects/{project:slug}/manual-editor-debug/{chapter}', function (\App\Models\Project $project, int $chapter) {
             $chapterModel = \App\Models\Chapter::where('project_id', $project->id)
                 ->where('chapter_number', $chapter)
                 ->firstOrFail();
-            
+
             $facultyStructureService = app(\App\Services\FacultyStructureService::class);
-            
+
             return \Inertia\Inertia::render('projects/ManualEditorDebug', [
                 'project' => $project->load([
                     'category',
@@ -372,7 +377,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 'facultyChapters' => $facultyStructureService->getChapterStructure($project),
             ]);
         })->name('projects.manual-editor-debug');
-        
+
         Route::get('/projects/{project}/topic-selection', [ProjectController::class, 'topicSelection'])->name('projects.topic-selection');
         Route::get('/projects/{project}/topic-approval', [ProjectController::class, 'topicApproval'])->name('projects.topic-approval');
         Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');

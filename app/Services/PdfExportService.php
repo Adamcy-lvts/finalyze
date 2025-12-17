@@ -404,6 +404,7 @@ class PdfExportService
 
     /**
      * Process HTML content to convert mermaid data attributes to proper mermaid divs
+     * and convert image URLs to base64 for PDF rendering
      */
     private function processMermaidInHtml(string $html): string
     {
@@ -430,7 +431,83 @@ class PdfExportService
             $html
         );
 
+        // Convert image src URLs to base64 for PDF rendering
+        $html = $this->processImagesInHtml($html);
+
         return $html;
+    }
+
+    /**
+     * Process all images in HTML content and convert local URLs to base64
+     */
+    private function processImagesInHtml(string $html): string
+    {
+        // Match all img tags and convert their src to base64 if local
+        return preg_replace_callback(
+            '/<img([^>]*)\ssrc=["\']([^"\']+)["\']([^>]*)>/i',
+            function ($matches) {
+                $beforeSrc = $matches[1];
+                $src = $matches[2];
+                $afterSrc = $matches[3];
+
+                // Convert the src to base64 if it's a local file
+                $newSrc = $this->convertImageToBase64($src);
+
+                return '<img'.$beforeSrc.' src="'.$newSrc.'"'.$afterSrc.'>';
+            },
+            $html
+        );
+    }
+
+    /**
+     * Convert image URL to base64 data URI for PDF rendering
+     */
+    private function convertImageToBase64(string $src): string
+    {
+        Log::debug('PdfExportService: Converting image to base64', ['src' => $src]);
+
+        // If already a data URI, return as-is
+        if (str_starts_with($src, 'data:')) {
+            return $src;
+        }
+
+        // If it's an external URL (http/https), return as-is
+        // Browsershot can fetch external images
+        if (str_starts_with($src, 'http://') || str_starts_with($src, 'https://')) {
+            return $src;
+        }
+
+        // Handle relative URLs (starting with /storage/)
+        if (str_starts_with($src, '/storage/')) {
+            $relativePath = substr($src, 9); // Remove '/storage/'
+            $filePath = storage_path('app/public/'.$relativePath);
+
+            Log::debug('PdfExportService: Checking file path', [
+                'relativePath' => $relativePath,
+                'filePath' => $filePath,
+                'exists' => file_exists($filePath),
+            ]);
+
+            if (file_exists($filePath)) {
+                $mimeType = mime_content_type($filePath);
+                $imageData = file_get_contents($filePath);
+                $base64 = base64_encode($imageData);
+
+                Log::debug('PdfExportService: Successfully converted image to base64', [
+                    'mimeType' => $mimeType,
+                    'size' => strlen($imageData),
+                ]);
+
+                return "data:{$mimeType};base64,{$base64}";
+            }
+
+            Log::warning('PdfExportService: Image file not found', ['path' => $filePath, 'src' => $src]);
+        } else {
+            Log::warning('PdfExportService: Unrecognized image src format', ['src' => $src]);
+        }
+
+        // Return original src if conversion fails
+        return $src;
     }
 
     /**
@@ -483,11 +560,56 @@ class PdfExportService
             'hardBreak' => '<br>',
             'horizontalRule' => '<hr>',
             'mermaid' => '<div class="mermaid">'."\n".($attrs['code'] ?? $childrenHtml)."\n".'</div>',
+            'resizableImage' => $this->renderImageForPdf($attrs),
             'table' => "<table>{$childrenHtml}</table>",
             'tableRow' => "<tr>{$childrenHtml}</tr>",
             'tableHeader' => "<th>{$childrenHtml}</th>",
             'tableCell' => "<td>{$childrenHtml}</td>",
             default => $childrenHtml,
         };
+    }
+
+    /**
+     * Render a resizable image for PDF output with base64 conversion
+     */
+    private function renderImageForPdf(array $attrs): string
+    {
+        $src = $attrs['src'] ?? '';
+        $alt = htmlspecialchars($attrs['alt'] ?? '', ENT_QUOTES, 'UTF-8');
+        $width = $attrs['width'] ?? null;
+        $height = $attrs['height'] ?? null;
+        $alignment = $attrs['alignment'] ?? 'center';
+        $caption = $attrs['caption'] ?? '';
+
+        // Convert local images to base64
+        $src = $this->convertImageToBase64($src);
+
+        // Build style for alignment
+        $containerStyle = match ($alignment) {
+            'left' => 'text-align: left;',
+            'right' => 'text-align: right;',
+            default => 'text-align: center;',
+        };
+
+        // Build image attributes
+        $imgAttrs = 'src="'.$src.'" alt="'.$alt.'"';
+        if ($width) {
+            $imgAttrs .= ' width="'.$width.'"';
+        }
+        if ($height) {
+            $imgAttrs .= ' height="'.$height.'"';
+        }
+        $imgAttrs .= ' style="max-width: 100%; height: auto;"';
+
+        $html = '<figure style="'.$containerStyle.' margin: 1em 0;">';
+        $html .= '<img '.$imgAttrs.'>';
+
+        if ($caption) {
+            $html .= '<figcaption style="font-style: italic; font-size: 0.9em; color: #666; margin-top: 0.5em;">'.htmlspecialchars($caption, ENT_QUOTES, 'UTF-8').'</figcaption>';
+        }
+
+        $html .= '</figure>';
+
+        return $html;
     }
 }

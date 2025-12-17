@@ -38,7 +38,7 @@ class ProjectWizardService
         $project->saveStepData($step, $data);
 
         if (! app()->isProduction()) {
-            $fresh = $project->fresh(['status', 'is_active']);
+            $fresh = $project->fresh(); // attributes, not relations
             Log::info('Wizard progress saved (reuse/create)', [
                 'project_id' => $project->id,
                 'step' => $step,
@@ -53,7 +53,7 @@ class ProjectWizardService
 
     private function filterData(array $data): array
     {
-        return array_filter($data, fn($value) => $value !== null && $value !== '');
+        return array_filter($data, fn ($value) => $value !== null && $value !== '');
     }
 
     private function getExistingSetupProject(User $user, int $projectId): Project
@@ -110,7 +110,7 @@ class ProjectWizardService
             'is_active' => true,
             'type' => $projectType,
             'project_category_id' => $projectCategoryId,
-            'field_of_study' => null,
+            'field_of_study' => 'TBD',
             'university' => 'TBD',
             'course' => 'TBD',
             'title' => 'Project Setup in Progress',
@@ -144,7 +144,7 @@ class ProjectWizardService
         $keepProject = $setupProjects->first();
         $duplicates = $setupProjects->skip(1);
 
-        $duplicates->each(fn(Project $proj) => $proj->update(['is_active' => false]));
+        $duplicates->each(fn (Project $proj) => $proj->update(['is_active' => false]));
         $keepProject->update(['is_active' => true]);
 
         if (! app()->isProduction()) {

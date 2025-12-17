@@ -47,9 +47,27 @@
 
     /* Paragraphs */
     p {
-        text-align: justify;
+        text-align: justify !important;
         margin: 10px 0;
         text-indent: 0.5in;
+    }
+
+    /* Override any inline centering in frontmatter HTML */
+    .preliminary-content,
+    .preliminary-content p,
+    .preliminary-content div,
+    .preliminary-content span,
+    .preliminary-content li {
+        text-align: justify !important;
+    }
+
+    /* Keep signature blocks left-aligned */
+    .preliminary-content .signature-section,
+    .preliminary-content .signature-section p,
+    .preliminary-content .certification-signatures,
+    .preliminary-content .certification-signatures * {
+        text-align: left !important;
+        text-indent: 0;
     }
 
     /* Lists & TOC */
@@ -71,6 +89,57 @@
     .signature-line { margin-top: 60px; border-top: 1px solid #000; width: 300px; padding-top: 5px; }
     .certification-entry { margin: 40px 0; }
     .certification-entry .signature-line { border-top: 1px dotted #000; width: 400px; margin-top: 30px; }
+
+    /* Certification (frontmatter) */
+    .certification-content p {
+        text-align: justify;
+        text-indent: 0.5in;
+        margin: 10px 0;
+    }
+
+    .certification-signatures {
+        margin-top: 50px;
+        text-indent: 0;
+    }
+
+    .signature-block {
+        text-align: left;
+        text-indent: 0;
+        margin-top: 30px;
+    }
+
+    .signature-name {
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+
+    .signature-role {
+        margin-bottom: 18px;
+    }
+
+    table.signature-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+    }
+
+    table.signature-table td {
+        border: none;
+        padding: 0 6px 0 0;
+        vertical-align: bottom;
+        text-indent: 0;
+    }
+
+    table.signature-table td.label {
+        width: 70px;
+        white-space: nowrap;
+    }
+
+    table.signature-table td.line {
+        border-bottom: 1px solid #000;
+        width: 220px;
+        height: 18px;
+    }
 
     /* Tables */
     table { width: 100%; border-collapse: collapse; margin: 15px 0; }

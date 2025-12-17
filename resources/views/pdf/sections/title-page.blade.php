@@ -15,17 +15,56 @@
             <div class="student-id">{{ $project->student_id }}</div>
         @endif
 
+        @php
+            $academicLevel = $project->academic_level;
+            $isPostgraduate = $academicLevel === 'postgraduate';
+            $documentType = strtoupper($project->document_type);
+
+            $rawType = strtolower((string) ($project->type ?? ''));
+            $derivedDegree = match ($rawType) {
+                'phd', 'doctorate' => 'Doctor of Philosophy',
+                'mba' => 'Master of Business Administration',
+                'ma' => 'Master of Arts',
+                'masters', 'msc' => 'Master of Science',
+                'undergraduate', 'bachelor', 'honors', 'hnd', 'nd' => 'Bachelor of Science',
+                default => null,
+            };
+
+            $derivedDegreeAbbrev = match ($rawType) {
+                'phd', 'doctorate' => 'Ph.D.',
+                'mba' => 'MBA',
+                'ma' => 'M.A.',
+                'masters', 'msc' => 'M.Sc.',
+                'undergraduate', 'bachelor', 'honors', 'hnd', 'nd' => 'B.Sc.',
+                default => null,
+            };
+
+            $defaultPostgradDegree = $project->document_type === 'thesis' ? 'Doctor of Philosophy' : 'Master of Science';
+            $defaultPostgradAbbrev = $project->document_type === 'thesis' ? 'Ph.D.' : 'M.Sc.';
+
+            $degree = $project->degree ?: ($isPostgraduate ? $defaultPostgradDegree : $derivedDegree);
+            $degreeAbbrev = $project->degree_abbreviation ?: ($isPostgraduate ? $defaultPostgradAbbrev : $derivedDegreeAbbrev);
+            $course = $project->course ?: $project->field_of_study;
+            $departmentLabel = data_get($project->settings, 'department') ?: ($project->course ?: $project->field_of_study);
+        @endphp
+
         <div class="dissertation-text">
-            A {{ strtoupper($project->type) }} SUBMITTED TO THE SCHOOL OF<br>
-            POST-GRADUATE STUDIES IN PARTIAL FULFILMENT FOR THE REQUIREMENTS<br>
-            OF THE AWARD OF THE DEGREE OF {{ strtoupper($project->degree ?? 'MASTERS') }} ({{ strtoupper($project->degree_abbreviation ?? 'M.Sc.') }}) IN {{ strtoupper($project->course ?? 'COMPUTER SCIENCE') }}
+            A {{ $documentType }} SUBMITTED TO THE {{ $isPostgraduate ? 'SCHOOL OF' : 'DEPARTMENT OF' }}<br>
+            {{ $isPostgraduate ? 'POST-GRADUATE STUDIES' : ($departmentLabel ? strtoupper($departmentLabel) : 'DEPARTMENT') }} IN PARTIAL FULFILMENT FOR THE REQUIREMENTS<br>
+            OF THE AWARD OF THE DEGREE OF {{ strtoupper($degree) }}
+            @if($degreeAbbrev)
+                ({{ strtoupper($degreeAbbrev) }})
+            @endif
+            @if($course)
+                IN {{ strtoupper($course) }}
+            @endif
         </div>
 
         <div class="institution-details">
             AT THE DEPARTMENT OF<br>
             {{ strtoupper($project->course ?? 'COMPUTER SCIENCE') }}<br>
             FACULTY OF {{ strtoupper($project->faculty ?? 'SCIENCE') }}<br><br>
-            {{ strtoupper($project->full_university_name) }}
+            {{ strtoupper($project->universityRelation->name) }}
         </div>
 
         <div class="date">{{ strtoupper(now()->format('F, Y')) }}</div>

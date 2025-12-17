@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('topic')->nullable();
             $table->text('description')->nullable();
             $table->string('slug')->unique();
-            $table->enum('type', ['undergraduate', 'postgraduate', 'hnd', 'nd']);
+            $table->enum('type', ['undergraduate', 'postgraduate']);
             $table->enum('status', ['setup', 'topic_selection', 'topic_pending_approval', 'topic_approved', 'writing', 'completed'])->default('setup');
             $table->enum('topic_status', ['not_started', 'topic_selection', 'topic_pending_approval', 'topic_approved'])->default('not_started');
             $table->integer('setup_step')->default(1); // Track which step of setup wizard user is on

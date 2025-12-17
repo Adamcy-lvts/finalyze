@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('department');
             $table->string('course');
             $table->string('university');
-            $table->enum('academic_level', ['undergraduate', 'postgraduate', 'hnd', 'nd']);
+            $table->enum('academic_level', ['undergraduate', 'postgraduate']);
             $table->string('title');
             $table->text('description');
             $table->string('difficulty');

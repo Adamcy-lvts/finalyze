@@ -273,7 +273,7 @@
             <strong>Field of Study:</strong> {{ $project->field_of_study }}
         </div>
         <div class="info-item">
-            <strong>Project Type:</strong> {{ ucfirst($project->type) }}
+            <strong>Academic Level:</strong> {{ ucfirst($project->academic_level) }}
         </div>
         <div class="info-item">
             <strong>Export Date:</strong> {{ now()->format('F j, Y') }}

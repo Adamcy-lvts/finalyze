@@ -16,6 +16,7 @@ class TemplateVariableService
         return [
             'student_name' => 'Student\'s full name',
             'student_id' => 'Student ID number',
+            'student_id_inline' => 'Student ID prefixed for sentences',
             'matric_number' => 'Matriculation number',
             'department' => 'Department name',
             'academic_session' => 'Academic session (e.g., 2023/2024)',
@@ -67,22 +68,52 @@ class TemplateVariableService
         $user = $project->user;
         $settings = $project->settings ?? [];
 
+        $studentId = (string) ($project->student_id ?? '');
+        if (trim($studentId) === '' || trim($studentId) === '0') {
+            $studentId = (string) ($settings['matric_number'] ?? '');
+        }
+        $studentId = trim($studentId) === '0' ? '' : trim($studentId);
+        $studentIdInline = $studentId !== '' ? ', Student ID: '.$studentId : '';
+
+        $department = (string) ($settings['department'] ?? '');
+        if (trim($department) === '') {
+            $department = (string) ($project->departmentRelation->name ?? ($project->department_name ?? ''));
+        }
+
+        $faculty = (string) ($project->faculty ?? '');
+        if (trim($faculty) === '') {
+            $faculty = (string) ($project->facultyRelation->name ?? ($project->faculty_name ?? ''));
+        }
+
+        $universityShort = (string) ($project->university ?? '');
+        $universityFull = (string) ($project->full_university_name ?? '');
+        if (trim($universityFull) === '') {
+            $universityFull = (string) ($project->universityRelation->name ?? '');
+        }
+        if (trim($universityShort) === '') {
+            $universityShort = (string) ($project->universityRelation->short_name ?? $universityFull);
+        }
+
+        $documentType = (string) ($project->document_type ?? $project->type ?? '');
+        $documentType = trim($documentType) !== '' ? strtolower($documentType) : '';
+
         return [
             'student_name' => $user->name ?? '',
-            'student_id' => $project->student_id ?? '',
+            'student_id' => $studentId,
+            'student_id_inline' => $studentIdInline,
             'matric_number' => $settings['matric_number'] ?? '',
-            'department' => $settings['department'] ?? '',
+            'department' => $department,
             'academic_session' => $settings['academic_session'] ?? '',
             'project_title' => $project->title ?? '',
             'project_topic' => $project->topic ?? '',
-            'project_type' => $project->type ?? '',
+            'project_type' => $documentType,
             'field_of_study' => $project->field_of_study ?? '',
             'degree' => $project->degree ?? '',
             'degree_abbreviation' => $project->degree_abbreviation ?? '',
             'supervisor_name' => $project->supervisor_name ?? '',
-            'university' => $project->university ?? '',
-            'full_university_name' => $project->full_university_name ?? '',
-            'faculty' => $project->faculty ?? '',
+            'university' => $universityShort,
+            'full_university_name' => $universityFull,
+            'faculty' => $faculty,
             'course' => $project->course ?? '',
             'current_year' => (string) now()->year,
             'submission_date' => $project->submission_date?->format('F j, Y') ?? now()->format('F j, Y'),

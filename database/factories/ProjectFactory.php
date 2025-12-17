@@ -21,7 +21,7 @@ class ProjectFactory extends Factory
             'user_id' => \App\Models\User::factory(),
             'title' => $this->faker->sentence(4),
             'slug' => Str::uuid()->toString(),
-            'type' => $this->faker->randomElement(['undergraduate', 'postgraduate', 'hnd', 'nd']),
+            'type' => $this->faker->randomElement(['undergraduate', 'postgraduate']),
             'status' => 'setup',
             'topic_status' => 'topic_selection',
             'mode' => $this->faker->randomElement(['auto', 'manual']),

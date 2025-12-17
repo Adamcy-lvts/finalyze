@@ -40,7 +40,7 @@ class TopicGenerationTest extends TestCase
         $project = Project::factory()->create([
             'user_id' => $user->id,
             'field_of_study' => 'Computer Science',
-            'type' => 'Undergraduate',
+            'type' => 'undergraduate',
             'university' => 'Test University',
         ]);
 
