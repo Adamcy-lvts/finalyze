@@ -131,6 +131,10 @@ class AIContentGenerator
      */
     public function streamGenerate(string $prompt, array $options = []): Generator
     {
+        if (isset($options['messages']) && is_array($options['messages'])) {
+            return $this->streamGenerateMessages($options['messages'], $options);
+        }
+
         $this->ensureProviderSelected();
 
         if (! $this->activeProvider) {
@@ -239,6 +243,120 @@ class AIContentGenerator
     }
 
     /**
+     * Stream AI content generation from a chat message envelope.
+     *
+     * Message format:
+     * [
+     *   ['role' => 'system'|'user'|'assistant', 'content' => '...'],
+     *   ...
+     * ]
+     *
+     * @return Generator<string>
+     */
+    public function streamGenerateMessages(array $messages, array $options = []): Generator
+    {
+        $this->ensureProviderSelected();
+
+        if (! $this->activeProvider) {
+            Log::warning('AI message generation attempted while offline', [
+                'message_count' => count($messages),
+                'options' => $options,
+            ]);
+
+            yield 'AI services are currently unavailable. Please check your internet connection and try again.';
+
+            return;
+        }
+
+        $maxRetries = count($this->providers);
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt < $maxRetries) {
+            if (! $this->activeProvider) {
+                Log::error('AI Content Generation - No active provider available (messages)', [
+                    'attempt' => $attempt + 1,
+                    'providers_checked' => count($this->providers),
+                ]);
+                break;
+            }
+
+            $providerAttempts = 0;
+            $maxProviderRetries = 3;
+
+            while ($providerAttempts <= $maxProviderRetries) {
+                try {
+                    Log::info('AI Content Generation - Starting stream (messages)', [
+                        'provider' => $this->activeProvider->getName(),
+                        'attempt' => $attempt + 1,
+                        'provider_retry' => $providerAttempts,
+                        'message_count' => count($messages),
+                        'options' => $options,
+                        'timestamp' => now()->toDateTimeString(),
+                    ]);
+
+                    $fullContent = '';
+                    foreach ($this->activeProvider->streamGenerateMessages($messages, $options) as $chunk) {
+                        $fullContent .= $chunk;
+                        yield $chunk;
+                    }
+
+                    Log::info('AI Content Generation - Stream completed successfully (messages)', [
+                        'provider' => $this->activeProvider->getName(),
+                        'attempt' => $attempt + 1,
+                        'content_preview' => substr($fullContent, 0, 1000).(strlen($fullContent) > 1000 ? '...' : ''),
+                    ]);
+
+                    return;
+
+                } catch (\Exception $e) {
+                    $lastException = $e;
+                    $isRateLimit = str_contains(strtolower($e->getMessage()), 'rate limit') || $e->getCode() === 429;
+
+                    if ($isRateLimit && $providerAttempts < $maxProviderRetries) {
+                        $providerAttempts++;
+                        $delay = 5 * $providerAttempts;
+
+                        Log::warning("AI Content Generation - Rate limit hit (stream/messages), retrying in {$delay}s", [
+                            'provider' => $this->activeProvider->getName(),
+                            'attempt' => $providerAttempts,
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        sleep($delay);
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            $attempt++;
+
+            Log::error('AI Content Generation - Provider failed (messages)', [
+                'provider' => $this->activeProvider->getName(),
+                'attempt' => $attempt,
+                'error' => $lastException ? $lastException->getMessage() : 'Unknown error',
+                'will_retry' => $attempt < $maxRetries,
+            ]);
+
+            if ($attempt < $maxRetries) {
+                $this->selectNextProvider();
+                continue;
+            }
+        }
+
+        $errorMessage = $lastException ? $lastException->getMessage() : 'Unexpected error in streamGenerateMessages';
+        Log::error('AI Content Generation - All providers failed (messages)', [
+            'total_attempts' => $attempt,
+            'last_error' => $errorMessage,
+        ]);
+
+        yield 'Error: All AI providers failed. '.$errorMessage;
+        throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$errorMessage);
+    }
+
+    /**
      * Select the next available provider for failover
      */
     private function selectNextProvider(): void
@@ -272,6 +390,10 @@ class AIContentGenerator
      */
     public function generate(string $prompt, array $options = []): string
     {
+        if (isset($options['messages']) && is_array($options['messages'])) {
+            return $this->generateMessages($options['messages'], $options);
+        }
+
         $this->ensureProviderSelected();
 
         if (! $this->activeProvider) {
@@ -366,6 +488,54 @@ class AIContentGenerator
         }
 
         $errorMessage = $lastException ? $lastException->getMessage() : 'Unexpected error in generate method';
+        throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$errorMessage);
+    }
+
+    /**
+     * Generate content synchronously from a chat message envelope.
+     */
+    public function generateMessages(array $messages, array $options = []): string
+    {
+        $this->ensureProviderSelected();
+
+        if (! $this->activeProvider) {
+            Log::warning('AI message generation attempted while offline', [
+                'message_count' => count($messages),
+                'options' => $options,
+            ]);
+
+            return 'AI services are currently unavailable. Please check your internet connection and try again.';
+        }
+
+        $maxRetries = count($this->providers);
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt < $maxRetries) {
+            if (! $this->activeProvider) {
+                break;
+            }
+
+            try {
+                return $this->activeProvider->generateMessages($messages, $options);
+            } catch (\Exception $e) {
+                $lastException = $e;
+                $attempt++;
+
+                Log::error('AI Content Generation - Provider failed (messages)', [
+                    'provider' => $this->activeProvider->getName(),
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                    'will_retry' => $attempt < $maxRetries,
+                ]);
+
+                if ($attempt < $maxRetries) {
+                    $this->selectNextProvider();
+                }
+            }
+        }
+
+        $errorMessage = $lastException ? $lastException->getMessage() : 'Unexpected error in generateMessages';
         throw new \Exception('All AI providers failed after '.$attempt.' attempts. Last error: '.$errorMessage);
     }
 
@@ -521,6 +691,17 @@ Maintain formal academic tone throughout.";
         $options = $this->getOptimizedOptions($contentType);
 
         return $this->streamGenerate($prompt, $options);
+    }
+
+    /**
+     * Generate content with automatic model selection based on content type,
+     * using a chat message envelope.
+     */
+    public function generateOptimizedMessages(array $messages, string $contentType = 'general'): Generator
+    {
+        $options = $this->getOptimizedOptions($contentType);
+
+        return $this->streamGenerateMessages($messages, $options);
     }
 
     /**

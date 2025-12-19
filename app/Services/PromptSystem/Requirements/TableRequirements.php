@@ -9,6 +9,8 @@ class TableRequirements
      */
     public function getRequirements(string $chapterType, string $projectType, string $faculty): array
     {
+        $baseRequirements = $this->getBaseRequirements($chapterType);
+
         // Get faculty-specific requirements first
         $facultyRequirements = $this->getFacultyRequirements($chapterType, $faculty);
 
@@ -16,7 +18,27 @@ class TableRequirements
         $projectRequirements = $this->getProjectTypeRequirements($chapterType, $projectType);
 
         // Merge with faculty taking precedence for conflicts
-        return array_merge($projectRequirements, $facultyRequirements);
+        return array_merge($baseRequirements, $projectRequirements, $facultyRequirements);
+    }
+
+    /**
+     * Base (cross-faculty) table requirements.
+     */
+    private function getBaseRequirements(string $chapterType): array
+    {
+        return match ($chapterType) {
+            'literature_review' => [
+                [
+                    'type' => 'synthesis_matrix',
+                    'required' => true,
+                    'min' => 1,
+                    'mock_data' => false,
+                    'description' => 'Synthesis matrix summarizing the most relevant studies (populate ONLY from verified sources provided in the prompt)',
+                    'columns' => ['Author (Allowed in-text citation)', 'Country/Context', 'Method/Design', 'Key Findings', 'Limitations', 'Relevance to the study context'],
+                ],
+            ],
+            default => [],
+        };
     }
 
     /**

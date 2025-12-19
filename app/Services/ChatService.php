@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\AI\SystemPromptService;
 use App\Models\Chapter;
 use App\Models\ChapterContextAnalysis;
 use Illuminate\Support\Str;
@@ -9,7 +10,8 @@ use Illuminate\Support\Str;
 class ChatService
 {
     public function __construct(
-        private AIContentGenerator $aiGenerator
+        private AIContentGenerator $aiGenerator,
+        private SystemPromptService $systemPromptService
     ) {}
 
     /**
@@ -18,10 +20,14 @@ class ChatService
     public function sendMessage(Chapter $chapter, string $message, array $history): array
     {
         $context = $this->buildContext($chapter);
-        $prompt = $this->buildChatPrompt($message, $history, $context);
+        $userPrompt = $this->buildChatPrompt($message, $history, $context);
+        $messages = [
+            ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+            ['role' => 'user', 'content' => $userPrompt],
+        ];
 
         try {
-            $response = $this->aiGenerator->generate($prompt, [
+            $response = $this->aiGenerator->generateMessages($messages, [
                 'temperature' => 0.8,
                 'max_tokens' => 1000,
             ]);
@@ -73,8 +79,6 @@ class ChatService
         $contextText = $this->formatContext($context);
 
         return <<<PROMPT
-You are an academic writing assistant helping a student with their research project.
-
 {$contextText}
 
 Previous Conversation:

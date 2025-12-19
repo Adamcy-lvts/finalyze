@@ -32,6 +32,9 @@ CORE PRINCIPLES:
 3. Generate detailed, substantive content that meets word count requirements
 4. Include proper academic citations in APA format
 5. Create well-structured sections with clear headings
+6. Do not include AI/meta commentary (no "Note:", no explanations about the prompt, no "as an AI model")
+7. Do not add a "References" section at the end of a chapter (references appear only at the end of the full project)
+8. If a verified sources list is provided, citations must be limited to that list only
 
 FORMATTING RULES:
 - Use numbered section headings (e.g., 3.1, 3.2, 3.1.1)
@@ -44,6 +47,13 @@ CONTENT QUALITY:
 - Provide specific examples, evidence, and explanations
 - Ensure logical flow between paragraphs and sections
 - Include transitions between major sections
+
+STRICT CITATION POLICY:
+- Use in-text citations only (no References/Bibliography section inside a chapter)
+- If a "Verified Sources" block is provided in the user prompt, you may ONLY cite those sources
+- Use ONLY the format (FirstAuthorLastName, Year)
+- Do NOT use "et al." and do NOT invent author names or years
+- If you cannot support a sentence with an allowed in-text citation, add: [Citation needed]
 PROMPT;
     }
 
@@ -53,7 +63,7 @@ PROMPT;
     public function buildChapterPrompt(Project $project, int $chapterNumber, ContentRequirements $requirements): string
     {
         $prompt = $this->buildProjectContext($project, $chapterNumber);
-        $prompt .= $this->buildChapterTypeInstructions($chapterNumber);
+        $prompt .= $this->buildChapterTypeInstructions($project, $chapterNumber);
         $prompt .= $this->buildTableInstructions($requirements);
         $prompt .= $this->buildDiagramInstructions($requirements);
         $prompt .= $this->buildCalculationInstructions($requirements);
@@ -69,7 +79,13 @@ PROMPT;
      */
     protected function buildProjectContext(Project $project, int $chapterNumber): string
     {
-        $targetWordCount = $this->getTargetWordCount($project, $chapterNumber);
+        $metaWordCount = $project->getAttribute('chapter_word_count');
+        $targetWordCount = is_numeric($metaWordCount) ? (int) $metaWordCount : $this->getTargetWordCount($project, $chapterNumber);
+        $chapterTitle = $project->getAttribute('chapter_title');
+        $chapterTitleLine = '';
+        if (is_string($chapterTitle) && trim($chapterTitle) !== '') {
+            $chapterTitleLine = "- Chapter Title: {$chapterTitle}\n";
+        }
 
         return <<<CONTEXT
 
@@ -84,7 +100,7 @@ PROJECT CONTEXT:
 
 CHAPTER REQUIREMENTS:
 - Chapter Number: {$chapterNumber}
-- Target Word Count: {$targetWordCount} words (MANDATORY - do not stop early)
+{$chapterTitleLine}- Target Word Count: {$targetWordCount} words (MANDATORY - do not stop early)
 
 CONTEXT;
     }
@@ -92,9 +108,10 @@ CONTEXT;
     /**
      * Build chapter type specific instructions
      */
-    protected function buildChapterTypeInstructions(int $chapterNumber): string
+    protected function buildChapterTypeInstructions(Project $project, int $chapterNumber): string
     {
-        $chapterType = $this->detectChapterType($chapterNumber);
+        $metaType = $project->getAttribute('chapter_type');
+        $chapterType = is_string($metaType) && trim($metaType) !== '' ? $metaType : $this->detectChapterType($chapterNumber);
 
         return match ($chapterType) {
             'introduction' => $this->getIntroductionInstructions(),
@@ -127,7 +144,7 @@ CONTEXT;
             $instructions .= "- Description: {$table['description']}\n";
 
             if ($table['mock_data'] ?? false) {
-                $instructions .= "- Generate realistic SAMPLE DATA with clear warning: '⚠️ THIS IS SAMPLE DATA - Replace with your actual data'\n";
+                $instructions .= "- Generate realistic sample data and label it clearly as sample data to be replaced\n";
                 $instructions .= "- Include step-by-step instructions for collecting real data\n";
             }
 
@@ -241,12 +258,12 @@ CONTEXT;
         $instructions .= "For content that cannot be AI-generated, create detailed placeholders:\n\n";
         $instructions .= "FORMAT:\n";
         $instructions .= "[FIGURE X.X: Title]\n";
-        $instructions .= "⚠️ THIS REQUIRES [TYPE] THAT YOU MUST CREATE\n\n";
-        $instructions .= "📋 WHAT TO SHOW:\n";
+        $instructions .= "(To be created by the student)\n\n";
+        $instructions .= "WHAT TO SHOW:\n";
         $instructions .= "• [Specific details]\n\n";
-        $instructions .= "🛠️ RECOMMENDED TOOLS:\n";
+        $instructions .= "RECOMMENDED TOOLS:\n";
         $instructions .= "• [Tool name] - [URL] - [Best for]\n\n";
-        $instructions .= "📐 STEP-BY-STEP GUIDE:\n";
+        $instructions .= "STEP-BY-STEP GUIDE:\n";
         $instructions .= "1. [First step]\n";
         $instructions .= "2. [Second step]\n";
         $instructions .= "...\n\n";
@@ -266,12 +283,8 @@ FORMATTING INSTRUCTIONS:
 - Format headings as: '{$chapterNumber}.1 Section Title'
 - Use proper academic table format with captions
 - Reference all tables and figures in the text
-- Use APA citation format: (Author, Year)
 
 CRITICAL REMINDERS:
-- Write in THIRD PERSON only
-- Never use "&" - write "and"
-- Use bullet points (•) not dashes (-)
 - Generate comprehensive content to meet word count
 - Include realistic sample data with replacement instructions
 
@@ -379,14 +392,40 @@ REQUIRED SECTIONS:
     - What is missing in literature
     - How this study addresses the gap
 
-2.5 Conceptual Framework (if applicable)
-    - Visual model of relationships
-    - Explanation of framework
+2.5 Conceptual Framework (MANDATORY)
+    - Visual model of relationships (Mermaid diagram or clearly marked figure instructions)
+    - Constructs, indicators, and hypothesized relationships
+    - Justification for each hypothesized link grounded in the literature
 
-CITATION REQUIREMENTS:
-- Minimum 40-60 recent sources
-- Mix of theoretical and empirical
-- Critical analysis of each source
+NON-NEGOTIABLE LITERATURE REVIEW REQUIREMENTS:
+1) Synthesis Matrix / Summary Table (MANDATORY)
+   - Include a synthesis matrix/table with the columns:
+     Author (Allowed in-text citation), Country/Context, Method/Design, Key Findings, Limitations, Relevance to the study context
+   - Populate the table ONLY using the verified sources provided in the prompt.
+   - In the "Relevance to the study context" column, explicitly tie each study to the project's domain and setting (e.g., the project's country/region/industry if specified).
+
+2) Thematic Comparison + Contradictions (MANDATORY)
+   - Organize the empirical review into clear themes/sub-themes.
+   - For EACH theme, explicitly compare at least 3 studies (agreements, differences, and contradictions).
+   - Identify why contradictions may exist (method, sample, context, measurement, timeframe) and what that implies for the current study’s context.
+   - Close each theme with a short synthesis paragraph that states: (i) what is known, (ii) what is uncertain/contested, and (iii) what the current study will assume/test/build.
+   - Ensure each theme is substantial (typically 2–4 paragraphs per theme) and not a single short paragraph.
+
+3) Conceptual Framework Section (MANDATORY)
+   - Present constructs and measurable indicators (a small table is acceptable).
+   - Provide hypotheses/propositions (H1, H2, ...) with brief justification for each link.
+   - Include a Mermaid diagram if possible; otherwise include a clearly marked placeholder figure with step-by-step creation instructions.
+   - Ensure every hypothesized link is supported by at least one cited study from the verified list; otherwise add [Citation needed] after the justification sentence.
+   - Ensure the themes in 2.3 map directly to the constructs/links in 2.5 (no disconnected literature themes).
+
+CITATION BEHAVIOR:
+- Use frequent in-text citations, but ONLY from the verified sources list (strict whitelist).
+- Use ONLY (FirstAuthorLastName, Year) allowed citation strings when provided; otherwise add [Citation needed].
+ - Do not reuse the same single citation repeatedly; distribute citations across themes and studies where relevant.
+
+OUTPUT RULES:
+- Do NOT add a "References" section at the end of this chapter
+- Do NOT include any "Note:" or meta commentary; output only academic chapter content
 
 LITREV;
     }

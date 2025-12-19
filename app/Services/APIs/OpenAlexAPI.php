@@ -358,6 +358,11 @@ class OpenAlexAPI
             $year = (int) substr($work['publication_date'], 0, 4);
         }
 
+        $abstractText = $work['abstract'] ?? null;
+        if (empty($abstractText) && ! empty($work['abstract_inverted_index']) && is_array($work['abstract_inverted_index'])) {
+            $abstractText = $this->reconstructAbstractFromIndex($work['abstract_inverted_index']);
+        }
+
         return [
             'openalex_id' => $work['id'] ?? null,
             'doi' => $doi,
@@ -366,7 +371,7 @@ class OpenAlexAPI
             'authors' => $authors,
             'year' => $year,
             'journal' => $journal,
-            'abstract' => $work['abstract'] ?? null,
+            'abstract' => $abstractText,
             'url' => $work['id'] ?? null,
             'citation_count' => $work['cited_by_count'] ?? 0,
             'type' => $work['type'] ?? null,
@@ -525,16 +530,25 @@ class OpenAlexAPI
             ];
 
             // Add filters (OpenAlex uses different syntax)
-            if (isset($filters['year_from'])) {
-                $params['filter'] = 'publication_year:'.$filters['year_from'];
+            $filterParts = [];
+            if (isset($filters['year_from']) && is_numeric($filters['year_from'])) {
+                $from = (int) $filters['year_from'];
+                $filterParts[] = "from_publication_date:{$from}-01-01";
             }
-            if (isset($filters['year_to'])) {
-                $yearFilter = 'publication_year:'.$filters['year_to'];
-                if (isset($params['filter'])) {
-                    $params['filter'] .= ','.$yearFilter;
-                } else {
-                    $params['filter'] = $yearFilter;
-                }
+            if (isset($filters['year_to']) && is_numeric($filters['year_to'])) {
+                $to = (int) $filters['year_to'];
+                $filterParts[] = "to_publication_date:{$to}-12-31";
+            }
+            if (isset($filters['min_citations']) && is_numeric($filters['min_citations'])) {
+                $minCitations = (int) $filters['min_citations'];
+                $filterParts[] = "cited_by_count:>{$minCitations}";
+            }
+            if (! empty($filters['open_access'])) {
+                $filterParts[] = 'open_access.is_oa:true';
+            }
+
+            if (! empty($filterParts)) {
+                $params['filter'] = implode(',', $filterParts);
             }
 
             Log::info('OpenAlex topic search', [

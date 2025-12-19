@@ -44,6 +44,105 @@ class ArXivAPI
     }
 
     /**
+     * Search ArXiv by topic/keywords for pre-generation collection
+     */
+    public function searchByTopic(string $topic, int $maxResults = 10): array
+    {
+        $topic = trim($topic);
+        if ($topic === '') {
+            return [];
+        }
+
+        $cacheKey = 'arxiv_topic_'.md5($topic.$maxResults);
+
+        return Cache::remember($cacheKey, 3600, function () use ($topic, $maxResults) {
+            try {
+                $query = $this->buildTopicQuery($topic);
+                Log::info('ArXiv topic search', [
+                    'topic' => $topic,
+                    'query' => $query,
+                    'max_results' => $maxResults,
+                ]);
+
+                $response = Http::withHeaders($this->headers)
+                    ->timeout($this->timeout)
+                    ->get($this->baseUrl, [
+                        'search_query' => $query,
+                        'max_results' => $maxResults,
+                        'sortBy' => 'relevance',
+                        'sortOrder' => 'descending',
+                    ]);
+
+                if ($response->successful()) {
+                    $papers = $this->parseArXivXML($response->body());
+                    Log::info('ArXiv topic search results', [
+                        'topic' => $topic,
+                        'query' => $query,
+                        'returned_count' => count($papers),
+                    ]);
+
+                    return $papers;
+                }
+
+                Log::warning('ArXiv topic search failed', [
+                    'topic' => $topic,
+                    'query' => $query,
+                    'status' => $response->status(),
+                ]);
+
+                return [];
+            } catch (\Exception $e) {
+                Log::error('ArXiv topic search exception', [
+                    'topic' => $topic,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return [];
+            }
+        });
+    }
+
+    private function buildTopicQuery(string $topic): string
+    {
+        $topic = strtolower($topic);
+        $topic = preg_replace('/[^a-z0-9\\s]+/', ' ', $topic);
+        $topic = preg_replace('/\\s+/', ' ', trim((string) $topic));
+
+        $words = array_values(array_filter(explode(' ', $topic), fn ($w) => $w !== ''));
+
+        // For long topics, avoid quoting the entire phrase (too strict).
+        if (count($words) >= 7 || strlen($topic) > 80) {
+            $stop = [
+                'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'using', 'use',
+                'system', 'study', 'research', 'analysis', 'development', 'challenges',
+            ];
+            $stopSet = array_fill_keys($stop, true);
+
+            $keywords = [];
+            foreach ($words as $w) {
+                if (strlen($w) < 3) {
+                    continue;
+                }
+                if (isset($stopSet[$w])) {
+                    continue;
+                }
+                $keywords[] = $w;
+                if (count($keywords) >= 5) {
+                    break;
+                }
+            }
+
+            if (empty($keywords)) {
+                return 'all:"'.addslashes($topic).'"';
+            }
+
+            return implode(' AND ', array_map(fn ($k) => "all:{$k}", $keywords));
+        }
+
+        return 'all:"'.addslashes($topic).'"';
+    }
+
+    /**
      * Search by ArXiv ID
      */
     private function searchByArXivId(string $arxivId): array
@@ -399,6 +498,18 @@ class ArXivAPI
                 }
             }
 
+            $primaryCategoryNodes = $entry->xpath('arxiv:primary_category');
+            $primaryCategory = null;
+            if (! empty($primaryCategoryNodes) && isset($primaryCategoryNodes[0]['term'])) {
+                $primaryCategory = (string) $primaryCategoryNodes[0]['term'];
+            }
+
+            $journalRefNodes = $entry->xpath('arxiv:journal_ref');
+            $journalRef = ! empty($journalRefNodes) ? (string) $journalRefNodes[0] : null;
+
+            $commentNodes = $entry->xpath('arxiv:comment');
+            $comment = ! empty($commentNodes) ? (string) $commentNodes[0] : null;
+
             return [
                 'arxiv_id' => $arxivId,
                 'doi' => $doi,
@@ -407,13 +518,13 @@ class ArXivAPI
                 'year' => $year,
                 'abstract' => (string) $entry->summary,
                 'categories' => $categories,
-                'primary_category' => (string) $entry->xpath('arxiv:primary_category')[0]['term'] ?? null,
+                'primary_category' => $primaryCategory,
                 'published_date' => $published,
                 'updated_date' => (string) $entry->updated,
                 'url' => $id,
                 'pdf_url' => str_replace('/abs/', '/pdf/', $id).'.pdf',
-                'journal_ref' => (string) $entry->xpath('arxiv:journal_ref')[0] ?? null,
-                'comment' => (string) $entry->xpath('arxiv:comment')[0] ?? null,
+                'journal_ref' => $journalRef,
+                'comment' => $comment,
                 'source' => 'arxiv',
                 'raw_data' => $entry->asXML(),
             ];

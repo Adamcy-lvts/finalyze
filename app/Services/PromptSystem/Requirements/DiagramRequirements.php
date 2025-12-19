@@ -9,13 +9,34 @@ class DiagramRequirements
      */
     public function getRequirements(string $chapterType, string $projectType, string $faculty): array
     {
+        $baseRequirements = $this->getBaseRequirements($chapterType);
+
         // Get faculty-specific requirements first
         $facultyRequirements = $this->getFacultyRequirements($chapterType, $faculty);
 
         // Get project-type specific requirements
         $projectRequirements = $this->getProjectTypeRequirements($chapterType, $projectType);
 
-        return array_merge($projectRequirements, $facultyRequirements);
+        return array_merge($baseRequirements, $projectRequirements, $facultyRequirements);
+    }
+
+    /**
+     * Base (cross-faculty) diagram requirements.
+     */
+    private function getBaseRequirements(string $chapterType): array
+    {
+        return match ($chapterType) {
+            'literature_review' => [
+                [
+                    'type' => 'conceptual_framework',
+                    'required' => true,
+                    'can_generate' => true,
+                    'description' => 'Conceptual framework diagram showing constructs/variables and hypothesized relationships',
+                    'format' => "graph LR\n    X1[Independent Variable / Construct 1] --> Y[Dependent Variable / Outcome]\n    X2[Independent Variable / Construct 2] --> Y\n    M[Moderator / Mediator (if any)] -.-> Y",
+                ],
+            ],
+            default => [],
+        };
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Chapter;
 use App\Models\ChapterAnalysisResult;
+use App\Services\AI\SystemPromptService;
 use App\Services\AI\Providers\OpenAIProvider;
 use Illuminate\Support\Facades\Log;
 
@@ -28,7 +29,8 @@ class ChapterAnalysisService
 
     public function __construct(
         private ChapterContentAnalysisService $contentAnalysisService,
-        private OpenAIProvider $aiProvider
+        private OpenAIProvider $aiProvider,
+        private SystemPromptService $systemPromptService
     ) {}
 
     /**
@@ -129,10 +131,15 @@ class ChapterAnalysisService
                 'content_length' => strlen($cleanContent),
             ]);
 
-            $aiResponse = $this->aiProvider->generate($prompt, [
+            $aiResponse = $this->aiProvider->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getAnalysisSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'model' => 'gpt-4o',
                 'temperature' => 0.3, // Lower temperature for more consistent analysis
                 'max_tokens' => 1500,
+                'feature' => 'chapter_analysis.structure',
+                'user_id' => $chapter->project?->user_id,
             ]);
 
             // Parse AI response to extract score and feedback
@@ -336,10 +343,15 @@ Respond in this exact JSON format:
   }
 }";
 
-        $aiResponse = $this->aiProvider->generate($prompt, [
+        $aiResponse = $this->aiProvider->generateMessages([
+            ['role' => 'system', 'content' => $this->systemPromptService->getAnalysisSystemPrompt()],
+            ['role' => 'user', 'content' => $prompt],
+        ], [
             'model' => 'gpt-4o',
             'temperature' => 0.3,
             'max_tokens' => 1500,
+            'feature' => 'chapter_analysis.citations',
+            'user_id' => $chapter->project?->user_id,
         ]);
 
         return $this->parseCitationAnalysisResponse($aiResponse);
@@ -504,10 +516,15 @@ Respond in this exact JSON format:
   }
 }";
 
-        $aiResponse = $this->aiProvider->generate($prompt, [
+        $aiResponse = $this->aiProvider->generateMessages([
+            ['role' => 'system', 'content' => $this->systemPromptService->getAnalysisSystemPrompt()],
+            ['role' => 'user', 'content' => $prompt],
+        ], [
             'model' => 'gpt-4o',
             'temperature' => 0.3,
             'max_tokens' => 1500,
+            'feature' => 'chapter_analysis.originality',
+            'user_id' => $chapter->project?->user_id,
         ]);
 
         return $this->parseOriginalityAnalysisResponse($aiResponse);
@@ -670,10 +687,15 @@ Respond in this exact JSON format:
   }
 }";
 
-        $aiResponse = $this->aiProvider->generate($prompt, [
+        $aiResponse = $this->aiProvider->generateMessages([
+            ['role' => 'system', 'content' => $this->systemPromptService->getAnalysisSystemPrompt()],
+            ['role' => 'user', 'content' => $prompt],
+        ], [
             'model' => 'gpt-4o',
             'temperature' => 0.3,
             'max_tokens' => 1500,
+            'feature' => 'chapter_analysis.argument',
+            'user_id' => $chapter->project?->user_id,
         ]);
 
         return $this->parseArgumentAnalysisResponse($aiResponse);

@@ -70,4 +70,47 @@ return [
         // Progressive guidance is experimental; keep disabled for release by default.
         'progressive_guidance' => env('PROGRESSIVE_GUIDANCE_ENABLED', false),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Paper/source collection
+    |--------------------------------------------------------------------------
+    |
+    | Controls how many papers are pulled from each upstream source during
+    | "literature mining" / "paper collection" and how many survive ranking.
+    |
+    */
+    'paper_collection' => [
+        // Per-source limits (before dedupe/ranking)
+        'limits' => [
+            'semantic_scholar' => (int) env('AI_PAPER_LIMIT_SEMANTIC_SCHOLAR', 15),
+            'openalex' => (int) env('AI_PAPER_LIMIT_OPENALEX', 20),
+            'arxiv' => (int) env('AI_PAPER_LIMIT_ARXIV', 15),
+            'crossref' => (int) env('AI_PAPER_LIMIT_CROSSREF', 20),
+            'pubmed' => (int) env('AI_PAPER_LIMIT_PUBMED', 8),
+        ],
+
+        // Final max papers stored/used after dedupe + ranking
+        'max_papers' => (int) env('AI_PAPER_MAX_PAPERS', 60),
+
+        // Minimum quality threshold used in dedupeAndRank()
+        'min_quality_score' => (float) env('AI_PAPER_MIN_QUALITY', 0.3),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Prompt source injection (citations)
+    |--------------------------------------------------------------------------
+    |
+    | Controls how many verified sources are injected into the chapter prompt.
+    | This is separate from how many are collected/stored.
+    |
+    */
+    'prompt_injection' => [
+        'max_papers' => (int) env('AI_PROMPT_SOURCES_MAX', 12),
+        'max_papers_by_chapter_type' => [
+            'literature_review' => (int) env('AI_PROMPT_SOURCES_MAX_LITREV', 25),
+        ],
+        'abstract_max_chars' => (int) env('AI_PROMPT_SOURCE_ABSTRACT_CHARS', 300),
+    ],
 ];

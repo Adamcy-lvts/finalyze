@@ -231,6 +231,8 @@ import {
   Cpu,
   ToggleLeft,
   Settings,
+  FileText,
+  BookOpen,
   List,
   Bell,
   ChevronsUpDown,
@@ -278,6 +280,9 @@ const systemNavItems = [
   { href: '/admin/ai', label: 'AI Monitoring', icon: Cpu },
   { href: '/admin/system/features', label: 'Feature Flags', icon: ToggleLeft },
   { href: '/admin/system/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/system/faculty-structures', label: 'Faculty Structure', icon: BookOpen },
+  { href: '/admin/system/prompt-templates', label: 'Prompt Templates', icon: FileText },
+  { href: '/admin/system/prompt-preview', label: 'Prompt Preview', icon: FileText },
   { href: '/admin/audit', label: 'Audit Logs', icon: List },
   { href: '/admin/notifications', label: 'Notifications', icon: Bell },
 ]

@@ -16,8 +16,14 @@ class OpenAIProvider implements AIProviderInterface
 
     private int $maxTokens = 8000; // Increased for comprehensive chapter generation
 
+    private const DEFAULT_SYSTEM_PROMPT = 'You are an expert academic writer specializing in thesis and dissertation writing. Follow the user instructions and maintain a formal academic tone. Use clear structure with headings when needed. Prefer the bullet symbol (•) for unordered lists unless the user explicitly requests a different format. Never use "&" — always write "and".';
+
     public function generate(string $prompt, array $options = []): string
     {
+        if (isset($options['messages']) && is_array($options['messages'])) {
+            return $this->generateMessages($options['messages'], $options);
+        }
+
         $model = $options['model'] ?? $this->model;
         $temperature = $options['temperature'] ?? $this->temperature;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
@@ -38,7 +44,7 @@ class OpenAIProvider implements AIProviderInterface
                 'messages' => [
                     [
                         'role' => 'system',
-                        'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Use consistent markdown formatting: **bold** for emphasis, *italic* for emphasis, ## for headings, ### for subheadings, - for bullet points, 1. for numbered lists. Always use proper markdown syntax.',
+                        'content' => self::DEFAULT_SYSTEM_PROMPT,
                     ],
                     [
                         'role' => 'user',
@@ -127,8 +133,117 @@ class OpenAIProvider implements AIProviderInterface
         }
     }
 
+    public function generateMessages(array $messages, array $options = []): string
+    {
+        $model = $options['model'] ?? $this->model;
+        $temperature = $options['temperature'] ?? $this->temperature;
+        $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
+        $feature = $options['feature'] ?? null;
+        $userId = $options['user_id'] ?? null;
+        $startedAt = hrtime(true);
+
+        $normalizedMessages = $this->normalizeMessages($messages);
+
+        Log::info('OpenAI Provider - Starting generation (messages)', [
+            'model' => $model,
+            'message_count' => count($normalizedMessages),
+            'temperature' => $temperature,
+            'max_tokens' => $maxTokens,
+        ]);
+
+        try {
+            $response = OpenAI::chat()->create([
+                'model' => $model,
+                'messages' => $normalizedMessages,
+                'temperature' => $temperature,
+                'max_tokens' => $maxTokens,
+            ]);
+
+            $content = $response->choices[0]->message->content;
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
+
+            Log::info('OpenAI Provider - Generation completed (messages)', [
+                'content_length' => strlen($content),
+                'word_count' => str_word_count($content),
+                'tokens_used' => $response->usage->totalTokens ?? 0,
+            ]);
+
+            if (isset($response->usage)) {
+                app(AIUsageLogger::class)->log(
+                    $userId,
+                    $feature,
+                    $model,
+                    $response->usage->promptTokens ?? 0,
+                    $response->usage->completionTokens ?? 0,
+                    $response->id ?? null,
+                    ['message_envelope' => true]
+                );
+            }
+
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.openai',
+                    'OpenAI generation completed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'openai',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'temperature' => $temperature,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'message_count' => count($normalizedMessages),
+                        'content_length' => strlen($content),
+                        'tokens' => isset($response->usage) ? [
+                            'prompt' => $response->usage->promptTokens ?? 0,
+                            'completion' => $response->usage->completionTokens ?? 0,
+                            'total' => $response->usage->totalTokens ?? 0,
+                        ] : null,
+                        'openai_id' => $response->id ?? null,
+                    ], fn ($v) => $v !== null)
+                );
+            }
+
+            return $content;
+
+        } catch (\Exception $e) {
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
+
+            Log::error('OpenAI Provider - Generation failed (messages)', [
+                'error' => $e->getMessage(),
+                'model' => $model,
+            ]);
+
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.openai_failed',
+                    'OpenAI generation failed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'openai',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'temperature' => $temperature,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'message_count' => count($normalizedMessages),
+                        'error' => $e->getMessage(),
+                    ], fn ($v) => $v !== null)
+                );
+            }
+
+            throw $e;
+        }
+    }
+
     public function streamGenerate(string $prompt, array $options = []): Generator
     {
+        if (isset($options['messages']) && is_array($options['messages'])) {
+            return $this->streamGenerateMessages($options['messages'], $options);
+        }
+
         $model = $options['model'] ?? $this->model;
         $temperature = $options['temperature'] ?? $this->temperature;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
@@ -156,7 +271,7 @@ class OpenAIProvider implements AIProviderInterface
                     'messages' => [
                         [
                             'role' => 'system',
-                            'content' => 'You are an expert academic writer specializing in thesis and dissertation writing. Use consistent markdown formatting: **bold** for emphasis, *italic* for emphasis, ## for headings, ### for subheadings, - for bullet points, 1. for numbered lists. Always use proper markdown syntax.',
+                            'content' => self::DEFAULT_SYSTEM_PROMPT,
                         ],
                         [
                             'role' => 'user',
@@ -352,6 +467,206 @@ class OpenAIProvider implements AIProviderInterface
         if ($lastException) {
             throw $lastException;
         }
+    }
+
+    public function streamGenerateMessages(array $messages, array $options = []): Generator
+    {
+        $model = $options['model'] ?? $this->model;
+        $temperature = $options['temperature'] ?? $this->temperature;
+        $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
+        $feature = $options['feature'] ?? null;
+        $userId = $options['user_id'] ?? null;
+        $startedAt = hrtime(true);
+
+        $normalizedMessages = $this->normalizeMessages($messages);
+
+        // Retry configuration for stream connection errors
+        $maxRetries = 3;
+        $retryDelay = 2; // seconds, will increase exponentially
+
+        Log::info('OpenAI Provider - Starting stream generation (messages)', [
+            'model' => $model,
+            'message_count' => count($normalizedMessages),
+            'temperature' => $temperature,
+            'max_tokens' => $maxTokens,
+        ]);
+
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $stream = OpenAI::chat()->createStreamed([
+                    'model' => $model,
+                    'messages' => $normalizedMessages,
+                    'temperature' => $temperature,
+                    'max_tokens' => $maxTokens,
+                    'stream' => true,
+                ]);
+
+                $totalChunks = 0;
+                $totalContent = '';
+                $promptTokens = 0;
+
+                foreach ($stream as $response) {
+                    $content = $response->choices[0]->delta->content ?? '';
+
+                    if (! empty($content)) {
+                        $totalChunks++;
+                        $totalContent .= $content;
+
+                        Log::debug('OpenAI Provider - Stream chunk (messages)', [
+                            'chunk_number' => $totalChunks,
+                            'chunk_length' => strlen($content),
+                            'total_length' => strlen($totalContent),
+                            'word_count' => str_word_count($totalContent),
+                        ]);
+
+                        yield $content;
+                    }
+
+                    if (isset($response->choices[0]->finish_reason)) {
+                        $finishReason = $response->choices[0]->finish_reason;
+                        if ($finishReason === 'stop' || $finishReason === 'length') {
+                            break;
+                        }
+                    }
+                }
+
+                Log::info('OpenAI Provider - Stream completed (messages)', [
+                    'total_chunks' => $totalChunks,
+                    'final_content_length' => strlen($totalContent),
+                    'final_word_count' => str_word_count($totalContent),
+                    'attempt' => $attempt,
+                ]);
+
+                $approxTokens = (int) round(str_word_count($totalContent) * 1.3);
+                $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
+                app(AIUsageLogger::class)->log(
+                    $userId,
+                    $feature,
+                    $model,
+                    $promptTokens,
+                    $approxTokens,
+                    null,
+                    ['approx_stream_tokens' => true, 'message_envelope' => true]
+                );
+
+                if (config('activity.ai_provider_calls', true)) {
+                    ActivityLog::record(
+                        'ai.call.openai_stream',
+                        'OpenAI stream completed',
+                        null,
+                        $userId ? (int) $userId : null,
+                        array_filter([
+                            'provider' => 'openai',
+                            'feature' => $feature,
+                            'model' => $model,
+                            'temperature' => $temperature,
+                            'max_tokens' => $maxTokens,
+                            'duration_ms' => $durationMs,
+                            'message_count' => count($normalizedMessages),
+                            'content_length' => strlen($totalContent),
+                            'total_chunks' => $totalChunks,
+                            'tokens' => [
+                                'prompt' => $promptTokens,
+                                'completion' => $approxTokens,
+                                'approx_stream_tokens' => true,
+                                'message_envelope' => true,
+                            ],
+                        ], fn ($v) => $v !== null)
+                    );
+                }
+
+                return;
+
+            } catch (\Exception $e) {
+                $lastException = $e;
+
+                $errorMessage = $e->getMessage();
+                $isRecoverableError =
+                    str_contains(strtolower($errorMessage), 'unable to read') ||
+                    str_contains(strtolower($errorMessage), 'stream') ||
+                    str_contains(strtolower($errorMessage), 'connection') ||
+                    str_contains(strtolower($errorMessage), 'timeout') ||
+                    str_contains(strtolower($errorMessage), 'reset') ||
+                    str_contains(strtolower($errorMessage), 'broken pipe') ||
+                    str_contains(strtolower($errorMessage), 'network') ||
+                    $e instanceof \GuzzleHttp\Exception\ConnectException ||
+                    $e instanceof \GuzzleHttp\Exception\RequestException;
+
+                if ($isRecoverableError && $attempt < $maxRetries) {
+                    $delay = $retryDelay * pow(2, $attempt - 1);
+                    Log::warning("OpenAI Provider - Stream connection error (messages), retrying in {$delay}s", [
+                        'error' => $errorMessage,
+                        'error_class' => get_class($e),
+                        'model' => $model,
+                        'attempt' => $attempt,
+                        'max_retries' => $maxRetries,
+                        'next_delay' => $delay,
+                    ]);
+                    sleep($delay);
+                    continue;
+                }
+
+                Log::error('OpenAI Provider - Stream generation failed (messages)', [
+                    'error' => $errorMessage,
+                    'error_class' => get_class($e),
+                    'model' => $model,
+                    'attempt' => $attempt,
+                    'max_retries' => $maxRetries,
+                ]);
+
+                yield "\n\n❌ **Generation Error**\n\nError generating content with OpenAI: " . $errorMessage . "\n\n";
+                throw $e;
+            }
+        }
+
+        if ($lastException) {
+            throw $lastException;
+        }
+
+        yield "\n\n❌ **Generation Error**\n\nError generating content with OpenAI.\n\n";
+        throw new \Exception('OpenAI stream generation failed');
+    }
+
+    private function normalizeMessages(array $messages): array
+    {
+        $normalized = [];
+
+        foreach ($messages as $msg) {
+            if (! is_array($msg)) {
+                continue;
+            }
+
+            $role = (string) ($msg['role'] ?? '');
+            $content = (string) ($msg['content'] ?? '');
+
+            if ($role === '' || $content === '') {
+                continue;
+            }
+
+            $normalized[] = [
+                'role' => $role,
+                'content' => $content,
+            ];
+        }
+
+        $hasSystem = false;
+        foreach ($normalized as $m) {
+            if (($m['role'] ?? null) === 'system') {
+                $hasSystem = true;
+                break;
+            }
+        }
+
+        if (! $hasSystem) {
+            array_unshift($normalized, [
+                'role' => 'system',
+                'content' => self::DEFAULT_SYSTEM_PROMPT,
+            ]);
+        }
+
+        return $normalized;
     }
 
     public function isAvailable(): bool

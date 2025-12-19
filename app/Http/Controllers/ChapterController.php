@@ -9,6 +9,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatFileUpload;
 use App\Models\Project;
 use App\Services\AIContentGenerator;
+use App\Services\AI\SystemPromptService;
 use App\Services\ChapterReviewService;
 use App\Services\DocumentAnalysisService;
 use App\Services\FacultyStructureService;
@@ -40,7 +41,8 @@ class ChapterController extends Controller
         private DocumentAnalysisService $documentService,
         private ProjectTypeDetector $projectTypeDetector,
         private FacultyStructureService $facultyStructureService,
-        private PromptRouter $promptRouter
+        private PromptRouter $promptRouter,
+        private SystemPromptService $systemPromptService
     ) {
         $this->aiGenerator = $aiGenerator;
         $this->paperService = $paperService;
@@ -110,10 +112,12 @@ class ChapterController extends Controller
         set_time_limit(600);
         ini_set('max_execution_time', 600);
 
-        // For streaming requests, don't block on paper collection
-        // Papers should already be collected when user reaches chapter editor
-        Log::info('STREAM - Skipping paper collection check for streaming request', [
+        // Streaming requests should not start until verified papers are available.
+        // The frontend should have kicked off paper collection, but we also guard
+        // here to avoid races where prompts are built before papers are stored.
+        Log::info('STREAM - Preflight paper collection status', [
             'project_id' => $project->id,
+            'paper_collection_status' => $project->paper_collection_status,
             'generation_type' => $request->input('generation_type'),
         ]);
 
@@ -123,6 +127,45 @@ class ChapterController extends Controller
             'selected_text' => 'sometimes|string|max:1000',
             'style' => 'sometimes|string',
         ]);
+
+        if (in_array($validated['generation_type'], ['single', 'progressive', 'section'], true)) {
+            $waitSeconds = 20;
+            $start = microtime(true);
+            while (true) {
+                $project->refresh();
+                $hasRecentPapers = $project->collectedPapers()->recent()->exists();
+
+                if ($hasRecentPapers) {
+                    break;
+                }
+
+                if ($project->paper_collection_status !== 'collecting_papers') {
+                    break;
+                }
+
+                if ((microtime(true) - $start) >= $waitSeconds) {
+                    break;
+                }
+
+                usleep(250_000); // 250ms
+            }
+
+            $project->refresh();
+            $hasRecentPapers = $project->collectedPapers()->recent()->exists();
+
+            if (! $hasRecentPapers) {
+                // If collection is still running, tell the client to wait.
+                if ($project->paper_collection_status === 'collecting_papers') {
+                    abort(423, 'Verified source collection is still in progress. Please wait for it to complete, then retry generation.');
+                }
+
+                // If collection failed or never started, generation can still proceed, but citations will be constrained.
+                Log::warning('STREAM - No recent verified papers available for prompt injection', [
+                    'project_id' => $project->id,
+                    'paper_collection_status' => $project->paper_collection_status,
+                ]);
+            }
+        }
 
         // Get or create chapter
         $chapter = Chapter::firstOrCreate(
@@ -318,13 +361,19 @@ class ChapterController extends Controller
                         'generation_id' => $generationId,
                     ]);
 
-                    $fullContent = $this->generateStreamingContentSimplified($prompt, $chapterType, $targetWordCount, $maxWordCount, $chapter, $generationId);
+                    $fullContent = $this->generateStreamingContentSimplified($project, $prompt, $chapterType, $targetWordCount, $maxWordCount);
                     $wordCount = str_word_count($fullContent);
                 } else {
                     // Use regular streaming generation for other types
                     $chunkCount = 0;
                     $wordCount = 0;
-                    foreach ($this->aiGenerator->generateOptimized($prompt, $chapterType) as $chunk) {
+                    $systemPrompt = $this->getSystemPromptForGenerationType($project, (string) $request->input('generation_type'));
+                    $messages = [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user', 'content' => $prompt],
+                    ];
+
+                    foreach ($this->aiGenerator->generateOptimizedMessages($messages, $chapterType) as $chunk) {
                         $chunkCount++;
 
                         if ($isSecondGeneration) {
@@ -602,7 +651,11 @@ class ChapterController extends Controller
 
         try {
             $prompt = $this->buildRephrasePrompt($project, $validated['text'], $style);
-            $text = trim($this->aiGenerator->generate($prompt, [
+            $messages = [
+                ['role' => 'system', 'content' => $this->getSystemPromptForGenerationType($project, 'rephrase')],
+                ['role' => 'user', 'content' => $prompt],
+            ];
+            $text = trim($this->aiGenerator->generateMessages($messages, [
                 'temperature' => 0.8,
                 'max_tokens' => 900,
             ]));
@@ -656,7 +709,11 @@ class ChapterController extends Controller
 
         try {
             $prompt = $this->buildExpandPrompt($project, $validated['text'], $chapter);
-            $text = trim($this->aiGenerator->generate($prompt, [
+            $messages = [
+                ['role' => 'system', 'content' => $this->getSystemPromptForGenerationType($project, 'expand')],
+                ['role' => 'user', 'content' => $prompt],
+            ];
+            $text = trim($this->aiGenerator->generateMessages($messages, [
                 'temperature' => 0.7,
                 'max_tokens' => 1100,
             ]));
@@ -691,6 +748,17 @@ class ChapterController extends Controller
             ob_flush();
         }
         flush();
+    }
+
+    private function getSystemPromptForGenerationType(Project $project, string $generationType): string
+    {
+        return match ($generationType) {
+            'rephrase', 'expand', 'improve' => $this->systemPromptService->getEditorSystemPrompt(),
+            default => $this->systemPromptService->getChapterSystemPrompt(
+                $project,
+                $this->promptRouter->getSystemPrompt($project)
+            ),
+        };
     }
 
     /**
@@ -1052,8 +1120,8 @@ class ChapterController extends Controller
      */
     private function generateSingleChapter(Project $project, int $chapterNumber): Chapter
     {
-        $prompt = $this->buildChapterPrompt($project, $chapterNumber);
-        $aiContent = $this->callAiService($prompt);
+        $prompt = $this->buildSinglePrompt($project, $chapterNumber);
+        $aiContent = $this->callAiService($project, $prompt);
 
         $chapter = Chapter::updateOrCreate([
             'project_id' => $project->id,
@@ -1090,7 +1158,7 @@ class ChapterController extends Controller
         $targetWordCount = $targetWordCount ?? $this->getChapterWordCount($project, $chapterNumber);
 
         // Use word count validation to ensure we reach at least 90% of target
-        $aiContent = $this->callAiServiceWithWordTarget($prompt, $targetWordCount);
+        $aiContent = $this->callAiServiceWithWordTarget($project, $prompt, $targetWordCount);
 
         $chapter = Chapter::updateOrCreate([
             'project_id' => $project->id,
@@ -1167,30 +1235,9 @@ Project Details:
             }
         }
 
-        $prompt .= "\n\nCRITICAL REQUIREMENTS:
-- TARGET WORD COUNT: EXACTLY {$targetWordCount} WORDS (This is mandatory - the chapter must be comprehensive and reach this word count)
-- Write in formal academic style appropriate for {$project->facultyRelation?->name} faculty
-- Include proper citations and references in APA format
-- Use clear headings and subheadings with substantial content under each
-- Ensure content is original, well-researched, and in-depth
-- Follow {$project->facultyRelation?->name} faculty conventions and standards
-- Provide detailed explanations, examples, and analysis
-- Each section should be thoroughly developed with multiple paragraphs
-
-WORD COUNT REQUIREMENTS:
-- The chapter MUST contain approximately {$targetWordCount} words
-- Do not cut the content short - develop each point thoroughly
-- Include comprehensive coverage of the topic with detailed analysis
-- Add relevant examples, case studies, and detailed explanations
-- Ensure academic depth and rigor throughout
-
-CITATION REQUIREMENTS:
-- Use only REAL, VERIFIABLE sources - never cite fake or fabricated references
-- Format all citations in proper APA style: (Author, Year) for in-text citations
-- If you're unsure about a source's accuracy or existence, mark it as [UNVERIFIED] instead of creating a fake citation
-- Only include citations when they genuinely support your arguments and content
-
-Focus on making this chapter comprehensive and academically rigorous according to {$project->facultyRelation?->name} faculty standards.";
+        $prompt .= "\n\nCHAPTER REQUIREMENT:\n";
+        $prompt .= "- Target word count: {$targetWordCount} words\n\n";
+        $prompt .= "Write the complete chapter content now. Follow the system instructions.";
 
         return $prompt;
     }
@@ -1245,17 +1292,33 @@ Focus on making this chapter comprehensive and academically rigorous according t
      * CALL AI SERVICE FOR CONTENT GENERATION
      * Mock implementation - replace with actual AI API
      */
-    private function callAiService(string $prompt): string
+    private function callAiService(Project $project, string $prompt, array $options = [], ?string $systemPrompt = null): string
     {
         try {
-            // Use the AIContentGenerator service to generate real content
-            Log::info('Generating real AI content for chapter', ['prompt_length' => strlen($prompt)]);
+            $systemPrompt = $systemPrompt ?? $this->systemPromptService->getChapterSystemPrompt(
+                $project,
+                $this->promptRouter->getSystemPrompt($project)
+            );
 
-            $response = $this->aiGenerator->generate($prompt, [
+            $messages = [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $prompt],
+            ];
+
+            $genOptions = array_merge([
                 'model' => 'gpt-4o',
                 'temperature' => 0.7,
                 'max_tokens' => 8000, // Increased for longer content
+            ], $options);
+
+            Log::info('Generating real AI content for chapter (message envelope)', [
+                'system_prompt_length' => strlen($systemPrompt),
+                'user_prompt_length' => strlen($prompt),
+                'message_count' => count($messages),
+                'model' => $genOptions['model'] ?? null,
             ]);
+
+            $response = $this->aiGenerator->generateMessages($messages, $genOptions);
 
             Log::info('AI content generated successfully', ['response_length' => strlen($response)]);
 
@@ -1264,6 +1327,7 @@ Focus on making this chapter comprehensive and academically rigorous according t
             Log::error('AI content generation failed', [
                 'error' => $e->getMessage(),
                 'prompt_length' => strlen($prompt),
+                'project_id' => $project->id,
             ]);
 
             // Fallback to a basic template instead of showing the prompt
@@ -1277,11 +1341,15 @@ Focus on making this chapter comprehensive and academically rigorous according t
      * Generate chapter content with target word count validation
      * Ensures at least 90% of target word count is reached
      */
-    public function callAiServiceWithWordTarget(string $prompt, int $targetWordCount): string
+    public function callAiServiceWithWordTarget(Project $project, string $prompt, int $targetWordCount): string
     {
         $minWordCount = intval($targetWordCount * 0.9); // 90% of target
         $maxAttempts = 3;
         $attempt = 1;
+        $systemPrompt = $this->systemPromptService->getChapterSystemPrompt(
+            $project,
+            $this->promptRouter->getSystemPrompt($project)
+        );
 
         Log::info('Starting AI generation with word count target', [
             'target_word_count' => $targetWordCount,
@@ -1291,7 +1359,7 @@ Focus on making this chapter comprehensive and academically rigorous according t
 
         while ($attempt <= $maxAttempts) {
             try {
-                $content = $this->callAiService($prompt);
+                $content = $this->callAiService($project, $prompt, [], $systemPrompt);
                 $wordCount = str_word_count(strip_tags($content));
 
                 Log::info("AI generation attempt {$attempt}", [
@@ -1337,7 +1405,7 @@ Focus on making this chapter comprehensive and academically rigorous according t
             'target_word_count' => $targetWordCount,
         ]);
 
-        return $this->callAiService($prompt);
+        return $this->callAiService($project, $prompt, [], $systemPrompt);
     }
 
     /**
@@ -1706,7 +1774,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Academic Level: {$project->type}\n\n";
 
         // Add collected papers for citation constraint
-        $prompt .= $this->getCollectedPapersForAI($project);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber);
 
         if ($previousChapters->isNotEmpty()) {
             $prompt .= "Previous Chapters Context:\n";
@@ -1720,39 +1788,11 @@ ORIGINAL PROMPT CONTEXT:
 
         $prompt .= $this->getFacultySpecificInstructions($project, $chapterNumber);
 
-        // Add comprehensive writing guidelines for depth and quality
-        // Calculate words per section dynamically based on target word count
         $targetWordCount = $this->getChapterWordCount($project, $chapterNumber);
-        $wordsPerSection = intval($targetWordCount / 3); // Assume 3 major sections typically
 
         $prompt .= "\n\n⚠️ CRITICAL LENGTH REQUIREMENT ⚠️\n";
         $prompt .= "TARGET: You MUST write AT LEAST {$targetWordCount} words for this ENTIRE chapter.\n";
-        $prompt .= "DO NOT STOP until you reach this word count with comprehensive, detailed content.\n\n";
-
-        $prompt .= "COMPREHENSIVE WRITING GUIDELINES:\n";
-        $prompt .= "1. Write with MAXIMUM DEPTH and SUBSTANCE - each section must be comprehensive and well-developed\n";
-        $prompt .= "2. Provide EXTENSIVE explanations, multiple examples, and thorough analysis in EVERY section\n";
-        $prompt .= "3. Each major section MUST be {$wordsPerSection}-".intval($wordsPerSection * 1.3)." words minimum (NOT 250-500)\n";
-        $prompt .= "4. Include relevant examples, case studies, or illustrations where appropriate\n";
-        $prompt .= "5. Elaborate on key points with thorough explanations and supporting details\n";
-        $prompt .= "6. Connect ideas between sections to create a cohesive narrative\n";
-        $prompt .= "7. Use transitional sentences to maintain flow between sections\n";
-        $prompt .= "8. Develop arguments progressively with clear reasoning and evidence\n";
-        $prompt .= "9. Avoid superficial treatment and dig deep into each topic discussed\n";
-        $prompt .= "10. Provide context and background for technical concepts\n\n";
-
-        // Add writing style constraints for Word document compatibility
-        $prompt .= "FORMATTING AND STYLE CONSTRAINTS:\n";
-        $prompt .= "IMPORTANT: Do NOT use dash (-) characters for bullet points in the chapter content. Instead use proper bullet symbols (•), numbered lists (1. 2. 3.), or lettered lists (a. b. c.) when listing items.\n";
-        $prompt .= "CRITICAL: Write in THIRD PERSON only. Do NOT use personal pronouns such as 'I', 'we', 'our', 'us', 'my', 'mine', 'myself', 'ourselves'. Instead use phrases like 'this study', 'the research', 'the analysis', 'the findings', 'the investigation', 'the examination', 'the author', or 'the researcher'.\n";
-        $prompt .= "Never use the & symbol in your content. Always write 'and' instead of '&'. Use full words rather than abbreviations with & symbols. When citing multiple authors, write 'Author A and Author B' not 'Author A & Author B'. Use spelled-out chapter numbers: 'CHAPTER ONE', 'CHAPTER TWO', 'CHAPTER THREE', etc. instead of 'CHAPTER 1', 'CHAPTER 2'.\n";
-        $prompt .= "Use proper academic section numbering: {$chapterNumber}.1, {$chapterNumber}.2, {$chapterNumber}.3, etc. Include numbered subsections where appropriate: {$chapterNumber}.1.1, {$chapterNumber}.1.2, etc. Format headings as: '{$chapterNumber}.1 Section Title', '{$chapterNumber}.2 Section Title'.\n\n";
-
-        $prompt .= "CITATION REQUIREMENTS:\n";
-        $prompt .= "- Use only REAL, VERIFIABLE sources - never cite fake or fabricated references\n";
-        $prompt .= "- Format all citations in proper APA style: (Author, Year) for in-text citations\n";
-        $prompt .= "- If you're unsure about a source's accuracy or existence, mark it as [UNVERIFIED] instead of creating a fake citation\n";
-        $prompt .= "- Only include citations when they genuinely support your arguments and content\n";
+        $prompt .= "DO NOT STOP until you reach this word count.\n\n";
 
         // Add context-aware content generation instructions based on project type
         $prompt .= $this->projectTypeDetector->getContextualInstructions($project, $chapterNumber);
@@ -1773,26 +1813,15 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Course: {$project->course}\n\n";
 
         // Add collected papers for citation constraint
-        $prompt .= $this->getCollectedPapersForAI($project);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber);
 
         $prompt .= $this->getChapterSpecificInstructions($chapterNumber);
 
-        // Add writing style constraints for Word document compatibility
-        $prompt .= "\n\nIMPORTANT WRITING CONSTRAINTS:\n";
-        $prompt .= "- CRITICAL: Write in THIRD PERSON only. Do NOT use personal pronouns such as 'I', 'we', 'our', 'us', 'my', 'mine', 'myself', 'ourselves'. Instead use phrases like 'this study', 'the research', 'the analysis', 'the findings', 'the investigation', 'the examination', 'the author', or 'the researcher'.\n";
-        $prompt .= "- Never use the & symbol in your content. Always write 'and' instead of '&'\n";
-        $prompt .= "- Use full words rather than abbreviations with & symbols\n";
-        $prompt .= "- When citing multiple authors, write 'Author A and Author B' not 'Author A & Author B'\n";
-        $prompt .= "- Use spelled-out chapter numbers: 'CHAPTER ONE', 'CHAPTER TWO', 'CHAPTER THREE', etc. instead of 'CHAPTER 1', 'CHAPTER 2'\n";
-        $prompt .= "- Use proper academic section numbering: {$chapterNumber}.1, {$chapterNumber}.2, {$chapterNumber}.3, etc.\n";
-        $prompt .= "- Include numbered subsections where appropriate: {$chapterNumber}.1.1, {$chapterNumber}.1.2, etc.\n";
-        $prompt .= "- Format headings as: '{$chapterNumber}.1 Section Title', '{$chapterNumber}.2 Section Title'\n\n";
+        // Add context-aware content generation instructions based on project type
+        $prompt .= $this->projectTypeDetector->getContextualInstructions($project, $chapterNumber);
 
-        $prompt .= "CITATION REQUIREMENTS:\n";
-        $prompt .= "- Use only REAL, VERIFIABLE sources - never cite fake or fabricated references\n";
-        $prompt .= "- Format all citations in proper APA style: (Author, Year) for in-text citations\n";
-        $prompt .= "- If you're unsure about a source's accuracy or existence, mark it as [UNVERIFIED] instead of creating a fake citation\n";
-        $prompt .= "- Only include citations when they genuinely support your arguments and content\n";
+        // Add intelligent prompt system instructions (faculty-specific templates, tables, diagrams)
+        $prompt .= $this->promptRouter->buildPrompt($project, $chapterNumber);
 
         return $prompt;
     }
@@ -1806,7 +1835,7 @@ ORIGINAL PROMPT CONTEXT:
         $chapterType = $this->getChapterType($chapter->chapter_number);
         $improvementChecklist = $this->getImprovementChecklist($chapterType);
 
-        $prompt = "You are an expert academic editor tasked with improving Chapter {$chapter->chapter_number}: {$chapterTitle}.\n\n";
+        $prompt = "Improve Chapter {$chapter->chapter_number}: {$chapterTitle}.\n\n";
 
         $prompt .= "PROJECT CONTEXT:\n";
         $prompt .= "Topic: {$project->topic}\n";
@@ -1848,7 +1877,7 @@ ORIGINAL PROMPT CONTEXT:
 
     private function buildRephrasePrompt(Project $project, string $selectedText, string $style): string
     {
-        $prompt = "You are an expert academic editor specializing in text rephrasing and style enhancement.\n\n";
+        $prompt = "Rephrase the selected text.\n\n";
 
         $prompt .= "PROJECT CONTEXT:\n";
         $prompt .= "Topic: {$project->topic}\n";
@@ -1891,7 +1920,7 @@ ORIGINAL PROMPT CONTEXT:
 
     private function buildExpandPrompt(Project $project, string $selectedText, Chapter $chapter): string
     {
-        $prompt = "You are an expert academic writer specializing in text expansion and content development.\n\n";
+        $prompt = "Expand the selected text.\n\n";
 
         $prompt .= "PROJECT CONTEXT:\n";
         $prompt .= "Topic: {$project->topic}\n";
@@ -3344,7 +3373,7 @@ ORIGINAL PROMPT CONTEXT:
     /**
      * Get collected papers formatted for AI consumption
      */
-    private function getCollectedPapersForAI(Project $project): string
+    private function getCollectedPapersForAI(Project $project, ?int $chapterNumber = null, ?string $sectionType = null): string
     {
         $papers = $project->collectedPapers()
             ->recent()
@@ -3355,12 +3384,79 @@ ORIGINAL PROMPT CONTEXT:
             return "\n## CITATION CONSTRAINT:\nNo verified papers available. Please write the chapter without citations and note that citations need to be added manually.\n\n";
         }
 
-        $papersText = "\n## CITATION GUARANTEE - VERIFIED PAPERS ONLY:\n";
-        $papersText .= "You MUST ONLY cite from these verified papers. Do not invent or reference any other sources.\n\n";
-        $papersText .= "### AVAILABLE PAPERS FOR CITATION:\n\n";
+        $chapterType = null;
+        $chapterTitle = null;
+        $sectionTitle = null;
+        if ($chapterNumber !== null) {
+            $chapterType = $this->getChapterType($chapterNumber);
+            $chapterTitle = $this->getDefaultChapterTitle($chapterNumber);
+        }
+        if ($sectionType !== null) {
+            $sectionTitle = $this->getSectionTitle($sectionType);
+        }
 
-        foreach ($papers as $index => $paper) {
+        $maxPapers = (int) config('ai.prompt_injection.max_papers', 12);
+        if (is_string($chapterType) && $chapterType !== '') {
+            $byType = config("ai.prompt_injection.max_papers_by_chapter_type.{$chapterType}", null);
+            if ($byType !== null) {
+                $maxPapers = (int) $byType;
+            }
+        }
+        $maxPapers = max(1, min(60, $maxPapers));
+
+        $abstractMaxChars = (int) config('ai.prompt_injection.abstract_max_chars', 300);
+        $abstractMaxChars = max(0, min(2000, $abstractMaxChars));
+
+        $queryTextParts = [
+            $project->topic,
+            $project->field_of_study,
+            $chapterTitle,
+            $chapterType,
+            $sectionTitle,
+        ];
+        $queryText = implode(' ', array_filter($queryTextParts, fn ($p) => is_string($p) && trim($p) !== ''));
+        $queryTokens = $this->tokenizeForRelevance($queryText);
+
+        $ranked = $papers->map(function ($paper) use ($queryTokens) {
+            $text = trim(($paper->title ?? '').' '.($paper->abstract ?? ''));
+            $paperTokens = $this->tokenizeForRelevance($text);
+            $overlap = 0;
+            foreach ($queryTokens as $token => $_) {
+                if (isset($paperTokens[$token])) {
+                    $overlap++;
+                }
+            }
+            $overlapScore = count($queryTokens) > 0 ? ($overlap / count($queryTokens)) : 0.0;
+            $quality = (float) ($paper->quality_score ?? 0.0);
+            $score = ($overlapScore * 0.7) + ($quality * 0.3);
+
+            $paper->_prompt_relevance_score = $score;
+            $paper->_prompt_overlap_score = $overlapScore;
+            $paper->_prompt_overlap_count = $overlap;
+
+            return $paper;
+        })
+            ->sortByDesc(fn ($paper) => (float) ($paper->_prompt_relevance_score ?? 0.0))
+            ->take($maxPapers)
+            ->values();
+
+        $papersText = "\n## VERIFIED SOURCES (CITATION WHITELIST):\n";
+        $papersText .= "Citations are allowed ONLY from the list below (selected for relevance to this chapter/section).\n";
+        $papersText .= "Do not cite anything outside this list.\n\n";
+        $papersText .= "### AVAILABLE PAPERS:\n\n";
+
+        $allowedCitations = [];
+
+        foreach ($ranked as $index => $paper) {
             $num = $index + 1;
+            $firstAuthorLastName = $this->extractFirstAuthorLastName((string) $paper->authors);
+            $year = is_numeric($paper->year) ? (int) $paper->year : null;
+            $allowedCitation = null;
+            if ($firstAuthorLastName && $year) {
+                $allowedCitation = "({$firstAuthorLastName}, {$year})";
+                $allowedCitations[] = $allowedCitation;
+            }
+
             $papersText .= "**Paper {$num}:**\n";
             $papersText .= "- Title: {$paper->title}\n";
             $papersText .= "- Authors: {$paper->authors}\n";
@@ -3372,26 +3468,94 @@ ORIGINAL PROMPT CONTEXT:
             }
 
             if ($paper->abstract) {
-                $abstract = strlen($paper->abstract) > 300
-                    ? substr($paper->abstract, 0, 300).'...'
-                    : $paper->abstract;
+                $abstract = (string) $paper->abstract;
+                if ($abstractMaxChars > 0 && strlen($abstract) > $abstractMaxChars) {
+                    $abstract = substr($abstract, 0, $abstractMaxChars).'...';
+                }
                 $papersText .= "- Abstract: {$abstract}\n";
             }
 
             $papersText .= '- Quality Score: '.number_format($paper->quality_score, 2)."\n";
             $papersText .= "- Source: {$paper->source_api}\n\n";
+
+            if ($allowedCitation) {
+                $papersText .= "- Allowed in-text citation (use EXACTLY): {$allowedCitation}\n\n";
+            } else {
+                $papersText .= "- Allowed in-text citation: (NOT AVAILABLE - missing author/year)\n\n";
+            }
         }
 
-        $papersText .= "### CITATION RULES:\n";
-        $papersText .= "1. ONLY cite papers from the list above\n";
-        $papersText .= "2. Use proper academic citation format (APA style)\n";
-        $papersText .= "3. When citing, use the exact title and author names as provided\n";
-        $papersText .= "4. Include in-text citations like (Author, Year) throughout the chapter\n";
-        $papersText .= "5. If you cannot find relevant papers from this list for a specific point, write the point without citation and note '[Citation needed]'\n";
-        $papersText .= "6. Do NOT fabricate or reference any sources not in this verified list\n\n";
-        $papersText .= 'Total verified papers available: '.$papers->count()."\n\n";
+        $papersText .= "### STRICT CITATION POLICY:\n";
+        $papersText .= "1. You may ONLY use in-text citations that EXACTLY match one of the allowed citation strings shown above.\n";
+        $papersText .= "2. Use ONLY the format (FirstAuthorLastName, Year). Do NOT use 'et al.' and do NOT include titles, DOIs, or URLs in citations.\n";
+        $papersText .= "3. If you cannot support a sentence with an allowed in-text citation, write the sentence without a citation and add: [Citation needed]\n";
+        $papersText .= "4. Do NOT create a References/Bibliography section in this chapter.\n";
+        $papersText .= "5. Never invent author names, years, DOIs, URLs, journals, or paper titles.\n\n";
+        $papersText .= 'Total verified papers available for this project: '.$papers->count()."\n";
+        $papersText .= 'Papers injected into this prompt: '.$ranked->count()."\n";
+        $papersText .= 'Total allowed in-text citations: '.count($allowedCitations)."\n\n";
 
         return $papersText;
+    }
+
+    /**
+     * Tokenize text for simple relevance scoring.
+     * Returns an associative array for O(1) membership checks.
+     */
+    private function tokenizeForRelevance(string $text): array
+    {
+        $text = strtolower($text);
+        $text = preg_replace('/[^a-z0-9\\s]+/', ' ', $text);
+        $text = preg_replace('/\\s+/', ' ', trim((string) $text));
+        if ($text === '') {
+            return [];
+        }
+
+        $stop = [
+            'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'using', 'use',
+            'study', 'research', 'analysis', 'based', 'system', 'framework', 'approach',
+            'between', 'among', 'within', 'across', 'effects', 'effect', 'impact',
+        ];
+        $stopSet = array_fill_keys($stop, true);
+
+        $tokens = [];
+        foreach (explode(' ', $text) as $token) {
+            $token = trim($token);
+            if ($token === '' || strlen($token) < 3) {
+                continue;
+            }
+            if (isset($stopSet[$token])) {
+                continue;
+            }
+            $tokens[$token] = true;
+        }
+
+        return $tokens;
+    }
+
+    private function extractFirstAuthorLastName(string $authors): ?string
+    {
+        $authors = trim($authors);
+        if ($authors === '' || strcasecmp($authors, 'Unknown Authors') === 0) {
+            return null;
+        }
+
+        // Take the first author (split on comma) and grab the last word as last name.
+        $first = trim(explode(',', $authors)[0] ?? '');
+        if ($first === '') {
+            return null;
+        }
+
+        $first = preg_replace('/\s+/', ' ', $first);
+        $parts = array_values(array_filter(explode(' ', $first), fn ($p) => trim($p) !== ''));
+        if (empty($parts)) {
+            return null;
+        }
+
+        $lastName = preg_replace("/[^A-Za-z\\-']+/", '', end($parts));
+        $lastName = trim((string) $lastName);
+
+        return $lastName !== '' ? $lastName : null;
     }
 
     /**
@@ -3437,13 +3601,13 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "- Do not add chapter titles, headings, or structural elements unless contextually appropriate\n\n";
 
         // Add collected papers for citation constraint
-        $prompt .= $this->getCollectedPapersForAI($project);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber);
 
         $prompt .= "CRITICAL REQUIREMENTS:\n";
         $prompt .= "- Never use the & symbol - always write 'and'\n";
         $prompt .= "- Use only REAL, VERIFIABLE sources for citations\n";
         $prompt .= "- Format citations as (Author, Year)\n";
-        $prompt .= "- Mark uncertain sources as [UNVERIFIED]\n";
+        $prompt .= "- If you cannot support a point with an allowed in-text citation from the verified list, write: [Citation needed]\n";
         $prompt .= "- Continue the content naturally without repetition\n";
         $prompt .= "- Focus on adding value to the existing academic argument\n\n";
 
@@ -3486,7 +3650,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= $this->getChapterSectionInstructions($chapterNumber, $sectionType);
 
         // Add collected papers for citation constraint - CRITICAL FOR ACCURACY
-        $prompt .= $this->getCollectedPapersForAI($project);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber, $sectionType);
 
         $prompt .= "WRITING REQUIREMENTS:\n";
         $prompt .= "- Write this as section {$sectionNumber} {$sectionTitle}\n";
@@ -3497,7 +3661,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "- Format citations in APA style: (Author, Year)\n";
         $prompt .= "- Never use the & symbol - always write 'and'\n";
         $prompt .= "- Use only REAL, VERIFIABLE sources from the provided list\n";
-        $prompt .= "- Mark uncertain sources as [UNVERIFIED] rather than fabricating\n";
+        $prompt .= "- If you cannot support a point with an allowed in-text citation from the verified list, write: [Citation needed]\n";
         $prompt .= "- Write content that flows naturally with existing chapter content\n";
         $prompt .= "- Focus specifically on the {$sectionTitle} aspect of the chapter\n\n";
 
@@ -4822,6 +4986,7 @@ ORIGINAL PROMPT CONTEXT:
      * Generate streaming content with simplified single-pass approach for progressive chapters
      */
     private function generateStreamingContentSimplified(
+        Project $project,
         string $prompt,
         string $chapterType,
         int $targetWordCount,
@@ -4835,8 +5000,14 @@ ORIGINAL PROMPT CONTEXT:
             'maximum_word_count' => $maxWordCount,
         ]);
 
+        $systemPrompt = $this->promptRouter->getSystemPrompt($project);
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $prompt],
+        ];
+
         // Stream the generation and collect content with smart stopping
-        foreach ($this->aiGenerator->generateOptimized($prompt, $chapterType) as $chunk) {
+        foreach ($this->aiGenerator->generateOptimizedMessages($messages, $chapterType) as $chunk) {
             $chunkCount++;
             $fullContent .= $chunk;
             $wordCount = str_word_count($fullContent);

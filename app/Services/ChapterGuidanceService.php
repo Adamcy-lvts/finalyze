@@ -8,7 +8,6 @@ use App\Models\FacultyStructure;
 use App\Models\Project;
 use App\Models\ProjectChapterGuidance;
 use Illuminate\Support\Facades\Log;
-use OpenAI\Laravel\Facades\OpenAI;
 
 class ChapterGuidanceService
 {
@@ -74,17 +73,18 @@ class ChapterGuidanceService
         $prompt = $this->buildGuidancePrompt($project, $chapterNumber, $chapterTitle);
 
         try {
-            $response = OpenAI::chat()->create([
+            $messages = [
+                ['role' => 'system', 'content' => $this->getSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ];
+
+            $content = trim((string) $this->aiGenerator->generateMessages($messages, [
                 'model' => 'gpt-4o-mini',
-                'messages' => [
-                    ['role' => 'system', 'content' => $this->getSystemPrompt()],
-                    ['role' => 'user', 'content' => $prompt],
-                ],
                 'temperature' => 0.3,
                 'max_tokens' => 2000,
-            ]);
-
-            $content = trim($response->choices[0]->message->content);
+                'feature' => 'chapter_guidance',
+                'user_id' => $project->user_id,
+            ]));
 
             Log::debug('AI response content', [
                 'project_id' => $project->id,

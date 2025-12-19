@@ -23,55 +23,28 @@ class PromptBuilder
     ): string {
         $prompt = '';
 
-        // 1. Add project context
-        $prompt .= $this->buildProjectContext($project, $chapterNumber);
-
-        // 2. Add chapter-specific instructions from template
+        // 1. Add chapter-specific instructions (includes project context in templates)
         $prompt .= $template->buildChapterPrompt($project, $chapterNumber, $requirements);
 
-        // 3. Add table generation instructions with mock data
+        // 2. Add table generation instructions with mock data
         $prompt .= $this->buildTableSection($requirements, $project, $chapterNumber);
 
-        // 4. Add diagram generation/placeholder instructions
+        // 3. Add diagram generation/placeholder instructions
         $prompt .= $this->buildDiagramSection($requirements, $project, $chapterNumber);
 
-        // 5. Add calculation instructions
+        // 4. Add calculation instructions
         $prompt .= $this->buildCalculationSection($requirements);
 
-        // 6. Add code generation instructions
+        // 5. Add code generation instructions
         $prompt .= $this->buildCodeSection($requirements);
 
-        // 7. Add tool recommendations
+        // 6. Add tool recommendations
         $prompt .= $this->buildToolRecommendations($requirements);
 
-        // 8. Add final formatting reminders
+        // 7. Add final formatting reminders
         $prompt .= $this->buildFinalReminders($project, $chapterNumber);
 
         return $prompt;
-    }
-
-    /**
-     * Build project context section
-     */
-    private function buildProjectContext(Project $project, int $chapterNumber): string
-    {
-        $targetWords = $this->getTargetWordCount($project, $chapterNumber);
-
-        return <<<CONTEXT
-You are writing Chapter {$chapterNumber} of an academic project.
-
-PROJECT DETAILS:
-- Topic: {$project->topic}
-- Faculty: {$project->faculty}
-- Department: {$project->department}
-- Course: {$project->course}
-- Field of Study: {$project->field_of_study}
-- Academic Level: {$project->type}
-- University: {$project->university}
-
-TARGET WORD COUNT: {$targetWords} words (THIS IS MANDATORY)
-
-CONTEXT;
     }
 
     /**
@@ -313,32 +286,12 @@ CONTEXT;
         return <<<REMINDERS
 
 
-═══════════════════════════════════════════════════════════════
-⚠️ FINAL REMINDERS - READ CAREFULLY
-═══════════════════════════════════════════════════════════════
-
-1. WORD COUNT: You MUST write at least {$targetWords} words. Do NOT stop early.
-
-2. THIRD PERSON: NEVER use "I", "we", "my", "our". Use:
-   • "This study", "The research", "The analysis"
-   • "The findings indicate", "The results show"
-
-3. CITATIONS: Use APA format (Author, Year). Mark uncertain sources as [UNVERIFIED].
-
-4. FORMATTING:
-   • Section numbers: {$chapterNumber}.1, {$chapterNumber}.2, {$chapterNumber}.1.1
-   • Never use "&" - always write "and"
-   • Use bullets (•) not dashes (-)
-
-5. TABLES: Reference every table in the text BEFORE it appears.
-
-6. SAMPLE DATA: All generated data must have the warning:
-   "⚠️ THIS IS SAMPLE DATA - Replace with your actual data"
-
-7. PLACEHOLDERS: Include detailed creation instructions for diagrams/figures
-   the user must create themselves.
-
-NOW WRITE THE COMPLETE CHAPTER:
+FINAL OUTPUT RULES:
+1. WORD COUNT: Write at least {$targetWords} words. Do not stop early.
+2. FORMAT: Use section numbers like {$chapterNumber}.1, {$chapterNumber}.2, {$chapterNumber}.1.1
+3. TABLES/FIGURES: Reference each table/figure in the text before it appears.
+4. NO META: Do not output instructions, warnings, or any AI commentary; output only the chapter content.
+5. NO REFERENCES LIST: Do not add a "References" section at the end of this chapter.
 
 REMINDERS;
     }

@@ -35,6 +35,21 @@ class CollectPapersForProject implements ShouldQueue
         try {
             Log::info("Starting paper collection for project: {$this->project->title}");
 
+            if ($this->forceRefresh) {
+                Log::info('Force refresh enabled; clearing existing papers and cache', [
+                    'project_id' => $this->project->id,
+                ]);
+
+                $this->project->collectedPapers()->delete();
+
+                $academicLevel = $this->project->category?->academic_levels[0] ?? 'undergraduate';
+                $cacheKey = 'papers_collection_'.md5(
+                    ($this->project->topic ?? '').'_'.($this->project->field_of_study ?? 'general').'_'.$academicLevel
+                );
+                Cache::forget($cacheKey);
+                Cache::forget("paper_collection_status_{$this->project->id}");
+            }
+
             // Initialize progress tracking
             $this->updateSourceProgress('initializing', 'Starting source collection from academic databases...', 0, []);
 
@@ -83,9 +98,14 @@ class CollectPapersForProject implements ShouldQueue
     protected function collectPapersWithProgress(PaperCollectionService $paperService): \Illuminate\Support\Collection
     {
         $allPapers = collect();
-        $sources = ['semantic_scholar', 'openalex', 'crossref', 'pubmed'];
+        $sources = ['semantic_scholar', 'openalex', 'arxiv', 'crossref'];
+        if ($this->isMedicalField($this->project->field_of_study ?? '')) {
+            $sources[] = 'pubmed';
+        }
         $baseProgress = 10; // Start at 10%
-        $progressPerSource = 20; // 20% per source (80% total for collection)
+        $collectionBudget = 70; // 10% -> 80%
+        $progressPerSource = max(5, (int) floor($collectionBudget / max(1, count($sources))));
+        $sourcesCompleted = [];
 
         foreach ($sources as $index => $source) {
             $currentProgress = $baseProgress + ($index * $progressPerSource);
@@ -96,19 +116,22 @@ class CollectPapersForProject implements ShouldQueue
                     "Searching {$this->getSourceDisplayName($source)}...",
                     $currentProgress,
                     $allPapers->take(3)->toArray(),
-                    $source
+                    $source,
+                    $sourcesCompleted
                 );
 
                 // Collect from this source
                 $sourcePapers = $this->collectFromSource($paperService, $source);
                 $allPapers = $allPapers->merge($sourcePapers);
+                $sourcesCompleted[] = $source;
 
                 // Update progress after source completion
                 $this->updateSourceProgress('collecting',
                     "Found {$sourcePapers->count()} sources from {$this->getSourceDisplayName($source)}",
-                    $currentProgress + ($progressPerSource * 0.8),
+                    min(80, $currentProgress + (int) floor($progressPerSource * 0.8)),
                     $allPapers->take(5)->toArray(),
-                    $source
+                    $source,
+                    $sourcesCompleted
                 );
 
                 Log::info("Collected {$sourcePapers->count()} papers from {$source} for project: {$this->project->title}");
@@ -118,9 +141,10 @@ class CollectPapersForProject implements ShouldQueue
 
                 $this->updateSourceProgress('collecting',
                     "{$this->getSourceDisplayName($source)} search failed, continuing with other sources...",
-                    $currentProgress + $progressPerSource,
+                    min(80, $currentProgress + $progressPerSource),
                     $allPapers->take(5)->toArray(),
-                    $source
+                    $source,
+                    $sourcesCompleted
                 );
 
                 continue; // Continue with other sources
@@ -144,6 +168,7 @@ class CollectPapersForProject implements ShouldQueue
         return match ($source) {
             'semantic_scholar' => $paperService->collectFromSemanticScholar($topic),
             'openalex' => $paperService->collectFromOpenAlex($topic),
+            'arxiv' => $paperService->collectFromArXiv($topic),
             'crossref' => $paperService->collectFromCrossRef($topic),
             'pubmed' => $paperService->collectFromPubMed($topic),
             default => collect()
@@ -158,6 +183,7 @@ class CollectPapersForProject implements ShouldQueue
         return match ($source) {
             'semantic_scholar' => 'Semantic Scholar',
             'openalex' => 'OpenAlex',
+            'arxiv' => 'arXiv',
             'crossref' => 'CrossRef',
             'pubmed' => 'PubMed',
             default => ucfirst($source)
@@ -167,7 +193,7 @@ class CollectPapersForProject implements ShouldQueue
     /**
      * Update source-specific progress with detailed feedback
      */
-    protected function updateSourceProgress(string $status, string $message, int $percentage, array $papers = [], ?string $currentSource = null): void
+    protected function updateSourceProgress(string $status, string $message, int $percentage, array $papers = [], ?string $currentSource = null, array $sourcesCompleted = []): void
     {
         $cacheKey = "paper_collection_status_{$this->project->id}";
 
@@ -179,7 +205,7 @@ class CollectPapersForProject implements ShouldQueue
             'papers_preview' => $papers,
             'papers_count' => count($papers),
             'updated_at' => now()->toISOString(),
-            'sources_completed' => $this->getCompletedSources($percentage),
+            'sources_completed' => ! empty($sourcesCompleted) ? $sourcesCompleted : $this->getCompletedSources($percentage),
         ];
 
         Cache::put($cacheKey, $progressData, 3600);
@@ -209,13 +235,37 @@ class CollectPapersForProject implements ShouldQueue
             $sources[] = 'openalex';
         }
         if ($percentage >= 70) {
-            $sources[] = 'crossref';
+            $sources[] = 'arxiv';
         }
         if ($percentage >= 90) {
+            $sources[] = 'crossref';
+        }
+        if ($percentage >= 100 && $this->isMedicalField($this->project->field_of_study ?? '')) {
             $sources[] = 'pubmed';
         }
 
         return $sources;
+    }
+
+    private function isMedicalField(string $field): bool
+    {
+        $field = strtolower($field);
+        if ($field === '') {
+            return false;
+        }
+
+        $medicalKeywords = [
+            'medicine', 'medical', 'health', 'public health', 'nursing', 'pharmacy',
+            'pharmacology', 'biology', 'biochemistry', 'epidemiology', 'clinical',
+        ];
+
+        foreach ($medicalKeywords as $keyword) {
+            if (str_contains($field, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

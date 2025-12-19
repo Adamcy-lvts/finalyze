@@ -152,7 +152,7 @@ class BulkGenerateProject implements ShouldQueue
         $isMedical = $this->isMedicalField($project->field_of_study);
 
         // Broadcast all "connecting" states
-        $sources = ['semantic_scholar', 'openalex', 'crossref'];
+        $sources = ['semantic_scholar', 'openalex', 'arxiv', 'crossref'];
         if ($isMedical) {
             $sources[] = 'pubmed';
         }
@@ -169,12 +169,12 @@ class BulkGenerateProject implements ShouldQueue
 
         // Execute all API calls in parallel using concurrent execution
         $papers = [];
-        $errors = [];
 
         // Use parallel execution for independent API calls
         $results = $this->executeInParallel([
             'semantic' => fn () => $paperCollectionService->collectFromSemanticScholar($project->topic),
             'openalex' => fn () => $paperCollectionService->collectFromOpenAlex($project->topic),
+            'arxiv' => fn () => $paperCollectionService->collectFromArXiv($project->topic),
             'crossref' => fn () => $paperCollectionService->collectFromCrossRef($project->topic),
             'pubmed' => $isMedical ? fn () => $paperCollectionService->collectFromPubMed($project->topic) : null,
         ]);
@@ -183,7 +183,7 @@ class BulkGenerateProject implements ShouldQueue
         $totalPapers = 0;
         $progress = 5;
 
-        foreach (['semantic', 'openalex', 'pubmed', 'crossref'] as $source) {
+        foreach (['semantic', 'openalex', 'arxiv', 'pubmed', 'crossref'] as $source) {
             if (! isset($results[$source])) {
                 continue;
             }
@@ -196,9 +196,18 @@ class BulkGenerateProject implements ShouldQueue
             $sourceMap = [
                 'semantic' => 'semantic_scholar',
                 'openalex' => 'openalex',
+                'arxiv' => 'arxiv',
                 'pubmed' => 'pubmed',
                 'crossref' => 'crossref',
             ];
+
+            $sourceDisplay = match ($source) {
+                'openalex' => 'OpenAlex',
+                'arxiv' => 'arXiv',
+                'pubmed' => 'PubMed',
+                'crossref' => 'CrossRef',
+                default => ucfirst($source),
+            };
 
             $broadcaster->literatureMining(
                 $this->generation,
@@ -206,7 +215,7 @@ class BulkGenerateProject implements ShouldQueue
                 $count,
                 $totalPapers,
                 $progress,
-                "Found {$count} papers from ".ucfirst($source),
+                "Found {$count} papers from {$sourceDisplay}",
                 'completed'
             );
 
@@ -278,8 +287,32 @@ class BulkGenerateProject implements ShouldQueue
             'completed'
         );
 
-        // Step 3: PubMed (if medical field)
-        $allPapers = $semanticPapers->merge($openAlexPapers);
+        // Step 3: arXiv (free preprints / PDFs)
+        $broadcaster->literatureMining(
+            $this->generation,
+            'arxiv',
+            0,
+            $totalPapers,
+            12,
+            'Searching arXiv...',
+            'connecting'
+        );
+
+        $arxivPapers = $paperCollectionService->collectFromArXiv($project->topic);
+        $totalPapers += $arxivPapers->count();
+
+        $broadcaster->literatureMining(
+            $this->generation,
+            'arxiv',
+            $arxivPapers->count(),
+            $totalPapers,
+            15,
+            "Found {$arxivPapers->count()} papers from arXiv",
+            'completed'
+        );
+
+        // Step 4: PubMed (if medical field)
+        $allPapers = $semanticPapers->merge($openAlexPapers)->merge($arxivPapers);
 
         if ($this->isMedicalField($project->field_of_study)) {
             $broadcaster->literatureMining(
@@ -287,7 +320,7 @@ class BulkGenerateProject implements ShouldQueue
                 'pubmed',
                 0,
                 $totalPapers,
-                12,
+                16,
                 'Medical field detected - searching PubMed...',
                 'connecting'
             );
@@ -301,19 +334,19 @@ class BulkGenerateProject implements ShouldQueue
                 'pubmed',
                 $pubMedPapers->count(),
                 $totalPapers,
-                15,
+                18,
                 "Found {$pubMedPapers->count()} papers from PubMed",
                 'completed'
             );
         }
 
-        // Step 4: CrossRef
+        // Step 5: CrossRef
         $broadcaster->literatureMining(
             $this->generation,
             'crossref',
             0,
             $totalPapers,
-            16,
+            19,
             'Searching CrossRef...',
             'connecting'
         );
@@ -327,7 +360,7 @@ class BulkGenerateProject implements ShouldQueue
             'crossref',
             $crossRefPapers->count(),
             $totalPapers,
-            17,
+            20,
             "Found {$crossRefPapers->count()} papers from CrossRef",
             'completed'
         );

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CollectedPaper;
 use App\Models\Project;
+use App\Services\APIs\ArXivAPI;
 use App\Services\APIs\CrossRefAPI;
 use App\Services\APIs\OpenAlexAPI;
 use App\Services\APIs\PubMedAPI;
@@ -17,6 +18,7 @@ class PaperCollectionService
     public function __construct(
         protected SemanticScholarAPI $semanticScholar,
         protected OpenAlexAPI $openAlex,
+        protected ArXivAPI $arxiv,
         protected CrossRefAPI $crossRef,
         protected PubMedAPI $pubMed
     ) {}
@@ -58,6 +60,10 @@ class PaperCollectionService
             $openAlexPapers = $this->collectFromOpenAlex($topic);
             $papers = $papers->merge($openAlexPapers);
 
+            // Preprints / free PDFs: arXiv
+            $arxivPapers = $this->collectFromArXiv($topic);
+            $papers = $papers->merge($arxivPapers);
+
             // Tertiary: PubMed (for medical/health topics)
             if ($this->isMedicalField($field)) {
                 $pubMedPapers = $this->collectFromPubMed($topic);
@@ -89,19 +95,44 @@ class PaperCollectionService
     public function collectFromSemanticScholar(string $topic): Collection
     {
         try {
+            $cooldownUntil = Cache::get('semantic_scholar_rate_limited_until');
+            if ($cooldownUntil && now()->lessThan($cooldownUntil)) {
+                Log::info('Semantic Scholar temporarily rate-limited; skipping this cycle', [
+                    'until' => (string) $cooldownUntil,
+                ]);
+
+                return collect();
+            }
+
+            $limit = (int) config('ai.paper_collection.limits.semantic_scholar', 15);
+            $limit = max(1, min(100, $limit));
+
             $filters = [
                 'venue_quality' => 'high',
                 'min_citations' => 5,
                 'publication_years' => [date('Y') - 10, date('Y')], // Last 10 years
             ];
 
-            $papers = $this->semanticScholar->searchByTopic($topic, 15, $filters);
+            $queries = $this->buildSearchQueries($topic);
+            $papers = [];
+            foreach ($queries as $query) {
+                $batch = $this->semanticScholar->searchByTopic($query, $limit, $filters);
+                $papers = array_merge($papers, $batch);
+                if (count($papers) >= $limit) {
+                    break;
+                }
+            }
 
             return collect($papers)->map(function ($paper) {
                 return $this->formatPaper($paper, 'semantic_scholar');
             });
 
         } catch (\Exception $e) {
+            // Semantic Scholar returns 429 frequently without an API key; back off briefly.
+            $message = $e->getMessage();
+            if (str_contains($message, '429') || str_contains(strtolower($message), 'too many requests')) {
+                Cache::put('semantic_scholar_rate_limited_until', now()->addMinutes(15), now()->addMinutes(20));
+            }
             Log::warning('SemanticScholar collection failed: '.$e->getMessage());
 
             return collect();
@@ -114,13 +145,26 @@ class PaperCollectionService
     public function collectFromOpenAlex(string $topic): Collection
     {
         try {
+            $limit = (int) config('ai.paper_collection.limits.openalex', 10);
+            $limit = max(1, min(100, $limit));
+
             $filters = [
-                'year_from' => 2014, // Last 10 years
-                'min_citations' => 5,
-                'open_access' => true,
+                'year_from' => (int) date('Y') - 10,
+                'year_to' => (int) date('Y'),
+                // OpenAlex search is broad; keep filters light to avoid zero results.
+                'min_citations' => 0,
+                'open_access' => false,
             ];
 
-            $papers = $this->openAlex->searchWorks($topic, 10, $filters);
+            $queries = $this->buildSearchQueries($topic);
+            $papers = [];
+            foreach ($queries as $query) {
+                $batch = $this->openAlex->searchWorks($query, $limit, $filters);
+                $papers = array_merge($papers, $batch);
+                if (count($papers) >= $limit) {
+                    break;
+                }
+            }
 
             return collect($papers)->map(function ($paper) {
                 return $this->formatPaper($paper, 'openalex');
@@ -134,16 +178,48 @@ class PaperCollectionService
     }
 
     /**
+     * Collect papers from arXiv (free preprints / PDFs)
+     */
+    public function collectFromArXiv(string $topic): Collection
+    {
+        try {
+            $limit = (int) config('ai.paper_collection.limits.arxiv', 10);
+            $limit = max(1, min(100, $limit));
+
+            $queries = $this->buildSearchQueries($topic);
+            $papers = [];
+            foreach ($queries as $query) {
+                $batch = $this->arxiv->searchByTopic($query, $limit);
+                $papers = array_merge($papers, $batch);
+                if (count($papers) >= $limit) {
+                    break;
+                }
+            }
+
+            return collect($papers)->map(function ($paper) {
+                return $this->formatPaper($paper, 'arxiv');
+            });
+        } catch (\Exception $e) {
+            Log::warning('ArXiv collection failed: '.$e->getMessage());
+
+            return collect();
+        }
+    }
+
+    /**
      * Collect papers from PubMed
      */
     public function collectFromPubMed(string $topic): Collection
     {
         try {
+            $limit = (int) config('ai.paper_collection.limits.pubmed', 8);
+            $limit = max(1, min(100, $limit));
+
             $filters = [
                 'year_from' => date('Y') - 10, // Last 10 years
             ];
 
-            $papers = $this->pubMed->searchWorks($topic, 8, $filters);
+            $papers = $this->pubMed->searchWorks($topic, $limit, $filters);
 
             return collect($papers)->map(function ($paper) {
                 return $this->formatPaper($paper, 'pubmed');
@@ -162,12 +238,22 @@ class PaperCollectionService
     public function collectFromCrossRef(string $topic): Collection
     {
         try {
+            $limit = (int) config('ai.paper_collection.limits.crossref', 8);
+            $limit = max(1, min(100, $limit));
+
             $filters = [
                 'from-pub-date' => date('Y') - 10,
-                'type' => 'journal-article',
             ];
 
-            $papers = $this->crossRef->searchWorks($topic, 8, $filters);
+            $queries = $this->buildSearchQueries($topic);
+            $papers = [];
+            foreach ($queries as $query) {
+                $batch = $this->crossRef->searchWorks($query, $limit, $filters);
+                $papers = array_merge($papers, $batch);
+                if (count($papers) >= $limit) {
+                    break;
+                }
+            }
 
             return collect($papers)->map(function ($paper) {
                 return $this->formatPaper($paper, 'crossref');
@@ -205,17 +291,34 @@ class PaperCollectionService
             case 'openalex':
                 return [
                     'title' => $paper['title'] ?? 'Unknown Title',
-                    'authors' => $this->formatOpenAlexAuthors($paper['authorships'] ?? []),
-                    'year' => $paper['publication_year'] ?? null,
-                    'venue' => $paper['host_venue']['display_name'] ?? null,
+                    'authors' => $this->formatAuthorsList($paper['authors'] ?? []),
+                    'year' => $paper['year'] ?? null,
+                    'venue' => $paper['journal'] ?? null,
                     'doi' => $paper['doi'] ?? null,
-                    'url' => $paper['landing_page_url'] ?? null,
-                    'abstract' => null, // OpenAlex doesn't provide abstracts
-                    'citation_count' => $paper['cited_by_count'] ?? 0,
-                    'quality_score' => $this->calculateOpenAlexScore($paper),
+                    'url' => $paper['oa_url'] ?? ($paper['url'] ?? null),
+                    'abstract' => $paper['abstract'] ?? null,
+                    'citation_count' => $paper['citation_count'] ?? 0,
+                    'quality_score' => $paper['generation_score'] ?? $this->calculateOpenAlexScoreFromFormatted($paper),
                     'source' => $source,
-                    'paper_id' => $paper['id'] ?? null,
-                    'is_open_access' => $paper['open_access']['is_oa'] ?? false,
+                    'paper_id' => $paper['openalex_id'] ?? null,
+                    'is_open_access' => $paper['is_oa'] ?? false,
+                ];
+
+            case 'arxiv':
+                return [
+                    'title' => $paper['title'] ?? 'Unknown Title',
+                    'authors' => $this->formatAuthorsList($paper['authors'] ?? []),
+                    'year' => $paper['year'] ?? null,
+                    'venue' => $paper['journal_ref'] ?? 'arXiv',
+                    'doi' => $paper['doi'] ?? null,
+                    // Prefer the free PDF URL for downstream use
+                    'url' => $paper['pdf_url'] ?? ($paper['url'] ?? null),
+                    'abstract' => $paper['abstract'] ?? null,
+                    'citation_count' => 0,
+                    'quality_score' => $this->calculateArXivScore($paper),
+                    'source' => $source,
+                    'paper_id' => $paper['arxiv_id'] ?? null,
+                    'is_open_access' => true,
                 ];
 
             case 'pubmed':
@@ -261,6 +364,11 @@ class PaperCollectionService
      */
     public function deduplicateAndRank(Collection $papers): Collection
     {
+        $minQuality = (float) config('ai.paper_collection.min_quality_score', 0.3);
+        $minQuality = max(0.0, min(1.0, $minQuality));
+        $maxPapers = (int) config('ai.paper_collection.max_papers', 20);
+        $maxPapers = max(1, min(200, $maxPapers));
+
         // Group by similar titles (handle slight variations)
         $grouped = $papers->groupBy(function ($paper) {
             return $this->normalizeTitle($paper['title']);
@@ -273,12 +381,60 @@ class PaperCollectionService
 
         // Rank for AI generation
         return $deduplicated
-            ->filter(function ($paper) {
-                return $paper['quality_score'] > 0.3; // Minimum quality threshold
+            ->filter(function ($paper) use ($minQuality) {
+                return ($paper['quality_score'] ?? 0) > $minQuality; // Minimum quality threshold
             })
             ->sortByDesc('quality_score')
-            ->take(20) // Limit to top 20 papers
+            ->take($maxPapers)
             ->values();
+    }
+
+    /**
+     * Build progressively simpler search queries from a topic string.
+     */
+    private function buildSearchQueries(string $topic): array
+    {
+        $topic = trim($topic);
+        if ($topic === '') {
+            return [];
+        }
+
+        $clean = strtolower($topic);
+        $clean = preg_replace('/[^a-z0-9\\s]+/', ' ', $clean);
+        $clean = preg_replace('/\\s+/', ' ', trim((string) $clean));
+
+        $words = array_values(array_filter(explode(' ', $clean), fn ($w) => $w !== ''));
+        $stop = [
+            'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'using', 'use',
+            'system', 'study', 'research', 'analysis', 'development', 'challenges',
+            'technical', 'technological', 'based',
+        ];
+        $stopSet = array_fill_keys($stop, true);
+
+        $keywords = [];
+        foreach ($words as $w) {
+            if (strlen($w) < 3) {
+                continue;
+            }
+            if (isset($stopSet[$w])) {
+                continue;
+            }
+            $keywords[] = $w;
+        }
+        $keywords = array_values(array_unique($keywords));
+
+        $queries = [];
+        $queries[] = $topic;
+        if ($clean !== '' && $clean !== $topic) {
+            $queries[] = $clean;
+        }
+        if (! empty($keywords)) {
+            $queries[] = implode(' ', array_slice($keywords, 0, 10));
+            $queries[] = implode(' ', array_slice($keywords, 0, 6));
+            $queries[] = implode(' ', array_slice($keywords, 0, 4));
+        }
+
+        return array_values(array_unique(array_filter($queries, fn ($q) => is_string($q) && trim($q) !== '')));
     }
 
     /**
@@ -327,6 +483,18 @@ class PaperCollectionService
         return collect($authorships)->take(3)->map(function ($authorship) {
             return $authorship['author']['display_name'] ?? 'Unknown Author';
         })->join(', ');
+    }
+
+    protected function formatAuthorsList(array $authors): string
+    {
+        if (empty($authors)) {
+            return 'Unknown Authors';
+        }
+
+        return collect($authors)
+            ->filter(fn ($author) => is_string($author) && trim($author) !== '')
+            ->take(3)
+            ->join(', ') ?: 'Unknown Authors';
     }
 
     protected function formatPubMedAuthors(array $authors): string
@@ -385,6 +553,56 @@ class PaperCollectionService
         }
 
         return round($score, 2);
+    }
+
+    protected function calculateOpenAlexScoreFromFormatted(array $paper): float
+    {
+        $score = 0.0;
+
+        $citations = (int) ($paper['citation_count'] ?? 0);
+        $score += min(0.4, ($citations / 100) * 0.4);
+
+        if (! empty($paper['is_oa'])) {
+            $score += 0.2;
+        }
+
+        $year = (int) ($paper['year'] ?? 0);
+        if ($year >= (int) date('Y') - 5) {
+            $score += 0.2;
+        } elseif ($year >= (int) date('Y') - 10) {
+            $score += 0.1;
+        }
+
+        if (! empty($paper['journal'])) {
+            $score += 0.2;
+        }
+
+        return round($score, 2);
+    }
+
+    protected function calculateArXivScore(array $paper): float
+    {
+        $score = 0.2; // Base score for arXiv (free access)
+
+        $relevance = (float) ($paper['relevance_score'] ?? 0.0);
+        $score += min(0.5, $relevance * 0.5);
+
+        $year = (int) ($paper['year'] ?? 0);
+        if ($year >= (int) date('Y') - 5) {
+            $score += 0.2;
+        } elseif ($year >= (int) date('Y') - 10) {
+            $score += 0.1;
+        }
+
+        if (! empty($paper['doi'])) {
+            $score += 0.1;
+        }
+
+        if (! empty($paper['abstract'])) {
+            $score += 0.1;
+        }
+
+        return round(min(1.0, $score), 2);
     }
 
     protected function calculatePubMedScore(array $paper): float

@@ -4,6 +4,7 @@ namespace App\Services\PromptSystem;
 
 use App\Models\Project;
 use App\Models\PromptTemplate;
+use App\Services\FacultyStructureService;
 use App\Services\PromptSystem\Templates\BasePromptTemplate;
 use App\Services\PromptSystem\Templates\Faculty\AgricultureTemplate;
 use App\Services\PromptSystem\Templates\Faculty\ArtsTemplate;
@@ -37,7 +38,8 @@ class PromptRouter
     public function __construct(
         private ContextMatcher $contextMatcher,
         private ContentDecisionEngine $contentDecisionEngine,
-        private PromptBuilder $promptBuilder
+        private PromptBuilder $promptBuilder,
+        private FacultyStructureService $facultyStructureService
     ) {}
 
     /**
@@ -48,13 +50,15 @@ class PromptRouter
         // 1. Match project to academic context
         $context = $this->contextMatcher->match($project);
 
+        $this->applyChapterMeta($project, $chapterNumber);
+
         Log::info('PromptRouter: Context matched', [
             'project_id' => $project->id,
             'context' => $context,
         ]);
 
         // 2. Load the appropriate template
-        $template = $this->loadTemplate($context, $chapterNumber);
+        $template = $this->loadTemplate($context, $chapterNumber, $project);
 
         // 3. Determine content requirements based on context and template
         $requirements = $this->contentDecisionEngine->analyze($project, $chapterNumber, $context, $template);
@@ -76,7 +80,7 @@ class PromptRouter
     public function getSystemPrompt(Project $project): string
     {
         $context = $this->contextMatcher->match($project);
-        $template = $this->loadTemplate($context, 1); // Chapter number doesn't matter for system prompt
+        $template = $this->loadTemplate($context, 1, $project); // Chapter number doesn't matter for system prompt
 
         return $template->getSystemPrompt();
     }
@@ -84,10 +88,10 @@ class PromptRouter
     /**
      * Load the appropriate template based on context
      */
-    private function loadTemplate(array $context, int $chapterNumber): PromptTemplateInterface
+    private function loadTemplate(array $context, int $chapterNumber, Project $project): PromptTemplateInterface
     {
         // First, try to load from database (for custom/override templates)
-        $dbTemplate = $this->loadFromDatabase($context, $chapterNumber);
+        $dbTemplate = $this->loadFromDatabase($context, $chapterNumber, $project);
         if ($dbTemplate) {
             return $dbTemplate;
         }
@@ -99,9 +103,9 @@ class PromptRouter
     /**
      * Load template from database
      */
-    private function loadFromDatabase(array $context, int $chapterNumber): ?PromptTemplateInterface
+    private function loadFromDatabase(array $context, int $chapterNumber, Project $project): ?PromptTemplateInterface
     {
-        $chapterType = $this->detectChapterType($chapterNumber);
+        $chapterType = $this->detectChapterType($project, $chapterNumber);
         $matchingContexts = [];
 
         // Build list of contexts to search for (in priority order)
@@ -159,15 +163,16 @@ class PromptRouter
 
             public function getSystemPrompt(): string
             {
-                return $this->dbTemplate->system_prompt ?? $this->baseTemplate->getSystemPrompt();
+                return $this->dbTemplate->getMergedSystemPrompt() ?? $this->baseTemplate->getSystemPrompt();
             }
 
             public function buildChapterPrompt(Project $project, int $chapterNumber, ContentRequirements $requirements): string
             {
-                if ($this->dbTemplate->chapter_prompt_template) {
+                $templateBody = $this->dbTemplate->getMergedChapterPromptTemplate();
+                if ($templateBody) {
                     // Use database template with variable substitution
                     return $this->substituteVariables(
-                        $this->dbTemplate->chapter_prompt_template,
+                        $templateBody,
                         $project,
                         $chapterNumber,
                         $requirements
@@ -179,32 +184,56 @@ class PromptRouter
 
             public function getTableRequirements(int $chapterNumber): array
             {
-                return $this->dbTemplate->table_requirements ?? $this->baseTemplate->getTableRequirements($chapterNumber);
+                $merged = $this->dbTemplate->getMergedTableRequirements();
+                if (! empty($merged)) {
+                    return $merged;
+                }
+                return $this->baseTemplate->getTableRequirements($chapterNumber);
             }
 
             public function getDiagramRequirements(int $chapterNumber): array
             {
-                return $this->dbTemplate->diagram_requirements ?? $this->baseTemplate->getDiagramRequirements($chapterNumber);
+                $merged = $this->dbTemplate->getMergedDiagramRequirements();
+                if (! empty($merged)) {
+                    return $merged;
+                }
+                return $this->baseTemplate->getDiagramRequirements($chapterNumber);
             }
 
             public function getCalculationRequirements(int $chapterNumber): array
             {
-                return $this->dbTemplate->calculation_requirements ?? $this->baseTemplate->getCalculationRequirements($chapterNumber);
+                $merged = $this->dbTemplate->getMergedCalculationRequirements();
+                if (! empty($merged)) {
+                    return $merged;
+                }
+                return $this->baseTemplate->getCalculationRequirements($chapterNumber);
             }
 
             public function getCodeRequirements(int $chapterNumber): array
             {
-                return $this->dbTemplate->code_requirements ?? $this->baseTemplate->getCodeRequirements($chapterNumber);
+                $merged = $this->dbTemplate->getMergedCodeRequirements();
+                if (! empty($merged)) {
+                    return $merged;
+                }
+                return $this->baseTemplate->getCodeRequirements($chapterNumber);
             }
 
             public function getPlaceholderRules(int $chapterNumber): array
             {
-                return $this->dbTemplate->placeholder_rules ?? $this->baseTemplate->getPlaceholderRules($chapterNumber);
+                $merged = $this->dbTemplate->getMergedPlaceholderRules();
+                if (! empty($merged)) {
+                    return $merged;
+                }
+                return $this->baseTemplate->getPlaceholderRules($chapterNumber);
             }
 
             public function getRecommendedTools(): array
             {
-                return $this->dbTemplate->recommended_tools ?? $this->baseTemplate->getRecommendedTools();
+                $merged = $this->dbTemplate->getMergedRecommendedTools();
+                if (! empty($merged)) {
+                    return $merged;
+                }
+                return $this->baseTemplate->getRecommendedTools();
             }
 
             private function substituteVariables(string $template, Project $project, int $chapterNumber, ContentRequirements $requirements): string
@@ -244,10 +273,15 @@ class PromptRouter
     }
 
     /**
-     * Detect chapter type from number
+     * Detect chapter type (prefer chapter structure metadata).
      */
-    private function detectChapterType(int $chapterNumber): string
+    private function detectChapterType(Project $project, int $chapterNumber): string
     {
+        $meta = $project->getAttribute('chapter_type');
+        if (is_string($meta) && trim($meta) !== '') {
+            return $meta;
+        }
+
         return match ($chapterNumber) {
             1 => 'introduction',
             2 => 'literature_review',
@@ -272,8 +306,79 @@ class PromptRouter
     public function getContentRequirements(Project $project, int $chapterNumber): ContentRequirements
     {
         $context = $this->contextMatcher->match($project);
-        $template = $this->loadTemplate($context, $chapterNumber);
+        $this->applyChapterMeta($project, $chapterNumber);
+        $template = $this->loadTemplate($context, $chapterNumber, $project);
 
         return $this->contentDecisionEngine->analyze($project, $chapterNumber, $context, $template);
+    }
+
+    private function applyChapterMeta(Project $project, int $chapterNumber): void
+    {
+        $meta = $this->resolveChapterMeta($project, $chapterNumber);
+        foreach (['chapter_title', 'chapter_word_count', 'chapter_type'] as $k) {
+            if (array_key_exists($k, $meta) && $meta[$k] !== null) {
+                $project->setAttribute($k, $meta[$k]);
+            }
+        }
+    }
+
+    private function resolveChapterMeta(Project $project, int $chapterNumber): array
+    {
+        $title = null;
+        $wordCount = null;
+
+        // Single source of truth for chapter structures:
+        // FacultyStructureService already handles custom outlines and faculty-defined chapters.
+        $chapters = $this->facultyStructureService->getChapterStructure($project);
+        foreach ($chapters as $c) {
+            if ((int) ($c['number'] ?? 0) === (int) $chapterNumber) {
+                $title = $c['title'] ?? null;
+                $wordCount = $c['word_count'] ?? null;
+                break;
+            }
+        }
+
+        $chapterType = $this->inferChapterTypeFromTitle($title, $chapterNumber);
+
+        return [
+            'chapter_title' => $title,
+            'chapter_word_count' => is_numeric($wordCount) ? (int) $wordCount : null,
+            'chapter_type' => $chapterType,
+        ];
+    }
+
+    private function inferChapterTypeFromTitle(?string $title, int $chapterNumber): string
+    {
+        $t = strtolower(trim((string) $title));
+        if ($t !== '') {
+            if (str_contains($t, 'introduction') || str_contains($t, 'background')) {
+                return 'introduction';
+            }
+            if (str_contains($t, 'literature') || (str_contains($t, 'review') && str_contains($t, 'literature'))) {
+                return 'literature_review';
+            }
+            if (str_contains($t, 'method') || str_contains($t, 'design') || str_contains($t, 'materials')) {
+                return 'methodology';
+            }
+            if (str_contains($t, 'result') || str_contains($t, 'findings') || str_contains($t, 'analysis')) {
+                return 'results';
+            }
+            if (str_contains($t, 'discussion')) {
+                return 'discussion';
+            }
+            if (str_contains($t, 'conclusion') || str_contains($t, 'recommendation') || str_contains($t, 'summary')) {
+                return 'conclusion';
+            }
+        }
+
+        // Fallback to numeric defaults only when no title is available.
+        return match ($chapterNumber) {
+            1 => 'introduction',
+            2 => 'literature_review',
+            3 => 'methodology',
+            4 => 'results',
+            5 => 'discussion',
+            default => 'general',
+        };
     }
 }

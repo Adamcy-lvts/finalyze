@@ -6,7 +6,6 @@ use App\Models\Project;
 use App\Services\AIContentGenerator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use OpenAI\Laravel\Facades\OpenAI;
 
 class TopicEnrichmentService
 {
@@ -107,19 +106,21 @@ Respond with ONLY this JSON format (no additional text):
 }";
 
         $aiStartTime = microtime(true);
-        $response = OpenAI::chat()->create([
+        $messages = [
+            ['role' => 'system', 'content' => 'You are an expert academic research advisor specializing in project feasibility analysis. Return only valid JSON with no additional text or formatting.'],
+            ['role' => 'user', 'content' => $analysisPrompt],
+        ];
+        $generatedContent = (string) $this->aiGenerator->generateMessages($messages, [
             'model' => 'gpt-4o-mini',
-            'messages' => [
-                ['role' => 'system', 'content' => 'You are an expert academic research advisor specializing in project feasibility analysis. Return only valid JSON with no additional text or formatting.'],
-                ['role' => 'user', 'content' => $analysisPrompt],
-            ],
             'temperature' => 0.2,
             'max_tokens' => 300,
+            'feature' => 'topic_metadata',
+            'user_id' => $project->user_id,
         ]);
         $aiEndTime = microtime(true);
         $aiDuration = ($aiEndTime - $aiStartTime) * 1000;
 
-        $generatedContent = trim($response->choices[0]->message->content);
+        $generatedContent = trim($generatedContent);
         $generatedContent = preg_replace('/```json|```/', '', $generatedContent);
         $generatedContent = trim($generatedContent);
 
@@ -151,9 +152,6 @@ Respond with ONLY this JSON format (no additional text):
             'ai_time_ms' => round($aiDuration, 2),
             'processing_time_ms' => round($totalDuration - $aiDuration, 2),
             'ai_percentage' => round(($aiDuration / $totalDuration) * 100, 1).'%',
-            'tokens_used' => $response->usage->totalTokens ?? 'unknown',
-            'prompt_tokens' => $response->usage->promptTokens ?? 'unknown',
-            'completion_tokens' => $response->usage->completionTokens ?? 'unknown',
             'timestamp' => now()->toDateTimeString(),
         ]);
 

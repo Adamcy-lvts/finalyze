@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Log;
 
 class ClaudeProvider implements AIProviderInterface
 {
+    private const DEFAULT_SYSTEM_PROMPT = 'You are an expert academic writer specializing in thesis and dissertation writing. Follow the user instructions and maintain a formal academic tone. Use clear structure with headings when needed. Prefer the bullet symbol (•) for unordered lists unless the user explicitly requests a different format. Never use "&" — always write "and".';
+
     private ?string $apiKey;
 
     private string $model = 'claude-3-haiku-20240307'; // Cheaper model for now
@@ -22,6 +24,10 @@ class ClaudeProvider implements AIProviderInterface
 
     public function generate(string $prompt, array $options = []): string
     {
+        if (isset($options['messages']) && is_array($options['messages'])) {
+            return $this->generateMessages($options['messages'], $options);
+        }
+
         $model = $options['model'] ?? $this->model;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
         $feature = $options['feature'] ?? null;
@@ -49,7 +55,7 @@ class ClaudeProvider implements AIProviderInterface
                 'messages' => [
                     [
                         'role' => 'user',
-                        'content' => "You are an expert academic writer specializing in thesis and dissertation writing. Write comprehensive, well-structured academic content with proper citations, formal academic language, and logical flow.\n\n".$prompt,
+                        'content' => self::DEFAULT_SYSTEM_PROMPT."\n\n".$prompt,
                     ],
                 ],
             ]);
@@ -119,8 +125,115 @@ class ClaudeProvider implements AIProviderInterface
         }
     }
 
+    public function generateMessages(array $messages, array $options = []): string
+    {
+        $model = $options['model'] ?? $this->model;
+        $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
+        $feature = $options['feature'] ?? null;
+        $userId = $options['user_id'] ?? null;
+        $startedAt = hrtime(true);
+
+        if (! $this->apiKey) {
+            throw new \Exception('Claude API key not configured');
+        }
+
+        [$system, $anthropicMessages] = $this->normalizeMessagesForAnthropic($messages);
+
+        Log::info('Claude Provider - Starting generation (messages)', [
+            'model' => $model,
+            'message_count' => count($anthropicMessages),
+            'max_tokens' => $maxTokens,
+            'has_system' => $system !== null,
+        ]);
+
+        try {
+            $payload = [
+                'model' => $model,
+                'max_tokens' => $maxTokens,
+                'messages' => $anthropicMessages,
+            ];
+
+            if ($system !== null && $system !== '') {
+                $payload['system'] = $system;
+            }
+
+            $response = Http::withHeaders([
+                'x-api-key' => $this->apiKey,
+                'content-type' => 'application/json',
+                'anthropic-version' => '2023-06-01',
+            ])->post('https://api.anthropic.com/v1/messages', $payload);
+
+            if (! $response->successful()) {
+                throw new \Exception('Claude API request failed: '.$response->body());
+            }
+
+            $data = $response->json();
+            $content = $data['content'][0]['text'] ?? '';
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
+
+            Log::info('Claude Provider - Generation completed (messages)', [
+                'content_length' => strlen($content),
+                'word_count' => str_word_count($content),
+                'tokens_used' => $data['usage']['output_tokens'] ?? 0,
+            ]);
+
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.claude',
+                    'Claude generation completed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'claude',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'message_count' => count($anthropicMessages),
+                        'tokens' => [
+                            'output' => $data['usage']['output_tokens'] ?? 0,
+                            'input' => $data['usage']['input_tokens'] ?? null,
+                        ],
+                        'message_envelope' => true,
+                    ], fn ($v) => $v !== null)
+                );
+            }
+
+            return $content;
+
+        } catch (\Exception $e) {
+            $durationMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
+            Log::error('Claude Provider - Generation failed (messages)', [
+                'error' => $e->getMessage(),
+                'model' => $model,
+            ]);
+            if (config('activity.ai_provider_calls', true)) {
+                ActivityLog::record(
+                    'ai.call.claude_failed',
+                    'Claude generation failed',
+                    null,
+                    $userId ? (int) $userId : null,
+                    array_filter([
+                        'provider' => 'claude',
+                        'feature' => $feature,
+                        'model' => $model,
+                        'max_tokens' => $maxTokens,
+                        'duration_ms' => $durationMs,
+                        'error' => $e->getMessage(),
+                        'message_envelope' => true,
+                    ], fn ($v) => $v !== null)
+                );
+            }
+            throw $e;
+        }
+    }
+
     public function streamGenerate(string $prompt, array $options = []): Generator
     {
+        if (isset($options['messages']) && is_array($options['messages'])) {
+            return $this->streamGenerateMessages($options['messages'], $options);
+        }
+
         $model = $options['model'] ?? $this->model;
         $maxTokens = $options['max_tokens'] ?? $this->maxTokens;
 
@@ -170,6 +283,76 @@ class ClaudeProvider implements AIProviderInterface
             yield 'Error generating content with Claude: '.$e->getMessage();
             throw $e;
         }
+    }
+
+    public function streamGenerateMessages(array $messages, array $options = []): Generator
+    {
+        // Claude streaming isn't implemented; simulate like streamGenerate().
+        $content = $this->generateMessages($messages, $options);
+
+        $words = explode(' ', $content);
+        $currentChunk = '';
+
+        foreach ($words as $index => $word) {
+            $currentChunk .= $word.' ';
+
+            if ($index % 8 === 0 && $index > 0) {
+                yield $currentChunk;
+                $currentChunk = '';
+                usleep(50000);
+            }
+        }
+
+        if ($currentChunk !== '') {
+            yield $currentChunk;
+        }
+    }
+
+    private function normalizeMessagesForAnthropic(array $messages): array
+    {
+        $systemParts = [];
+        $anthropicMessages = [];
+
+        foreach ($messages as $msg) {
+            if (! is_array($msg)) {
+                continue;
+            }
+
+            $role = (string) ($msg['role'] ?? '');
+            $content = (string) ($msg['content'] ?? '');
+
+            if ($role === '' || $content === '') {
+                continue;
+            }
+
+            if ($role === 'system') {
+                $systemParts[] = $content;
+                continue;
+            }
+
+            if (! in_array($role, ['user', 'assistant'], true)) {
+                continue;
+            }
+
+            $anthropicMessages[] = [
+                'role' => $role,
+                'content' => $content,
+            ];
+        }
+
+        if (empty($anthropicMessages)) {
+            $anthropicMessages[] = [
+                'role' => 'user',
+                'content' => self::DEFAULT_SYSTEM_PROMPT,
+            ];
+        }
+
+        $system = null;
+        if (! empty($systemParts)) {
+            $system = implode("\n\n", $systemParts);
+        }
+
+        return [$system, $anthropicMessages];
     }
 
     public function isAvailable(): bool
@@ -227,7 +410,7 @@ class ClaudeProvider implements AIProviderInterface
             'models' => ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
             'max_tokens' => 4000,
             'supports_streaming' => true, // Will be true once we implement real streaming
-            'supports_system_prompt' => false, // Claude uses different format
+            'supports_system_prompt' => true,
             'languages' => ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko'],
         ];
     }

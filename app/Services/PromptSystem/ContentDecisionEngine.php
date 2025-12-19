@@ -25,13 +25,14 @@ class ContentDecisionEngine
         array $context,
         PromptTemplateInterface $template
     ): ContentRequirements {
-        $chapterType = $this->detectChapterType($chapterNumber);
+        $metaType = $project->getAttribute('chapter_type');
+        $chapterType = is_string($metaType) && trim($metaType) !== '' ? $metaType : $this->detectChapterType($chapterNumber);
         $projectType = $context['project_type'] ?? 'general';
         $faculty = $context['faculty'] ?? 'general';
 
         // Get requirements from each specialized class
-        $tables = $this->determineTableRequirements($chapterType, $projectType, $faculty, $project, $template);
-        $diagrams = $this->determineDiagramRequirements($chapterType, $projectType, $faculty, $project, $template);
+        $tables = $this->determineTableRequirements($chapterType, $projectType, $faculty, $chapterNumber, $project, $template);
+        $diagrams = $this->determineDiagramRequirements($chapterType, $projectType, $faculty, $chapterNumber, $project, $template);
         $calculations = $this->determineCalculationRequirements($chapterType, $projectType, $faculty);
         $code = $this->determineCodeRequirements($chapterType, $projectType, $faculty);
         $placeholders = $this->determinePlaceholderNeeds($chapterType, $projectType, $diagrams);
@@ -57,6 +58,7 @@ class ContentDecisionEngine
         string $chapterType,
         string $projectType,
         string $faculty,
+        int $chapterNumber,
         Project $project,
         PromptTemplateInterface $template
     ): array {
@@ -64,9 +66,7 @@ class ContentDecisionEngine
         $baseRequirements = $this->tableRequirements->getRequirements($chapterType, $projectType, $faculty);
 
         // Merge with template-specific requirements
-        $templateRequirements = $template->getTableRequirements(
-            $this->chapterTypeToNumber($chapterType)
-        );
+        $templateRequirements = $template->getTableRequirements($chapterNumber);
 
         // Combine and deduplicate
         return $this->mergeRequirements($baseRequirements, $templateRequirements);
@@ -79,6 +79,7 @@ class ContentDecisionEngine
         string $chapterType,
         string $projectType,
         string $faculty,
+        int $chapterNumber,
         Project $project,
         PromptTemplateInterface $template
     ): array {
@@ -86,9 +87,7 @@ class ContentDecisionEngine
         $baseRequirements = $this->diagramRequirements->getRequirements($chapterType, $projectType, $faculty);
 
         // Merge with template requirements
-        $templateRequirements = $template->getDiagramRequirements(
-            $this->chapterTypeToNumber($chapterType)
-        );
+        $templateRequirements = $template->getDiagramRequirements($chapterNumber);
 
         return $this->mergeRequirements($baseRequirements, $templateRequirements);
     }
@@ -346,7 +345,8 @@ class ContentDecisionEngine
             'literature_review' => 2,
             'methodology' => 3,
             'results' => 4,
-            'discussion', 'conclusion' => 5,
+            'discussion' => 5,
+            'conclusion' => 6,
             default => 1,
         };
     }

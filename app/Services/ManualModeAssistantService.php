@@ -2,13 +2,15 @@
 
 namespace App\Services;
 
+use App\Services\AI\SystemPromptService;
 use App\Models\Chapter;
 use App\Models\Project;
 
 class ManualModeAssistantService
 {
     public function __construct(
-        private AIContentGenerator $aiGenerator
+        private AIContentGenerator $aiGenerator,
+        private SystemPromptService $systemPromptService
     ) {}
 
     /**
@@ -19,7 +21,10 @@ class ManualModeAssistantService
         $prompt = $this->buildWritingGuidePrompt($chapter, $project);
 
         try {
-            return $this->aiGenerator->generate($prompt, [
+            return $this->aiGenerator->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'temperature' => 0.7,
                 'max_tokens' => 1000,
             ]);
@@ -36,7 +41,10 @@ class ManualModeAssistantService
         $prompt = $this->buildCitationSuggestionPrompt($chapter, $context);
 
         try {
-            return $this->aiGenerator->generate($prompt, [
+            return $this->aiGenerator->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'temperature' => 0.6,
                 'max_tokens' => 500,
             ]);
@@ -53,7 +61,10 @@ class ManualModeAssistantService
         $prompt = $this->buildDataSuggestionPrompt($chapter, $context);
 
         try {
-            return $this->aiGenerator->generate($prompt, [
+            return $this->aiGenerator->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'temperature' => 0.6,
                 'max_tokens' => 500,
             ]);
@@ -70,7 +81,10 @@ class ManualModeAssistantService
         $prompt = $this->buildArgumentSuggestionPrompt($chapter, $context);
 
         try {
-            return $this->aiGenerator->generate($prompt, [
+            return $this->aiGenerator->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'temperature' => 0.7,
                 'max_tokens' => 500,
             ]);
@@ -87,7 +101,10 @@ class ManualModeAssistantService
         $prompt = $this->buildEvidenceSuggestionPrompt($chapter, $context);
 
         try {
-            return $this->aiGenerator->generate($prompt, [
+            return $this->aiGenerator->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'temperature' => 0.6,
                 'max_tokens' => 500,
             ]);
@@ -104,7 +121,10 @@ class ManualModeAssistantService
         $prompt = $this->buildGeneralSuggestionPrompt($chapter, $issue, $context);
 
         try {
-            return $this->aiGenerator->generate($prompt, [
+            return $this->aiGenerator->generateMessages([
+                ['role' => 'system', 'content' => $this->systemPromptService->getChatSystemPrompt()],
+                ['role' => 'user', 'content' => $prompt],
+            ], [
                 'temperature' => 0.7,
                 'max_tokens' => 500,
             ]);
@@ -119,7 +139,7 @@ class ManualModeAssistantService
     private function buildWritingGuidePrompt(Chapter $chapter, Project $project): string
     {
         return <<<PROMPT
-You are an academic writing assistant helping a student write Chapter {$chapter->chapter_number}: {$chapter->title}.
+Help the student write Chapter {$chapter->chapter_number}: {$chapter->title}.
 
 Project Details:
 - Title: {$project->title}
@@ -148,7 +168,7 @@ PROMPT;
         $citationCount = $context['citation_count'] ?? 0;
 
         return <<<PROMPT
-You are an academic writing assistant. The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
+The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
 
 Context Analysis:
 - Claims made: {$claimCount}
@@ -174,7 +194,7 @@ PROMPT;
         $tableCount = $context['table_count'] ?? 0;
 
         return <<<PROMPT
-You are an academic writing assistant. The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
+The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
 
 Context Analysis:
 - Tables/figures present: {$tableCount}
@@ -197,7 +217,7 @@ PROMPT;
     private function buildArgumentSuggestionPrompt(Chapter $chapter, array $context): string
     {
         return <<<PROMPT
-You are an academic writing assistant. The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
+The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
 
 Context Analysis:
 - Issue: Weak or tentative language detected
@@ -219,7 +239,7 @@ PROMPT;
     private function buildEvidenceSuggestionPrompt(Chapter $chapter, array $context): string
     {
         return <<<PROMPT
-You are an academic writing assistant. The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
+The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
 
 Context Analysis:
 - Issue: Claims made without supporting evidence
@@ -241,7 +261,7 @@ PROMPT;
     private function buildGeneralSuggestionPrompt(Chapter $chapter, string $issue, array $context): string
     {
         return <<<PROMPT
-You are an academic writing assistant. The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
+The student is writing Chapter {$chapter->chapter_number}: {$chapter->title}.
 
 Context Analysis:
 - Issue detected: {$issue}

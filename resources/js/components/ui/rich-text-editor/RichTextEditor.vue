@@ -298,47 +298,6 @@ const parseMarkdownTable = (lines: string[], startIndex: number): { html: string
   return { html: tableHTML, nextIndex: currentIndex }
 }
 
-// Helper function to convert Mermaid markdown code blocks to HTML for the Mermaid extension
-const convertMermaidBlocks = (text: string): string => {
-  if (!text) return ''
-
-  // Match ```mermaid ... ``` blocks (with proper backticks)
-  text = text.replace(/```mermaid\n?([\s\S]*?)```/g, (_match, code) => {
-    const trimmedCode = code.trim()
-    // Escape HTML entities in the code for the data attribute
-    const escapedCode = trimmedCode
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
-  })
-
-  // Match malformed mermaid blocks like ``mermaid ... `` (two backticks)
-  text = text.replace(/``mermaid\n?([\s\S]*?)``/g, (_match, code) => {
-    const trimmedCode = code.trim()
-    const escapedCode = trimmedCode
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
-  })
-
-  // Match inline mermaid text wrapped in backticks (less common but handle it)
-  text = text.replace(/`mermaid\n([\s\S]*?)`/g, (_match, code) => {
-    const trimmedCode = code.trim()
-    const escapedCode = trimmedCode
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-    return `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
-  })
-
-  return text
-}
-
 // Helper function to convert code blocks
 const convertCodeBlocks = (text: string): string => {
   if (!text) return ''
@@ -361,17 +320,59 @@ const convertTextToHTML = (text: string): string => {
   if (!text) return ''
 
   // If it's already HTML (contains HTML tags), return as is
-  if (text.includes('<p>') || text.includes('<h1>') || text.includes('<h2>') || text.includes('<div>')) {
+  // Check for both self-closing divs <div> and divs with attributes <div ...>
+  if (text.includes('<p>') || text.includes('<h1>') || text.includes('<h2>') || text.includes('<div>') || text.includes('<div ')) {
     return text
   }
 
   // Convert markdown/text content to HTML
   let html = text
 
-  // Process Mermaid diagrams FIRST (before other conversions)
-  html = convertMermaidBlocks(html)
+  // Store Mermaid blocks as placeholders to protect them from block splitting
+  // (Mermaid code may contain \n\n which would break the paragraph split)
+  const mermaidPlaceholders: string[] = []
+  html = html.replace(/```mermaid\n?([\s\S]*?)```/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    const mermaidHtml = `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
+    const placeholderIndex = mermaidPlaceholders.length
+    mermaidPlaceholders.push(mermaidHtml)
+    return `<!--MERMAID_PLACEHOLDER_${placeholderIndex}-->`
+  })
 
-  // Process code blocks (before inline code conversion)
+  // Also handle malformed mermaid blocks (two backticks)
+  html = html.replace(/``mermaid\n?([\s\S]*?)``/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    const mermaidHtml = `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
+    const placeholderIndex = mermaidPlaceholders.length
+    mermaidPlaceholders.push(mermaidHtml)
+    return `<!--MERMAID_PLACEHOLDER_${placeholderIndex}-->`
+  })
+
+  // Handle inline mermaid text wrapped in single backticks (less common)
+  html = html.replace(/`mermaid\n([\s\S]*?)`/g, (_match, code) => {
+    const trimmedCode = code.trim()
+    const escapedCode = trimmedCode
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    const mermaidHtml = `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
+    const placeholderIndex = mermaidPlaceholders.length
+    mermaidPlaceholders.push(mermaidHtml)
+    return `<!--MERMAID_PLACEHOLDER_${placeholderIndex}-->`
+  })
+
+  // Process code blocks (but not mermaid which is already handled)
   html = convertCodeBlocks(html)
 
   // Convert headings with proper hierarchy
@@ -394,11 +395,19 @@ const convertTextToHTML = (text: string): string => {
   // Split into blocks (paragraphs/sections)
   const blocks = html.split('\n\n').filter(block => block.trim())
 
-  return blocks.map(block => {
+  let result = blocks.map(block => {
     const trimmed = block.trim()
 
     // If it's already a heading, return as is
     if (trimmed.startsWith('<h1>') || trimmed.startsWith('<h2>') || trimmed.startsWith('<h3>')) {
+      return trimmed
+    }
+
+    // If it's already an HTML block element (div, table, pre, etc.), return as is
+    // This preserves Mermaid diagrams, tables, and code blocks
+    if (trimmed.startsWith('<div') || trimmed.startsWith('<table') || trimmed.startsWith('<pre') ||
+        trimmed.startsWith('<ul') || trimmed.startsWith('<ol') || trimmed.startsWith('<blockquote') ||
+        trimmed.startsWith('<!--MERMAID_PLACEHOLDER_')) {
       return trimmed
     }
 
@@ -425,6 +434,13 @@ const convertTextToHTML = (text: string): string => {
     const content = trimmed.replace(/\n/g, '<br>')
     return `<p>${content}</p>`
   }).join('')
+
+  // Restore Mermaid placeholders with actual HTML
+  mermaidPlaceholders.forEach((mermaidHtml, index) => {
+    result = result.replace(`<!--MERMAID_PLACEHOLDER_${index}-->`, mermaidHtml)
+  })
+
+  return result
 }
 
 // Base extensions (deduped by name before initializing editor)

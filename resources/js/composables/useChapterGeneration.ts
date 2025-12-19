@@ -305,6 +305,7 @@ export function useChapterGeneration({
                                 const sourceNames: Record<string, string> = {
                                     semantic_scholar: 'Semantic Scholar',
                                     openalex: 'OpenAlex',
+                                    arxiv: 'arXiv',
                                     crossref: 'CrossRef',
                                     pubmed: 'PubMed',
                                 };
