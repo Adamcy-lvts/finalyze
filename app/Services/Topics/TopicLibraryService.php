@@ -69,7 +69,7 @@ class TopicLibraryService
                     'academic_level',
                     'created_at',
                 ])
-                ->orderByDesc('created_at')
+                ->inRandomOrder()
                 ->skip($offset)
                 ->take($limit)
                 ->get();

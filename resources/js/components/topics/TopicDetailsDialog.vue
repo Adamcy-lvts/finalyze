@@ -53,7 +53,7 @@ const metaBadges = computed(() => {
 
 <template>
     <Dialog :open="open" @update:open="emit('update:open', $event)">
-        <DialogContent class="max-w-3xl">
+        <DialogContent class="max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader class="space-y-2">
                 <DialogTitle class="text-sm text-muted-foreground">{{ titleLabel }}</DialogTitle>
                 <SafeHtmlText v-if="topic" :content="topic.title" as="h2" class="text-lg md:text-2xl font-bold leading-snug" />
