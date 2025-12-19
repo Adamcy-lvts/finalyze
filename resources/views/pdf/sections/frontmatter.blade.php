@@ -6,7 +6,7 @@
     <title>{!! $project->title !!} - Preliminary Pages</title>
     @include('pdf.sections.base-styles')
 </head>
-<body>
+<body class="preliminary-page">
     {{-- PRELIMINARY PAGES --}}
     @foreach($preliminaryPages as $page)
         <div class="section-content">

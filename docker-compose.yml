@@ -105,13 +105,12 @@ services:
       - app
       - redis
 
-
   queue:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: finalyze_queue
-    command: php artisan queue:work --verbose --tries=3 --timeout=90
+    command: php artisan queue:work --verbose --tries=3 --timeout=1200
     environment:
       DB_HOST: mysql
       DB_PORT: 3306

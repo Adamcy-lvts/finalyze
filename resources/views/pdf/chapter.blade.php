@@ -8,10 +8,10 @@
     <style>
         body {
             font-family: 'Times New Roman', serif;
-            font-size: 11pt;
-            line-height: 1.6;
+            font-size: 16px;
+            line-height: 2.0;
             color: #000;
-            margin: 20px;
+            margin: 0;
             background: white;
         }
 
@@ -23,7 +23,7 @@
         }
 
         .header h1 {
-            font-size: 16pt;
+            font-size: 24px;
             font-weight: bold;
             text-transform: uppercase;
             margin: 0 0 8px 0;
@@ -31,13 +31,13 @@
         }
 
         .header h2 {
-            font-size: 13pt;
+            font-size: 20px;
             font-weight: bold;
             margin: 0 0 5px 0;
         }
 
         .header h3 {
-            font-size: 12pt;
+            font-size: 18px;
             margin: 0 0 15px 0;
         }
 
@@ -50,7 +50,7 @@
         }
 
         .chapter-number {
-            font-size: 14pt;
+            font-size: 22px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -58,13 +58,13 @@
         }
 
         .chapter-title {
-            font-size: 13pt;
+            font-size: 20px;
             font-weight: bold;
             margin: 0;
         }
 
         .section-title {
-            font-size: 12pt;
+            font-size: 18px;
             font-weight: bold;
             margin: 25px 0 15px 0;
             border-bottom: 1px solid #000;
@@ -73,7 +73,7 @@
 
         .info-item {
             margin-bottom: 8px;
-            font-size: 11pt;
+            font-size: 15px;
         }
 
         .info-item strong {
@@ -81,26 +81,26 @@
         }
 
         .content {
-            font-size: 11pt;
-            line-height: 1.8;
+            font-size: 20px;
+            line-height: 2.0;
             text-align: justify;
             margin: 20px 0;
         }
 
         .content h1 {
-            font-size: 14pt;
+            font-size: 24px;
             font-weight: bold;
             margin: 20px 0 10px 0;
         }
 
         .content h2 {
-            font-size: 13pt;
+            font-size: 22px;
             font-weight: bold;
             margin: 18px 0 10px 0;
         }
 
         .content h3 {
-            font-size: 12pt;
+            font-size: 20px;
             font-weight: bold;
             margin: 16px 0 8px 0;
         }
@@ -220,14 +220,14 @@
         }
 
         .stat-label {
-            font-size: 9pt;
+            font-size: 12px;
             color: #666;
             text-transform: uppercase;
             margin-bottom: 5px;
         }
 
         .stat-value {
-            font-size: 12pt;
+            font-size: 16px;
             font-weight: bold;
             color: #000;
         }
@@ -237,7 +237,7 @@
             padding-top: 20px;
             border-top: 1px solid #ccc;
             text-align: center;
-            font-size: 9pt;
+            font-size: 12px;
             color: #666;
         }
     </style>
@@ -251,9 +251,42 @@
         <h3>Department of {{ $project->course }}</h3>
     </div>
 
+    @php
+        $numberToWord = function ($number) {
+            $map = [
+                1 => 'One',
+                2 => 'Two',
+                3 => 'Three',
+                4 => 'Four',
+                5 => 'Five',
+                6 => 'Six',
+                7 => 'Seven',
+                8 => 'Eight',
+                9 => 'Nine',
+                10 => 'Ten',
+                11 => 'Eleven',
+                12 => 'Twelve',
+                13 => 'Thirteen',
+                14 => 'Fourteen',
+                15 => 'Fifteen',
+                16 => 'Sixteen',
+                17 => 'Seventeen',
+                18 => 'Eighteen',
+                19 => 'Nineteen',
+                20 => 'Twenty',
+            ];
+
+            if (isset($map[$number])) {
+                return $map[$number];
+            }
+
+            return (string) $number;
+        };
+    @endphp
+
     <!-- Chapter Info -->
     <div class="chapter-info">
-        <div class="chapter-number">Chapter {{ $chapter->chapter_number }}</div>
+        <div class="chapter-number">Chapter {{ $numberToWord((int) $chapter->chapter_number) }}</div>
         <div class="chapter-title">{{ $chapter->title }}</div>
     </div>
 

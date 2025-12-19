@@ -6,7 +6,7 @@
     <title>{{ $project->title }} - Title Page</title>
     @include('pdf.sections.base-styles')
 </head>
-<body>
+<body class="preliminary-page">
     <div class="title-page">
         <div class="university">{!! strtoupper($project->title) !!}</div>
         <div class="main-title">BY</div>

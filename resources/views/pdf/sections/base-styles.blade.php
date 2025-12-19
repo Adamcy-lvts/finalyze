@@ -11,7 +11,7 @@
 
     body {
         font-family: 'Times New Roman', Times, serif;
-        font-size: 12pt;
+        font-size: 16px;
         line-height: 2.0;
         color: #000;
         margin: 0;
@@ -19,19 +19,36 @@
         background: white;
     }
 
+
     /* Title Page Specifics */
     .title-page {
         text-align: center;
         line-height: 1.5;
     }
 
-    .university { font-size: 14pt; text-transform: uppercase; margin-bottom: 10px; }
-    .main-title { font-size: 14pt; text-transform: uppercase; margin: 0.5in 0; }
-    .author-name { font-size: 12pt; margin: 5px 0; }
-    .student-id { font-size: 12pt; margin: 5px 0; }
-    .dissertation-text { font-size: 12pt; margin: 1in 0.5in 0.5in 0.5in; line-height: 1.8; text-align: center; }
-    .institution-details { font-size: 12pt; margin: 0.5in 0; line-height: 1.8; }
-    .date { font-size: 12pt; margin-top: 1in; }
+    .university { font-size: 16px; text-transform: uppercase; margin-bottom: 10px; }
+    .main-title { font-size: 16px; text-transform: uppercase; margin: 0.5in 0; }
+    .author-name { font-size: 14px; margin: 5px 0; }
+    .student-id { font-size: 14px; margin: 5px 0; }
+    .dissertation-text { font-size: 14px; margin: 1in 0.5in 0.5in 0.5in; line-height: 1.8; text-align: center; }
+    .institution-details { font-size: 14px; margin: 0.5in 0; line-height: 1.8; }
+    .date { font-size: 14px; margin-top: 1in; }
+
+    .preliminary-page {
+        font-size: 14px;
+    }
+
+    .preliminary-page .section-content,
+    .preliminary-page .preliminary-content,
+    .preliminary-page .toc-item,
+    .preliminary-page .list-item {
+        font-size: 14px;
+    }
+
+    .preliminary-page .section-content h2 {
+        font-size: 16px;
+        margin: 16px 0;
+    }
 
     /* Section content styling */
     .section-content {
@@ -145,6 +162,21 @@
     table { width: 100%; border-collapse: collapse; margin: 15px 0; }
     th, td { border: 1px solid #000; padding: 8px; text-align: left; }
     th { background: #f0f0f0; font-weight: bold; }
+    .chapter-content table {
+        table-layout: fixed;
+        width: 100%;
+        font-size: 12px !important;
+    }
+
+    .chapter-content th,
+    .chapter-content td {
+        font-size: 12px !important;
+        padding: 3px !important;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        hyphens: auto;
+    }
 
     /* Chapter Headers */
     .chapter-heading-wrapper {
@@ -156,7 +188,7 @@
     .chapter-number-line {
         text-align: center;
         font-weight: bold;
-        font-size: 14pt;
+        font-size: 22px;
         text-transform: uppercase;
         margin: 0 0 10px 0;
     }
@@ -164,17 +196,52 @@
     .chapter-title-line {
         text-align: center;
         font-weight: bold;
-        font-size: 14pt;
+        font-size: 22px;
         text-transform: uppercase;
         margin: 0;
     }
 
     .chapter-title {
-        font-size: 14pt;
+        font-size: 22px;
         font-weight: bold;
         text-transform: uppercase;
         text-align: center;
         margin: 0 0 20px 0;
+    }
+
+    .chapter-content {
+        font-size: 20px !important;
+        line-height: 2.0;
+        text-align: justify;
+    }
+
+    .chapter-content * {
+        font-size: 20px !important;
+    }
+
+    .chapter-content h1 {
+        font-size: 24px !important;
+        font-weight: bold;
+        margin: 20px 0 10px 0;
+    }
+
+    .chapter-content h2 {
+        font-size: 22px !important;
+        font-weight: bold;
+        margin: 18px 0 10px 0;
+    }
+
+    .chapter-content h3 {
+        font-size: 20px !important;
+        font-weight: bold;
+        margin: 16px 0 8px 0;
+    }
+
+    .chapter-content p,
+    .chapter-content li,
+    .chapter-content td,
+    .chapter-content th {
+        font-size: 20px !important;
     }
 
     /* Page breaks */
@@ -227,7 +294,7 @@
         theme: 'default',
         securityLevel: 'loose',
         fontFamily: 'Times New Roman, serif',
-        fontSize: 12,
+        fontSize: 16,
         flowchart: {
             useMaxWidth: true,
             htmlLabels: true,

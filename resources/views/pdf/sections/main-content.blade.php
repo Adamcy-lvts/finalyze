@@ -11,14 +11,49 @@
     @foreach($chapters as $index => $chapter)
         @php
             $content = $chapterContents[$chapter->id] ?? '<p>No content available for this chapter.</p>';
+            $numberToWord = function ($number) {
+                $map = [
+                    1 => 'One',
+                    2 => 'Two',
+                    3 => 'Three',
+                    4 => 'Four',
+                    5 => 'Five',
+                    6 => 'Six',
+                    7 => 'Seven',
+                    8 => 'Eight',
+                    9 => 'Nine',
+                    10 => 'Ten',
+                    11 => 'Eleven',
+                    12 => 'Twelve',
+                    13 => 'Thirteen',
+                    14 => 'Fourteen',
+                    15 => 'Fifteen',
+                    16 => 'Sixteen',
+                    17 => 'Seventeen',
+                    18 => 'Eighteen',
+                    19 => 'Nineteen',
+                    20 => 'Twenty',
+                ];
+
+                if (isset($map[$number])) {
+                    return $map[$number];
+                }
+
+                return (string) $number;
+            };
 
             // Replace headings with pattern "CHAPTER X: Title" with centered two-line format
             $content = preg_replace_callback(
                 '/<(h[1-6])>(CHAPTER\s+[^:]+):\s*(.+?)<\/\1>/i',
-                function($matches) {
+                function($matches) use ($numberToWord) {
                     $tag = $matches[1];
                     $chapterNumber = trim($matches[2]);
                     $chapterTitle = trim($matches[3]);
+                    $chapterNumber = preg_replace_callback(
+                        '/\b(\d+)\b/',
+                        fn ($numMatch) => $numberToWord((int) $numMatch[1]),
+                        $chapterNumber
+                    );
 
                     return '<div class="chapter-heading-wrapper">' .
                            '<' . $tag . ' class="chapter-number-line">' . strtoupper($chapterNumber) . '</' . $tag . '>' .

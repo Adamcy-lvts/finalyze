@@ -51,7 +51,21 @@ class PdfExportService
             // Convert chapter content to HTML
             $chapterContents = [];
             foreach ($chapters as $chapter) {
-                $chapterContents[$chapter->id] = $this->convertTiptapToHtml($chapter->content);
+                Log::info('PdfExportService: Chapter content font sizes (raw)', [
+                    'chapter_id' => $chapter->id,
+                    'chapter_number' => $chapter->chapter_number,
+                    'font_sizes' => $this->extractFontSizesFromRawContent($chapter->content),
+                ]);
+
+                $html = $this->convertTiptapToHtml($chapter->content);
+                $html = $this->stripInlineFontSizes($html);
+                $chapterContents[$chapter->id] = $this->applyInlineFontSizeToHtml($html, '20px');
+
+                Log::info('PdfExportService: Chapter content font sizes (html)', [
+                    'chapter_id' => $chapter->id,
+                    'chapter_number' => $chapter->chapter_number,
+                    'font_sizes' => $this->extractFontSizesFromHtml($chapterContents[$chapter->id]),
+                ]);
             }
 
             // Get preliminary pages
@@ -128,7 +142,7 @@ class PdfExportService
 
         $outputPath = $tempDir.'/01_title.pdf';
 
-        $this->generatePdfFromHtml($html, $outputPath, null); // No footer
+        $this->generatePdfFromHtml($html, $outputPath, null, 1.0); // No footer
 
         Log::info('PdfExportService: Title page generated', ['path' => $outputPath]);
 
@@ -154,7 +168,7 @@ class PdfExportService
         $outputPath = $tempDir.'/02_frontmatter.pdf';
 
         // Generate PDF without page numbers first
-        $this->generatePdfFromHtml($html, $tempPath, null);
+        $this->generatePdfFromHtml($html, $tempPath, null, 1.0);
 
         // Add Roman numeral page numbers using FPDI
         $this->addPageNumbersToPdf($tempPath, $outputPath, 'roman', 1);
@@ -186,7 +200,7 @@ class PdfExportService
         $outputPath = $tempDir.'/03_main.pdf';
 
         // Generate PDF without page numbers first
-        $this->generatePdfFromHtml($html, $tempPath, null);
+        $this->generatePdfFromHtml($html, $tempPath, null, 1.2);
 
         // Add Arabic page numbers using FPDI (starting from 1)
         $this->addPageNumbersToPdf($tempPath, $outputPath, 'arabic', 1);
@@ -286,14 +300,17 @@ class PdfExportService
     /**
      * Generate PDF from HTML using Browsershot (no page numbers - added separately)
      */
-    private function generatePdfFromHtml(string $html, string $outputPath, $unused = null): void
+    private function generatePdfFromHtml(string $html, string $outputPath, $unused = null, float $scale = 1.0): void
     {
         $chromePath = $this->findChromePath();
 
         Browsershot::html($html)
             ->setChromePath($chromePath)
             ->format('A4')
-            ->margins(25.4, 25.4, 25.4, 25.4) // 1 inch margins in mm
+            ->windowSize(800, 1131) // A4 proportion at 96dpi
+            ->scale($scale) // Adjust print scale per section
+            ->deviceScaleFactor(2) // Sharper text and better scale accuracy
+            ->margins(0, 0, 0, 0) // Use CSS @page margins from base styles
             ->showBackground()
             ->setDelay(3000) // Wait 3 seconds for Mermaid diagrams to render
             ->timeout(180)
@@ -400,6 +417,127 @@ class PdfExportService
         }
 
         return $this->tiptapNodeToHtml($json);
+    }
+
+    /**
+     * Wrap HTML with inline font sizing for consistent PDF rendering.
+     */
+    private function applyInlineFontSizeToHtml(string $html, string $fontSize): string
+    {
+        if (trim($html) === '') {
+            return $html;
+        }
+
+        return '<div style="font-size: '.$fontSize.'; line-height: 2.0;">'.$html.'</div>';
+    }
+
+    /**
+     * Remove inline font-size declarations to avoid overriding export sizing.
+     */
+    private function stripInlineFontSizes(string $html): string
+    {
+        if (trim($html) === '') {
+            return $html;
+        }
+
+        return preg_replace_callback(
+            '/\sstyle=("|\')([^"\']*)\1/i',
+            function ($matches) {
+                $style = $matches[2];
+                $style = preg_replace('/(^|;)\s*font-size\s*:\s*[^;]+/i', '', $style);
+                $style = preg_replace('/;{2,}/', ';', $style);
+                $style = trim($style, " \t\n\r\0\x0B;");
+
+                if ($style === '') {
+                    return '';
+                }
+
+                return ' style="'.$style.'"';
+            },
+            $html
+        );
+    }
+
+    /**
+     * Extract font-size usage from raw content (HTML or Tiptap JSON).
+     */
+    private function extractFontSizesFromRawContent(string $content): array
+    {
+        $content = trim($content);
+        if ($content === '') {
+            return ['detected' => []];
+        }
+
+        if (str_starts_with($content, '<')) {
+            return [
+                'detected' => $this->extractFontSizesFromHtml($content),
+                'source' => 'html',
+            ];
+        }
+
+        $json = json_decode($content, true);
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($json)) {
+            return [
+                'detected' => [],
+                'source' => 'plain_text',
+            ];
+        }
+
+        $sizes = [];
+        $this->collectFontSizesFromTiptap($json, $sizes);
+
+        $sizes = array_values(array_unique($sizes));
+        sort($sizes, SORT_NATURAL);
+
+        return [
+            'detected' => $sizes,
+            'source' => 'tiptap_json',
+        ];
+    }
+
+    /**
+     * Extract font-size usage from HTML inline styles.
+     */
+    private function extractFontSizesFromHtml(string $html): array
+    {
+        $sizes = [];
+        if ($html === '') {
+            return $sizes;
+        }
+
+        if (preg_match_all('/font-size\s*:\s*([^;"\']+)/i', $html, $matches)) {
+            foreach ($matches[1] as $size) {
+                $sizes[] = trim($size);
+            }
+        }
+
+        $sizes = array_values(array_unique($sizes));
+        sort($sizes, SORT_NATURAL);
+
+        return $sizes;
+    }
+
+    /**
+     * Recursively collect font sizes from Tiptap JSON marks/attrs.
+     */
+    private function collectFontSizesFromTiptap(array $node, array &$sizes): void
+    {
+        $marks = $node['marks'] ?? [];
+        foreach ($marks as $mark) {
+            if (($mark['type'] ?? '') === 'textStyle') {
+                $fontSize = $mark['attrs']['fontSize'] ?? null;
+                if ($fontSize) {
+                    $sizes[] = $fontSize;
+                }
+            }
+        }
+
+        $content = $node['content'] ?? [];
+        foreach ($content as $child) {
+            if (is_array($child)) {
+                $this->collectFontSizesFromTiptap($child, $sizes);
+            }
+        }
     }
 
     /**

@@ -5286,11 +5286,13 @@ ORIGINAL PROMPT CONTEXT:
 
                         $browsershot->setChromePath($chromePath)
                             ->format('A4')
+                            ->windowSize(800, 1131)
+                            ->scale(1.2)
+                            ->deviceScaleFactor(2.0)
                             ->margins(20, 20, 20, 20) // Professional academic margins
                             ->showBackground()
                             ->waitUntilNetworkIdle() // Wait for all resources to load
                             ->userAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-                            ->deviceScaleFactor(1.5) // Higher resolution for better quality
                             ->timeout(120)
                             ->showBrowserHeaderAndFooter()
                             ->hideHeader()
