@@ -48,6 +48,7 @@ class Project extends Model
     protected $fillable = [
         'user_id',
         'student_id',
+        'student_name',
         'project_category_id',
         'university_id',
         'faculty_id',
@@ -568,20 +569,21 @@ class Project extends Model
 
         // Map the incoming store format to our internal format
         $mappedData = [
-            'projectType' => $finalData['type'] ?? $setupData['projectType'],
-            'projectCategoryId' => $finalData['project_category_id'] ?? $setupData['projectCategoryId'],
-            'universityId' => $finalData['university_id'] ?? $setupData['universityId'],
-            'facultyId' => $finalData['faculty_id'] ?? $setupData['facultyId'],
-            'departmentId' => $finalData['department_id'] ?? $setupData['departmentId'],
-            'course' => $finalData['course'] ?? $setupData['course'],
-            'fieldOfStudy' => $finalData['field_of_study'] ?? $setupData['fieldOfStudy'],
-            'academicSession' => $finalData['academic_session'] ?? $setupData['academicSession'],
-            'degree' => $finalData['degree'] ?? $setupData['degree'],
-            'degreeAbbreviation' => $finalData['degree_abbreviation'] ?? $setupData['degreeAbbreviation'],
-            'workingMode' => $finalData['mode'] ?? $setupData['workingMode'],
-            'supervisorName' => $finalData['supervisor_name'] ?? $setupData['supervisorName'],
-            'matricNumber' => $finalData['matric_number'] ?? $setupData['matricNumber'],
-            'aiAssistanceLevel' => $finalData['ai_assistance_level'] ?? $setupData['aiAssistanceLevel'],
+            'projectType' => $finalData['type'] ?? ($setupData['projectType'] ?? null),
+            'projectCategoryId' => $finalData['project_category_id'] ?? ($setupData['projectCategoryId'] ?? null),
+            'universityId' => $finalData['university_id'] ?? ($setupData['universityId'] ?? null),
+            'facultyId' => $finalData['faculty_id'] ?? ($setupData['facultyId'] ?? null),
+            'departmentId' => $finalData['department_id'] ?? ($setupData['departmentId'] ?? null),
+            'course' => $finalData['course'] ?? ($setupData['course'] ?? null),
+            'fieldOfStudy' => $finalData['field_of_study'] ?? ($setupData['fieldOfStudy'] ?? null),
+            'academicSession' => $finalData['academic_session'] ?? ($setupData['academicSession'] ?? null),
+            'degree' => $finalData['degree'] ?? ($setupData['degree'] ?? null),
+            'degreeAbbreviation' => $finalData['degree_abbreviation'] ?? ($setupData['degreeAbbreviation'] ?? null),
+            'workingMode' => $finalData['mode'] ?? ($setupData['workingMode'] ?? null),
+            'supervisorName' => $finalData['supervisor_name'] ?? ($setupData['supervisorName'] ?? null),
+            'studentName' => $finalData['student_name'] ?? ($setupData['studentName'] ?? null),
+            'matricNumber' => $finalData['matric_number'] ?? ($setupData['matricNumber'] ?? null),
+            'aiAssistanceLevel' => $finalData['ai_assistance_level'] ?? ($setupData['aiAssistanceLevel'] ?? null),
         ];
 
         $allData = array_merge($setupData, $mappedData);
@@ -619,6 +621,7 @@ class Project extends Model
             'course' => $allData['course'],
             'field_of_study' => $allData['fieldOfStudy'],
             'supervisor_name' => $allData['supervisorName'] ?? null,
+            'student_name' => $allData['studentName'] ?? null,
             'mode' => $allData['workingMode'],
             'settings' => array_merge($this->settings ?? [], [
                 'matric_number' => $allData['matricNumber'] ?? null,

@@ -20,7 +20,7 @@ const { isDark } = useAppearance();
 
 const src = computed(() => {
     const mode = props.variant === 'auto' ? (isDark.value ? 'dark' : 'light') : props.variant;
-    return mode === 'dark' ? '/img/logo-negative-space.png' : '/img/logo-traceable.png';
+    return mode === 'dark' ? '/img/logo-negative-space.png' : '/img/logo-v2-transparent.png';
 });
 </script>
 

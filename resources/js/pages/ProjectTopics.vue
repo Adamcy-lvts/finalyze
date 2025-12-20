@@ -234,12 +234,13 @@ const clearFilters = () => {
 };
 
 // Actions
-const startProject = () => {
-    if (user.value) {
+const startProject = (topic?: TopicDetails | Topic | null) => {
+    if (!topic?.id) {
         router.visit(route('projects.create'));
-    } else {
-        router.visit(route('register'));
+        return;
     }
+
+    router.post(route('project-topics.start'), { topic_id: topic.id });
 };
 
 const difficultyBadge = (difficulty?: string) => {
@@ -538,7 +539,7 @@ const getFacultyBadgeColor = (faculty?: string) => {
                                     <Target class="h-3.5 w-3.5" />
                                     <span>{{ topic.research_type || 'Research' }}</span>
                                 </div>
-                                <Button @click.stop="startProject" size="sm"
+                                <Button @click.stop="startProject(topic)" size="sm"
                                     class="bg-indigo-600 hover:bg-indigo-500 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-lg text-xs font-semibold px-4 h-9">
                                     Start Project
                                 </Button>
@@ -572,11 +573,11 @@ const getFacultyBadgeColor = (faculty?: string) => {
 	    </div>
 
         <TopicDetailsDialog v-model:open="isTopicModalOpen" :topic="selectedTopic" title-label="Topic Details">
-            <template #footer>
+            <template #footer="{ topic }">
                 <Button
                     type="button"
                     class="bg-indigo-600 hover:bg-indigo-500 text-white border-0"
-                    @click="startProject"
+                    @click="startProject(topic)"
                 >
                     Start Project
                 </Button>

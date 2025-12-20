@@ -103,6 +103,13 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return to_route('dashboard');
+        $adminHome = route('admin.dashboard', absolute: false);
+        $defaultHome = route('dashboard', absolute: false);
+
+        $target = $user->hasAnyRole(['super_admin', 'admin', 'support'])
+            ? $adminHome
+            : $defaultHome;
+
+        return redirect()->intended($target);
     }
 }

@@ -78,6 +78,7 @@ Route::get('/', function (\App\Services\PaystackService $paystackService) {
 })->name('home');
 
 Route::get('/project-topics', [\App\Http\Controllers\PublicTopicController::class, 'index'])->name('project-topics.index');
+Route::post('/project-topics/start', [\App\Http\Controllers\PublicTopicController::class, 'start'])->name('project-topics.start');
 
 // Test broadcast route (for testing Reverb)
 Route::get('/test-broadcast', function () {
@@ -427,6 +428,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Chapter writing and AI generation routes
         Route::get('/projects/{project}/writing', [ProjectController::class, 'writing'])->name('projects.writing');
+        Route::get('/projects/{project}/defense', [ProjectController::class, 'defense'])->name('projects.defense');
         Route::get('/projects/{project}/bulk-generate', [ProjectController::class, 'bulkGenerate'])->name('projects.bulk-generate');
         Route::get('/projects/{project}/chapters/{chapter}/write', [ChapterController::class, 'write'])->name('chapters.write');
         Route::get('/projects/{project}/chapters/{chapter}/edit', [ChapterController::class, 'edit'])->name('chapters.edit');

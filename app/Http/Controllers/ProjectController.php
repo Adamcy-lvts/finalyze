@@ -221,6 +221,7 @@ class ProjectController extends Controller
                 'course' => $validated['course'],
                 'field_of_study' => $validated['field_of_study'],
                 'supervisor_name' => $validated['supervisor_name'],
+                'student_name' => $validated['student_name'] ?? null,
                 'mode' => $validated['mode'],
                 'status' => 'setup',
                 'topic_status' => 'topic_selection',
@@ -363,6 +364,8 @@ class ProjectController extends Controller
     {
         $payload = $this->projectTopicService->topicSelectionPayload($project, $request);
 
+        $payload['prefillTopic'] = $request->session()->pull('project_topic_prefill');
+
         return Inertia::render('projects/TopicSelection', $payload);
     }
 
@@ -414,6 +417,20 @@ class ProjectController extends Controller
         return Inertia::render('projects/Writing', $payload + [
             'estimatedChapters' => $this->getEstimatedChapters($project),
         ]);
+    }
+
+    /**
+     * PROJECT DEFENSE PREPARATION
+     * Dashboard for project defense mock Q&A and simulation
+     */
+    public function defense(Project $project)
+    {
+        // Ensure user owns the project
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $payload = $this->projectWritingService->writingPayload($project);
+
+        return Inertia::render('projects/Defense', $payload);
     }
 
     /**
@@ -506,6 +523,7 @@ class ProjectController extends Controller
                 'department' => $project->department_name,
                 'course' => $project->course,
                 'supervisor_name' => $project->supervisor_name,
+                'student_name' => $project->student_name,
                 'settings' => $project->settings ?? [],
                 'dedication' => $project->dedication,
                 'acknowledgements' => $project->acknowledgements,

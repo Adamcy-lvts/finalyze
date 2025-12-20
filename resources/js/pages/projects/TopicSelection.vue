@@ -7,10 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { router } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle, FileText, GraduationCap, Lightbulb, Loader2, MessageSquare, RefreshCw, School } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, BookOpen, CheckCircle, FileText, GraduationCap, Lightbulb, Loader2, MessageSquare, RefreshCw, School, Upload } from 'lucide-vue-next';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
@@ -35,6 +37,10 @@ interface Project {
 interface Props {
     project: Project;
     savedTopics?: Topic[];
+    prefillTopic?: {
+        title: string;
+        description?: string | null;
+    } | null;
 }
 
 const props = defineProps<Props>();
@@ -75,6 +81,11 @@ const {
 const minimumTopicBalance = 300;
 const geographicFocus = ref<'nigeria_west_africa' | 'balanced' | 'global'>('balanced');
 
+const stripHtml = (html: string): string => {
+    if (!html) return '';
+    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
 onMounted(() => {
     // Debug: Log what data we received from the backend
     console.log('📋 TOPIC SELECTION - Project data received:', {
@@ -87,9 +98,9 @@ onMounted(() => {
 
     // If user already has a topic, show it
     if (props.project.topic) {
-        customTopic.value = props.project.topic;
+        customTopic.value = stripHtml(props.project.topic);
         customDescription.value = props.project.description || '';
-        customTitle.value = props.project.title || '';
+        customTitle.value = stripHtml(props.project.title || '');
         activeTab.value = 'existing';
 
         console.log('✅ TOPIC SELECTION - Form fields populated:', {
@@ -108,8 +119,8 @@ onMounted(() => {
 
         if (prefillTopic && prefillTopic.trim()) {
             activeTab.value = 'existing';
-            customTopic.value = prefillTopic.trim();
-            if (prefillTitle && prefillTitle.trim()) customTitle.value = prefillTitle.trim();
+            customTopic.value = stripHtml(prefillTopic);
+            if (prefillTitle && prefillTitle.trim()) customTitle.value = stripHtml(prefillTitle);
             if (prefillDescription && prefillDescription.trim()) customDescription.value = prefillDescription.trim();
 
             toast.success('Refined topic loaded', { description: 'Review it in “Enter Topic” then continue.' });
@@ -119,6 +130,15 @@ onMounted(() => {
         }
     } catch {
         // ignore
+    }
+
+    if (!props.project.topic && !customTopic.value.trim() && props.prefillTopic?.title) {
+        activeTab.value = 'existing';
+        customTopic.value = stripHtml(props.prefillTopic.title);
+        customTitle.value = stripHtml(props.prefillTopic.title);
+        if (props.prefillTopic.description) {
+            customDescription.value = props.prefillTopic.description;
+        }
     }
 
     // If we have saved topics, load them and switch to generated tab
@@ -742,466 +762,399 @@ const goBackToWizard = async () => {
     margin-bottom: 0.75em;
     line-height: 1.6;
 }
+
+/* Hide scrollbar for horizonal scroll containers */
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.animate-progress-indeterminate {
+    animation: shimmer 2s infinite linear;
+}
 </style>
 
 <template>
     <AppLayout title="Select Project Topic">
-        <div class="min-h-screen bg-gradient-to-b from-background via-background/95 to-muted/20">
-            <div class="mx-auto max-w-7xl space-y-10 p-6 pb-20 lg:p-10">
-                <!-- Back Navigation -->
-                <div class="flex items-center justify-between">
-                    <Button @click="goBackToWizard" variant="ghost" size="sm"
-                        class="group text-muted-foreground hover:text-foreground transition-colors">
-                        <div
-                            class="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mr-2">
-                            <ArrowLeft class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-                        </div>
-                        Back to Project Setup
-                    </Button>
-                </div>
+        <div class="min-h-screen bg-background relative selection:bg-primary/10 selection:text-primary">
+            <!-- Ambient Background Effects -->
+            <div class="fixed inset-0 pointer-events-none z-0">
+                <div class="absolute top-0 right-0 w-3/4 h-3/4 bg-primary/5 rounded-full blur-[120px] opacity-50"></div>
+                <div class="absolute bottom-0 left-0 w-1/2 h-1/2 bg-blue-500/5 rounded-full blur-[100px] opacity-50"></div>
+            </div>
 
-                <!-- Header -->
-                <div class="space-y-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <div
-                        class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-lg shadow-primary/10 ring-1 ring-white/20">
-                        <Lightbulb class="h-10 w-10 text-primary" />
+            <!-- Compact Header -->
+            <header class="sticky top-0 z-40 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+                <div class="container mx-auto flex h-16 items-center justify-between py-4">
+                    <div class="flex items-center gap-4">
+                        <Button @click="goBackToWizard" variant="ghost" size="icon" class="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80">
+                            <ArrowLeft class="h-4 w-4" />
+                        </Button>
+                        <div class="flex flex-col">
+                            <h1 class="text-sm font-semibold leading-none flex items-center gap-2">
+                                Topic Selection
+                                <span class="hidden sm:inline-flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse" v-if="isGenerating"></span>
+                            </h1>
+                            <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Step 2 of 4</p>
+                        </div>
+                    </div>
+
+
+
+                    <!-- Mobile Context Toggle (could be added here if needed, but keeping it simpler for now) -->
+                    <div class="lg:hidden">
+                        <Badge variant="outline" class="font-normal bg-muted/50">{{ project.type }}</Badge>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container mx-auto max-w-5xl py-8 pb-24 px-4 relative z-10 space-y-8">
+                <!-- Header Section -->
+                <div class="space-y-4 text-center pb-2">
+                    <div class="flex justify-center mb-6">
+                        <div class="relative flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-tr from-yellow-500/20 to-orange-500/20 border border-white/10 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+                            <div class="absolute inset-0 rounded-full bg-yellow-500/10 blur-xl"></div>
+                            <Lightbulb class="h-8 w-8 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)] relative z-10" />
+                        </div>
                     </div>
                     <div class="space-y-2">
-                        <h1
-                            class="text-4xl font-bold tracking-tight sm:text-5xl bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-                            Choose Your Project Topic
-                        </h1>
-                        <p class="mx-auto max-w-2xl text-lg text-muted-foreground leading-relaxed">
-                            Select or generate a research topic for your <span class="font-medium text-foreground">{{
-                                project.type }}</span>
-                            <span class="font-medium text-foreground">{{ project.field_of_study }}</span> project.
-                        </p>
+                    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-br from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent">
+                        Choose Your Project Topic
+                    </h2>
+                    <p class="mx-auto max-w-[600px] text-muted-foreground text-lg leading-relaxed">
+                        Define your specific area of interest or let AI help you discover unique project topics.
+                    </p>
                     </div>
                 </div>
 
-                <!-- Project Context -->
-                <div class="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <!-- Field of Study -->
-                        <Card class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors blur-2xl"></div>
-                            <div class="p-6 relative">
-                                <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 group-hover:scale-110 group-hover:bg-blue-500/20 transition-all duration-300">
-                                    <BookOpen class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Field of Study</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground">{{ project.field_of_study }}</div>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- Academic Level -->
-                        <Card class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-purple-500/10 group-hover:bg-purple-500/20 transition-colors blur-2xl"></div>
-                            <div class="p-6 relative">
-                                <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all duration-300">
-                                    <GraduationCap class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Academic Level</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground capitalize">{{ project.type }}</div>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- University -->
-                        <Card class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors blur-2xl"></div>
-                            <div class="p-6 relative">
-                                <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500 group-hover:scale-110 group-hover:bg-orange-500/20 transition-all duration-300">
-                                    <School class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">University</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground" :title="project.full_university_name || project.university">
-                                        {{ project.full_university_name || project.university }}
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- Course -->
-                        <Card class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-green-500/10 group-hover:bg-green-500/20 transition-colors blur-2xl"></div>
-                            <div class="p-6 relative">
-                                <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 text-green-500 group-hover:scale-110 group-hover:bg-green-500/20 transition-all duration-300">
-                                    <FileText class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Course</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground">{{ project.course }}</div>
-                                </div>
-                            </div>
-                        </Card>
+                <!-- Mobile Context Grid (Only visible on small screens) -->
+                <div class="lg:hidden grid grid-cols-2 gap-3 pb-4" v-if="project.field_of_study || project.university || project.course">
+                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50 col-span-2" v-if="project.field_of_study">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium">Field</span>
+                        <span class="text-sm font-medium truncate">{{ project.field_of_study }}</span>
+                    </div>
+                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50" v-if="project.university">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium">Institution</span>
+                        <span class="text-sm font-medium truncate">{{ project.university }}</span>
+                    </div>
+                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50" v-if="project.course">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium">Course / Dept</span>
+                        <span class="text-sm font-medium truncate">{{ project.course }}</span>
                     </div>
                 </div>
 
-                <!-- Topic Selection Tabs -->
-                <div class="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
-                    <Tabs v-model="activeTab" class="space-y-8">
-                        <div class="flex justify-center">
-                            <TabsList class="grid w-full max-w-md grid-cols-2 p-1 bg-muted/50 backdrop-blur-sm">
-                                <TabsTrigger value="existing"
-                                    class="data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all duration-300">
-                                    Enter Topic
-                                </TabsTrigger>
-                                <TabsTrigger value="generated"
-                                    class="data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all duration-300">
-                                    AI Generated Topics
-                                </TabsTrigger>
+                <Tabs v-model="activeTab" class="space-y-8">
+                    <!-- Custom Centered Tabs List -->
+                    <div class="flex justify-center">
+                        <TooltipProvider>
+                            <TabsList class="grid grid-cols-3 w-full h-auto items-center justify-center rounded-2xl bg-muted/50 p-1.5 text-muted-foreground backdrop-blur-sm border border-border/50 shadow-inner sm:flex sm:w-auto">
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <TabsTrigger value="existing" class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
+                                            <FileText class="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-0" />
+                                            <span class="truncate sm:hidden">Add Existing</span>
+                                            <span class="hidden sm:inline">Add Existing Topic</span>
+                                        </TabsTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Enter a topic you already have in mind</p>
+                                    </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <TabsTrigger value="generated" class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
+                                            <Lightbulb class="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-0" />
+                                            <span class="truncate sm:hidden">AI Suggestions</span>
+                                            <span class="hidden sm:inline">AI Suggested Topics</span>
+                                        </TabsTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Generate unique topics based on your profile</p>
+                                    </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <TabsTrigger value="import" class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
+                                            <Upload class="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-0" />
+                                            <span class="truncate sm:hidden">Import</span>
+                                            <span class="hidden sm:inline">Import Project</span>
+                                        </TabsTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Import a project from an external file</p>
+                                    </TooltipContent>
+                                </Tooltip>
                             </TabsList>
-                        </div>
+                        </TooltipProvider>
+                    </div>
 
-                        <!-- Enter Existing Topic -->
-                        <TabsContent value="existing" class="focus-visible:outline-none">
-                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                <!-- Project Details Card -->
-                                <Card class="lg:col-span-1 border-border/50 shadow-lg shadow-primary/5 overflow-hidden group flex flex-col">
-                                    <div class="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 transition-colors blur-3xl pointer-events-none"></div>
-                                    <CardHeader class="pb-2 border-b border-border/40 bg-muted/10">
-                                        <CardTitle class="flex items-center gap-2 text-lg">
-                                            <div class="p-1.5 rounded-md bg-primary/10 text-primary">
-                                                <Lightbulb class="h-4 w-4" />
-                                            </div>
-                                            Project Details
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent class="space-y-6 pt-6 flex-1">
-                                        <div class="space-y-3">
-                                            <Label for="custom-title" class="text-sm font-medium text-foreground/80">Project Title</Label>
-                                            <Input id="custom-title" v-model="customTitle"
-                                                placeholder="A concise title..."
-                                                :maxlength="255"
-                                                class="h-12 bg-muted/30 border-border/50 focus:bg-background transition-all" />
-                                        </div>
-
-                                        <div class="space-y-3">
-                                            <Label for="custom-topic" class="text-sm font-medium text-foreground/80">Research Topic</Label>
-                                            <Textarea id="custom-topic" v-model="customTopic"
-                                                placeholder="Enter your main research topic or question..."
-                                                rows="4"
-                                                class="resize-none bg-muted/30 border-border/50 focus:bg-background transition-all" />
-                                            <p class="text-xs text-muted-foreground">The main topic you want to investigate.</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <!-- Description Card -->
-                                <Card class="lg:col-span-2 border-border/50 shadow-lg shadow-primary/5 overflow-hidden group flex flex-col">
-                                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-20"></div>
-                                    <CardHeader class="pb-2 border-b border-border/40 bg-muted/10">
-                                        <CardTitle class="flex items-center gap-2 text-lg">
-                                            <div class="p-1.5 rounded-md bg-primary/10 text-primary">
-                                                <MessageSquare class="h-4 w-4" />
-                                            </div>
-                                            Detailed Description
-                                        </CardTitle>
+                    <!-- Manual Entry Tab -->
+                    <TabsContent value="existing" class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                            <!-- Left: Core Info -->
+                            <div class="lg:col-span-12 xl:col-span-5 space-y-6">
+                                <Card class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm">
+                                    <CardHeader>
+                                        <CardTitle className="text-lg">Project Title</CardTitle>
                                         <CardDescription>
-                                            Provide a comprehensive description of your research.
+                                            Keep it clear and academic.
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent class="space-y-6 pt-6 flex-1 flex flex-col">
-                                        <div class="space-y-3 flex-1 flex flex-col">
-                                            <Label for="custom-description" class="sr-only">Project Description</Label>
-                                            <div class="flex-1 border rounded-md overflow-hidden bg-background">
-                                                <RichTextEditor 
-                                                    v-model="customDescription"
-                                                    placeholder="Describe your research focus, objectives, problem statement, and scope in detail..."
-                                                    min-height="300px"
-                                                    :show-toolbar="true"
-                                                />
-                                            </div>
+                                    <CardContent class="space-y-6">
+                                        <div class="space-y-2">
+                                            <Label for="custom-title" class="text-xs font-medium uppercase text-muted-foreground">Title</Label>
+                                            <Input id="custom-title" v-model="customTitle"
+                                                placeholder="e.g., The Impact of..."
+                                                class="h-12 bg-secondary/50 border-border/50 focus:bg-background focus:ring-primary/20 transition-all font-medium" />
                                         </div>
-
-                                        <div class="pt-4 mt-auto">
-                                            <Button @click="submitTopic"
-                                                :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
-                                                class="w-full h-12 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
-                                                <Loader2 v-if="isSelecting" class="mr-2 h-5 w-5 animate-spin" />
-                                                <span v-else class="flex items-center">
-                                                    Continue with This Topic
-                                                    <ArrowRight class="ml-2 h-5 w-5" />
-                                                </span>
-                                            </Button>
-
-                                            <Button
-                                                @click="refineCurrentTopicInLab"
-                                                :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
-                                                variant="outline"
-                                                class="w-full h-12 text-base font-medium mt-3"
-                                            >
-                                                <MessageSquare class="mr-2 h-5 w-5" />
-                                                Refine in Topic Lab
-                                            </Button>
+                                        <div class="space-y-2">
+                                            <Label for="custom-topic" class="text-xs font-medium uppercase text-muted-foreground">Research Question / Topic</Label>
+                                            <Textarea id="custom-topic" v-model="customTopic"
+                                                placeholder="What is the main problem you are investigating?"
+                                                rows="5"
+                                                class="resize-none bg-secondary/50 border-border/50 focus:bg-background focus:ring-primary/20 transition-all" />
                                         </div>
                                     </CardContent>
+                                    <div class="px-6 pb-6 pt-0">
+                                         <Button @click="submitTopic" size="lg"
+                                            :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
+                                            class="w-full h-12 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
+                                            <Loader2 v-if="isSelecting" class="mr-2 h-5 w-5 animate-spin" />
+                                            <span v-else class="flex items-center justify-center w-full">
+                                                Confirm Selection
+                                                <ArrowRight class="ml-2 h-4 w-4" />
+                                            </span>
+                                        </Button>
+                                    </div>
+                                </Card>
+
+                                <div class="hidden xl:block">
+                                    <div 
+                                        @click="activeTab = 'generated'"
+                                        class="rounded-xl bg-orange-500/5 border border-orange-500/10 p-4 cursor-pointer hover:bg-orange-500/10 transition-colors group"
+                                    >
+                                        <div class="flex items-start gap-3">
+                                            <div class="p-2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-500 mt-0.5 group-hover:scale-110 transition-transform">
+                                                <Lightbulb class="h-4 w-4" />
+                                            </div>
+                                            <div class="space-y-1">
+                                                <h4 class="text-sm font-semibold text-orange-700 dark:text-orange-400">Need Inspiration?</h4>
+                                                <p class="text-xs text-muted-foreground leading-relaxed">
+                                                    If you're stuck, switch to the <strong>AI Suggestions</strong> tab to generate research topics tailored to your profile.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Description -->
+                            <div class="lg:col-span-12 xl:col-span-7 space-y-6">
+                                <Card class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm flex flex-col h-full lg:min-h-[500px]">
+                                    <div class="absolute top-0 right-0 p-6 pointer-events-none opacity-20">
+                                        <MessageSquare class="w-32 h-32 text-primary" />
+                                    </div>
+                                    <CardHeader>
+                                        <CardTitle className="text-lg">Detailed Description</CardTitle>
+                                        <CardDescription>
+                                            Elaborate on your research objectives and scope.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent class="flex-1 min-h-[300px] flex flex-col">
+                                        <div class="flex-1 border rounded-xl overflow-hidden bg-secondary/30 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                                            <RichTextEditor 
+                                                v-model="customDescription"
+                                                placeholder="Start typing your research description here..."
+                                                min-height="300px"
+                                                :show-toolbar="true"
+                                            />
+                                        </div>
+                                    </CardContent>
+                                    <div class="px-6 pb-6 flex items-center justify-between gap-4">
+                                        <p class="text-[10px] text-muted-foreground">
+                                            * This description will be used to guide the AI in future steps.
+                                        </p>
+                                        <Button
+                                            @click="refineCurrentTopicInLab"
+                                            :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
+                                            variant="ghost"
+                                            size="sm"
+                                            class="text-muted-foreground hover:text-primary"
+                                        >
+                                            <RefreshCw class="mr-2 h-3.5 w-3.5" />
+                                            Refine in Lab
+                                        </Button>
+                                    </div>
                                 </Card>
                             </div>
-                        </TabsContent>
+                        </div>
+                    </TabsContent>
 
-                        <!-- AI Generated Topics -->
-                        <TabsContent value="generated" class="focus-visible:outline-none">
-                            <Card
-                                class="border-border/40 shadow-lg shadow-primary/5 overflow-hidden min-h-[500px] flex flex-col">
-                                <CardHeader class="border-b border-border/40 bg-muted/10 pb-6">
-                                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div class="space-y-1">
-                                            <CardTitle class="flex items-center gap-2 text-xl">
-                                                <div class="p-1.5 rounded-md bg-primary/10 text-primary">
-                                                    <Lightbulb class="h-5 w-5" />
-                                                </div>
-                                                AI Generated Suggestions
-                                            </CardTitle>
-                                            <CardDescription>
-                                                Tailored research topics based on your academic profile.
-                                            </CardDescription>
+                    <!-- AI Generated Tab -->
+                    <TabsContent value="generated" class="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <!-- Control Bar -->
+                        <Card class="border-border/50 bg-card/50 backdrop-blur-sm sticky top-20 z-30 shadow-sm">
+                            <div class="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                                <div class="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
+                                    <div class="flex items-center h-9 px-3 rounded-lg bg-background border border-border/50 text-xs font-medium whitespace-nowrap">
+                                        <span class="text-muted-foreground mr-2">Focus:</span>
+                                        <Select v-model="geographicFocus">
+                                            <SelectTrigger class="h-auto p-0 border-none bg-transparent hover:bg-transparent focus:ring-0 focus:ring-offset-0 gap-1 text-xs font-semibold">
+                                                <SelectValue placeholder="Select Focus" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="balanced">Balanced</SelectItem>
+                                                <SelectItem value="nigeria_west_africa">West Africa</SelectItem>
+                                                <SelectItem value="global">Global</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div v-if="generatedTopics.length > 0" class="h-6 w-[1px] bg-border mx-1 hidden md:block"></div>
+
+                                    <div v-if="generatedTopics.length > 0" class="flex items-center h-9 px-3 rounded-lg bg-background border border-border/50 text-xs font-medium whitespace-nowrap">
+                                        <span class="text-muted-foreground mr-2">Timeline:</span>
+                                        <select v-model="timelineFilter" class="bg-transparent border-none text-foreground font-semibold focus:ring-0 p-0 cursor-pointer text-xs">
+                                            <option value="all">Any</option>
+                                            <option value="6-9 months">6-9 mo</option>
+                                            <option value="9-12 months">9-12 mo</option>
+                                            <option value="12+ months">12+ mo</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <Button @click="generateTopics" :disabled="isGenerating"
+                                    size="sm"
+                                    :class="generatedTopics.length === 0 ? 'w-full md:w-auto shadow-lg shadow-primary/20' : ''">
+                                    <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
+                                    <RefreshCw v-else-if="generatedTopics.length > 0" class="mr-2 h-4 w-4" />
+                                    <Lightbulb v-else class="mr-2 h-4 w-4" />
+                                    {{ isGenerating ? 'Thinking...' : generatedTopics.length > 0 ? 'Regenerate' : 'Generate Ideas' }}
+                                </Button>
+                            </div>
+                            
+                            <!-- Progress Bar -->
+                            <div v-if="isGenerating" class="h-0.5 w-full bg-muted overflow-hidden">
+                                <div class="h-full bg-primary animate-progress-indeterminate"></div>
+                            </div>
+                        </Card>
+
+                        <!-- Results Area -->
+                        <div class="min-h-[400px]">
+                            <!-- Loading State -->
+                            <div v-if="isGenerating" class="flex flex-col items-center justify-center py-20 animate-in fade-in">
+                                <div class="bg-primary/10 p-6 rounded-full mb-6 relative">
+                                    <Loader2 class="h-10 w-10 text-primary animate-spin" />
+                                    <div class="absolute inset-0 rounded-full animate-ping bg-primary/20 opacity-75"></div>
+                                </div>
+                                <h3 class="text-xl font-semibold mb-2">{{ generationProgress || 'Analyzing your profile...' }}</h3>
+                                <p class="text-muted-foreground text-sm max-w-xs text-center">
+                                    Our AI is scanning {{ project.field_of_study }} databases for relevant emerging topics.
+                                </p>
+                            </div>
+
+                            <!-- Empty State -->
+                            <div v-else-if="generatedTopics.length === 0" class="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in-95">
+                                <div class="h-32 w-32 rounded-3xl bg-gradient-to-tr from-muted/50 to-muted/10 border border-border/50 flex items-center justify-center mb-6 shadow-xl shadow-black/5 rotate-3 hover:rotate-0 transition-transform duration-500">
+                                    <Lightbulb class="h-12 w-12 text-muted-foreground/40" />
+                                </div>
+                                <h3 class="text-lg font-semibold mb-2">No Topics Generated Yet</h3>
+                                <p class="text-muted-foreground text-sm max-w-md mx-auto mb-8">
+                                    Click "Generate Ideas" to get personalized research topics based on your level, university, and field of study.
+                                </p>
+                                <Button @click="generateTopics" size="lg" class="rounded-full px-8 shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-105 transition-all">
+                                    Generate First Batch
+                                </Button>
+                            </div>
+
+                            <!-- Topics Grid -->
+                            <div v-else class="grid grid-cols-1 gap-6">
+                                <div v-for="topic in filteredTopics" :key="topic.id" 
+                                    class="group relative flex flex-col md:flex-row gap-0 md:gap-6 rounded-2xl border border-border/50 bg-card hover:bg-card/80 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 hover:border-primary/20 overflow-hidden"
+                                    :class="selectedTopic === topic.title ? 'ring-1 ring-primary border-primary bg-primary/5' : ''">
+                                    
+                                    <!-- Left: Metrics & Actions (Desktop Sidebar / Mobile Top) -->
+                                    <div class="w-full md:w-64 shrink-0 bg-muted/20 md:border-r border-border/50 p-5 flex flex-col gap-4">
+                                        <div class="flex items-center justify-between md:justify-start gap-2">
+                                            <Badge :variant="getDifficultyVariant(topic.difficulty)" class="rounded-md px-2 py-0.5 text-[10px] uppercase font-bold">
+                                                {{ topic.difficulty }}
+                                            </Badge>
+                                            <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{{ topic.timeline }}</span>
                                         </div>
 
-	                                        <div class="flex items-center gap-3">
-	                                            <div class="flex items-center gap-2 bg-background/50 p-1 rounded-lg border border-border/50">
-	                                                <span class="text-xs font-medium px-2 text-muted-foreground">Focus</span>
-	                                                <select v-model="geographicFocus"
-	                                                    class="h-8 rounded-md border-0 bg-transparent text-xs font-medium focus:ring-0 cursor-pointer hover:bg-muted/50 transition-colors">
-	                                                    <option value="balanced">Balanced</option>
-	                                                    <option value="nigeria_west_africa">Nigeria / West Africa</option>
-	                                                    <option value="global">Global</option>
-	                                                </select>
-	                                            </div>
-	                                            <Button @click="generateTopics" :disabled="isGenerating"
-	                                                :variant="generatedTopics.length > 0 ? 'outline' : 'default'"
-	                                                class="h-10 transition-all"
-	                                                :class="generatedTopics.length === 0 ? 'shadow-lg shadow-primary/20 hover:shadow-primary/30' : ''">
-                                                <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
-                                                <RefreshCw v-else-if="generatedTopics.length > 0"
-                                                    class="mr-2 h-4 w-4" />
-                                                <Lightbulb v-else class="mr-2 h-4 w-4" />
-                                                {{ isGenerating ? 'Generating...' : generatedTopics.length > 0 ?
-                                                'Regenerate' : 'Generate Topics' }}
+                                        <div class="space-y-1">
+                                            <div class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Feasibility</div>
+                                            <div class="flex items-center gap-2">
+                                                <div class="h-1.5 flex-1 bg-muted rounded-full overflow-hidden">
+                                                    <div class="h-full rounded-full transition-all" 
+                                                        :class="topic.feasibility_score >= 80 ? 'bg-green-500' : topic.feasibility_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'"
+                                                        :style="`width: ${topic.feasibility_score}%`">
+                                                    </div>
+                                                </div>
+                                                <span class="text-xs font-bold">{{ topic.feasibility_score }}%</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-auto pt-4 md:pt-0 grid grid-cols-2 md:grid-cols-1 gap-2">
+                                             <Button @click="selectGeneratedTopic(topic)" size="sm"
+                                                :variant="selectedTopic === topic.title ? 'default' : 'outline'"
+                                                class="w-full h-9 transition-all"
+                                                :class="selectedTopic === topic.title ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'hover:bg-primary hover:text-primary-foreground'">
+                                                {{ selectedTopic === topic.title ? 'Selected' : 'Select' }}
+                                                <CheckCircle v-if="selectedTopic === topic.title" class="ml-2 h-3.5 w-3.5" />
+                                                <ArrowRight v-else class="ml-2 h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button @click="openTopicInLab(topic)" size="sm" variant="ghost" class="w-full h-9 text-xs text-muted-foreground hover:text-foreground">
+                                                Refine
                                             </Button>
                                         </div>
                                     </div>
 
-                                    <!-- Filters -->
-                                    <div v-if="generatedTopics.length > 0"
-                                        class="mt-6 flex flex-wrap items-center gap-4 animate-in fade-in slide-in-from-top-2">
-                                        <div
-                                            class="flex items-center gap-2 bg-background/50 p-1 rounded-lg border border-border/50">
-                                            <span
-                                                class="text-xs font-medium px-2 text-muted-foreground">Difficulty</span>
-                                            <select v-model="difficultyFilter"
-                                                class="h-8 rounded-md border-0 bg-transparent text-xs font-medium focus:ring-0 cursor-pointer hover:bg-muted/50 transition-colors">
-                                                <option value="all">All Levels</option>
-                                                <option value="beginner">Beginner Friendly</option>
-                                                <option value="intermediate">Intermediate</option>
-                                                <option value="advanced">Advanced</option>
-                                            </select>
+                                    <!-- Right: Content -->
+                                    <div class="flex-1 p-5 md:pl-0 pt-0 md:pt-5 space-y-3">
+                                        <SafeHtmlText :content="topic.title" as="h3" class="text-lg font-bold leading-snug text-foreground group-hover:text-primary transition-colors" />
+                                        
+                                        <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground/80 leading-relaxed line-clamp-3 group-hover:line-clamp-none transition-all duration-300">
+                                            <SafeHtmlText :content="topic.description" as="div" />
                                         </div>
-                                        <div
-                                            class="flex items-center gap-2 bg-background/50 p-1 rounded-lg border border-border/50">
-                                            <span class="text-xs font-medium px-2 text-muted-foreground">Timeline</span>
-                                            <select v-model="timelineFilter"
-                                                class="h-8 rounded-md border-0 bg-transparent text-xs font-medium focus:ring-0 cursor-pointer hover:bg-muted/50 transition-colors">
-                                                <option value="all">Any Duration</option>
-                                                <option value="6-9 months">6-9 months</option>
-                                                <option value="9-12 months">9-12 months</option>
-                                                <option value="12+ months">12+ months</option>
-                                            </select>
-                                        </div>
-                                        <div class="ml-auto">
-                                            <Badge variant="secondary" class="h-8 px-3 text-xs font-medium">
-                                                {{ filteredTopics.length }} results
-                                            </Badge>
+
+                                        <div class="flex flex-wrap gap-1.5 pt-3 mt-auto">
+                                            <span v-for="keyword in topic.keywords.slice(0, 4)" :key="keyword"
+                                                class="text-[10px] font-medium text-muted-foreground/70 bg-muted/30 px-2 py-0.5 rounded-full border border-border/30">
+                                                #{{ keyword }}
+                                            </span>
                                         </div>
                                     </div>
-                                </CardHeader>
-
-                                <CardContent class="p-0 flex-1 bg-muted/5">
-                                    <!-- Loading State -->
-                                    <div v-if="isGenerating"
-                                        class="flex flex-col items-center justify-center h-[400px] p-8 text-center space-y-8 animate-in fade-in duration-500">
-                                        <div class="relative">
-                                            <div
-                                                class="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-75">
-                                            </div>
-                                            <div
-                                                class="relative flex items-center justify-center h-20 w-20 rounded-full bg-background border-2 border-primary/20 shadow-xl">
-                                                <Loader2 class="h-10 w-10 text-primary animate-spin" />
-                                            </div>
-                                        </div>
-
-                                        <div class="space-y-4 max-w-md w-full">
-                                            <h3
-                                                class="text-xl font-semibold bg-gradient-to-br from-foreground to-muted-foreground bg-clip-text text-transparent">
-                                                Crafting Your Topics
-                                            </h3>
-
-                                            <div class="space-y-2">
-                                                <div
-                                                    class="flex justify-between text-xs font-medium text-muted-foreground px-1">
-                                                    <span>{{ generationProgress || 'Initializing...' }}</span>
-                                                    <span>{{ Math.round(getProgressPercentage()) }}%</span>
-                                                </div>
-                                                <div class="h-2 w-full bg-muted/50 rounded-full overflow-hidden">
-                                                    <div class="h-full bg-primary transition-all duration-500 ease-out relative overflow-hidden"
-                                                        :style="`width: ${getProgressPercentage()}%`">
-                                                        <div
-                                                            class="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]">
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="grid grid-cols-4 gap-2 pt-4">
-                                                <div v-for="(step, key) in progressSteps" :key="key"
-                                                    class="flex flex-col items-center gap-2"
-                                                    :class="key === 'complete' ? 'hidden' : ''">
-                                                    <div class="h-2 w-2 rounded-full transition-colors duration-300"
-                                                        :class="getStepIndicatorClass(key as string)"></div>
-                                                    <span
-                                                        class="text-[10px] uppercase tracking-wider font-medium text-muted-foreground"
-                                                        :class="currentProgressStep === key ? 'text-primary' : ''">
-                                                        {{ key }}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Empty State -->
-                                    <div v-else-if="generatedTopics.length === 0"
-                                        class="flex flex-col items-center justify-center h-[400px] p-8 text-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
-                                        <div
-                                            class="h-24 w-24 rounded-3xl bg-muted/30 flex items-center justify-center mb-2">
-                                            <Lightbulb class="h-12 w-12 text-muted-foreground/50" />
-                                        </div>
-                                        <div class="max-w-sm space-y-2">
-                                            <h3 class="text-lg font-semibold">No Topics Generated Yet</h3>
-                                            <p class="text-muted-foreground text-sm">
-                                                Click the "Generate Topics" button to let our AI analyze your profile
-                                                and suggest personalized research topics.
-                                            </p>
-                                        </div>
-                                        <Button @click="generateTopics" size="lg"
-                                            class="shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
-                                            <Lightbulb class="mr-2 h-5 w-5" />
-                                            Generate Topics
-                                        </Button>
-                                    </div>
-
-                                    <!-- Topics List -->
-                                    <div v-else class="p-6 flex flex-col gap-8">
-                                        <div v-for="topic in filteredTopics" :key="topic.id" 
-                                            class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                                            
-                                            <!-- Metadata Card -->
-                                            <div class="lg:col-span-1 group relative flex flex-col rounded-xl border border-border/50 bg-card transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 hover:border-primary/30 hover:-translate-y-1 overflow-hidden"
-                                                :class="selectedTopic === topic.title ? 'ring-2 ring-primary border-primary bg-primary/5' : ''">
-                                                
-                                                <!-- Selection Overlay (Active State) -->
-                                                <div v-if="selectedTopic === topic.title" class="absolute top-0 right-0 p-0 z-10">
-                                                    <div class="bg-primary text-primary-foreground rounded-bl-xl px-3 py-1.5 shadow-sm flex items-center gap-1.5">
-                                                        <CheckCircle class="h-3.5 w-3.5" />
-                                                        <span class="text-[10px] font-bold uppercase tracking-wider">Selected</span>
-                                                    </div>
-                                                </div>
-
-                                                <div class="p-6 flex flex-col gap-4 flex-1">
-                                                    <!-- Title -->
-                                                    <SafeHtmlText :content="topic.title" as="h3" class="text-lg font-bold leading-tight text-foreground group-hover:text-primary transition-colors" />
-
-                                                    <!-- Badges -->
-                                                    <div class="flex flex-wrap gap-2">
-                                                        <Badge :variant="getDifficultyVariant(topic.difficulty)" class="text-[10px] uppercase tracking-wider font-semibold py-0.5">
-                                                            {{ topic.difficulty }}
-                                                        </Badge>
-                                                        <Badge variant="outline" class="text-[10px] uppercase tracking-wider font-medium border-border text-muted-foreground">
-                                                            {{ topic.timeline }}
-                                                        </Badge>
-                                                        <Badge variant="secondary" class="text-[10px] uppercase tracking-wider font-medium bg-muted/50">
-                                                            {{ topic.research_type }}
-                                                        </Badge>
-                                                    </div>
-
-                                                    <!-- Keywords -->
-                                                    <div class="flex flex-wrap gap-1.5 pt-2">
-                                                        <span v-for="keyword in topic.keywords" :key="keyword"
-                                                            class="text-[10px] font-medium text-muted-foreground bg-muted/30 px-2 py-1 rounded-md border border-border/30">
-                                                            #{{ keyword }}
-                                                        </span>
-                                                    </div>
-
-                                                    <div class="mt-auto pt-4 space-y-4">
-                                                        <!-- Feasibility -->
-                                                        <div class="flex items-center gap-3 bg-muted/20 p-3 rounded-lg border border-border/30">
-                                                            <div class="relative h-10 w-10 flex items-center justify-center shrink-0">
-                                                                <svg class="h-full w-full -rotate-90" viewBox="0 0 36 36">
-                                                                    <path class="text-muted/30" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3" />
-                                                                    <path :class="topic.feasibility_score >= 80 ? 'text-green-500' : topic.feasibility_score >= 60 ? 'text-yellow-500' : 'text-red-500'"
-                                                                        :stroke-dasharray="`${topic.feasibility_score}, 100`"
-                                                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                                                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-                                                                </svg>
-                                                                <span class="absolute text-[10px] font-bold">{{ topic.feasibility_score }}%</span>
-                                                            </div>
-                                                            <div class="flex flex-col">
-                                                                <span class="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Feasibility</span>
-                                                                <span class="text-xs font-medium" :class="topic.feasibility_score >= 80 ? 'text-green-600' : topic.feasibility_score >= 60 ? 'text-yellow-600' : 'text-red-600'">
-                                                                    {{ topic.feasibility_score >= 80 ? 'High' : topic.feasibility_score >= 60 ? 'Medium' : 'Low' }}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        <!-- Action Button -->
-                                                        <Button @click="selectGeneratedTopic(topic)"
-                                                            :variant="selectedTopic === topic.title ? 'secondary' : 'default'"
-                                                            class="w-full shadow-sm transition-all duration-300"
-                                                            :class="selectedTopic === topic.title ? 'bg-green-100 text-green-700 hover:bg-green-200 border-green-200' : 'hover:shadow-md hover:scale-[1.02]'">
-                                                            {{ selectedTopic === topic.title ? 'Selected' : 'Select This Topic' }}
-                                                            <CheckCircle v-if="selectedTopic === topic.title" class="ml-2 h-3.5 w-3.5" />
-                                                            <ArrowRight v-else class="ml-2 h-3.5 w-3.5" />
-                                                        </Button>
-
-                                                        <Button
-                                                            @click="openTopicInLab(topic)"
-                                                            variant="outline"
-                                                            class="w-full mt-2"
-                                                        >
-                                                            <MessageSquare class="mr-2 h-4 w-4" />
-                                                            Refine in Topic Lab
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- Description Card -->
-                                            <div class="lg:col-span-2 group relative flex flex-col rounded-xl border border-border/50 bg-card/50 transition-all duration-300 hover:shadow-lg hover:border-primary/20">
-                                                <div class="p-6 md:p-8 flex flex-col h-full">
-                                                    <div class="flex items-center gap-2 mb-4 pb-4 border-b border-border/30">
-                                                        <div class="p-1.5 rounded-md bg-primary/10 text-primary">
-                                                            <MessageSquare class="h-4 w-4" />
-                                                        </div>
-                                                        <span class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Description</span>
-                                                    </div>
-                                                    
-                                                    <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground leading-relaxed flex-1">
-                                                        <SafeHtmlText :content="topic.description" as="div" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </div>
+                                </div>
+                            </div>
+                        </div>
+                    </TabsContent>
+                    <!-- Import Project Tab (Coming Soon) -->
+                    <TabsContent value="import" class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <Card class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm min-h-[400px] flex items-center justify-center">
+                            <div class="text-center space-y-4 max-w-md p-8">
+                                <div class="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Upload class="h-8 w-8 text-primary" />
+                                </div>
+                                <h3 class="text-2xl font-bold">Import Existing Project</h3>
+                                <p class="text-muted-foreground leading-relaxed">
+                                    We're working on a feature that will allow you to import your existing research proposals and documents directly into Finalyze.
+                                </p>
+                                <Badge variant="secondary" class="mt-4 text-sm px-4 py-1.5 font-medium">Coming Soon</Badge>
+                            </div>
+                        </Card>
+                    </TabsContent>
+                </Tabs>
+            </main>
         </div>
 
         <PurchaseModal
@@ -1214,4 +1167,3 @@ const goBackToWizard = async () => {
         />
     </AppLayout>
 </template>
-```

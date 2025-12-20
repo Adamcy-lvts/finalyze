@@ -4,7 +4,7 @@
 
 <template>
     <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1561.3 468.1"
-        class="h-8 md:h-10 w-auto fill-white">
+        class="h-8 md:h-10 w-auto fill-current">
         <switch>
             <g>
                 <path
