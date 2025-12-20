@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { Activity, ArrowLeft, ArrowRight, BookOpen, Brain, Clock, Edit, FileText, Play, Target, Zap, Sparkles, AlertTriangle, Check, HelpCircle } from 'lucide-vue-next';
+import { Activity, ArrowLeft, ArrowRight, BookOpen, Brain, Clock, Edit, FileText, Play, Target, Zap, Sparkles, AlertTriangle, Check, HelpCircle, Shield } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -645,6 +645,9 @@ const startTour = () => {
     driverObj.drive();
 };
 
+const bulkCardRef = ref<HTMLElement | null>(null);
+const isBulkCardActive = ref(false);
+
 onMounted(() => {
     // Auto-select appropriate tab based on writing mode
     activeTab.value = currentMode.value === 'auto' ? 'ai-generation' : 'manual-writing';
@@ -660,6 +663,20 @@ onMounted(() => {
                 localStorage.setItem(tourKey, 'true');
             }, 1000);
         }
+    }
+
+    // Intersection Observer for "Center Focus" effect on mobile
+    if ('IntersectionObserver' in window && bulkCardRef.value) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                isBulkCardActive.value = entry.isIntersecting;
+            });
+        }, {
+            rootMargin: '-40% 0px -40% 0px', // Active when in the middle 20% of screen height
+            threshold: 0
+        });
+
+        observer.observe(bulkCardRef.value);
     }
 });
 </script>
@@ -761,86 +778,129 @@ onMounted(() => {
                     </div>
 
                     <!-- Quick Actions -->
-                    <div id="action-cards" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
-                        <!-- Start Writing -->
-                        <button @click="nextChapterNumber ? startChapter(nextChapterNumber) : null"
-                            :disabled="!canGenerateMoreChapters"
-                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full">
-                            <div
-                                class="rounded-full bg-green-100 p-2.5 text-green-600 dark:bg-green-900/20 dark:text-green-400">
-                                <Edit class="h-5 w-5" />
-                            </div>
-                            <div class="flex-1">
-                                <h3 class="font-semibold text-sm sm:text-base">Start Writing</h3>
-                                <p class="text-xs text-muted-foreground mt-1">
-                                    {{ canGenerateMoreChapters ? `Begin Chapter ${nextChapterNumber} manually` :
-                                        'All chapters created' }}
-                                </p>
-                            </div>
-                            <div
-                                class="mt-auto flex items-center text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                                Get started
-                                <ArrowRight class="ml-1 h-3.5 w-3.5" />
-                            </div>
-                        </button>
-
-                        <!-- Generate Chapter -->
-                        <button v-if="currentMode === 'auto'" @click="generateChapter('progressive')"
+                    <!-- Quick Actions -->
+                    <div id="action-cards" class="space-y-4">
+                        <!-- Complete Project Generation (Stand Alone) - MOVED TO TOP -->
+                        <button v-if="currentMode === 'auto'" @click="generateChapter('bulk')" ref="bulkCardRef"
                             :disabled="isGenerating || !canGenerateMoreChapters"
-                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-purple-500/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full">
-                            <div
-                                class="rounded-full bg-purple-100 p-2.5 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
-                                <Brain class="h-5 w-5" />
+                            class="group relative w-full flex items-center justify-between gap-6 rounded-3xl border border-border/50 bg-card p-6 md:px-8 md:py-7 text-left shadow-sm transition-all hover:border-pink-500/30 hover:shadow-lg hover:shadow-pink-500/5 hover:-translate-y-0.5 overflow-hidden"
+                            :class="{ 'border-pink-500/30 shadow-lg shadow-pink-500/5 -translate-y-0.5': isBulkCardActive }">
+
+                            <!-- Subtle Hover Gradient -->
+                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                                :class="{ 'opacity-100': isBulkCardActive }">
                             </div>
-                            <div class="flex-1">
-                                <h3 class="font-semibold text-sm sm:text-base">Generate Chapter</h3>
-                                <p class="text-xs text-muted-foreground mt-1">
-                                    {{ isGenerating ? 'Generating content...' : 'Let AI draft the next chapter' }}
+
+                            <div class="relative z-10 flex-1 space-y-2">
+                                <div class="flex items-center gap-2.5 mb-1">
+                                    <div
+                                        class="flex items-center justify-center rounded-md bg-pink-100/50 p-1.5 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400">
+                                        <Sparkles class="h-3.5 w-3.5" />
+                                    </div>
+                                    <span
+                                        class="text-xs font-semibold tracking-wide text-pink-600 dark:text-pink-400 uppercase">Automated
+                                        Workflow</span>
+                                </div>
+                                <h3 class="text-lg md:text-xl font-semibold text-foreground group-hover:text-pink-600 transition-colors"
+                                    :class="{ 'text-pink-600': isBulkCardActive }">
+                                    Complete Project Generation</h3>
+                                <p class="text-muted-foreground max-w-2xl text-sm leading-relaxed">
+                                    Finalyze will draft your entire project chapters in one seamless process, with
+                                    citations and references included.
                                 </p>
                             </div>
-                            <div
-                                class="mt-auto flex items-center text-xs font-medium text-purple-600 opacity-0 transition-opacity group-hover:opacity-100">
-                                Start generation
-                                <ArrowRight class="ml-1 h-3.5 w-3.5" />
+
+                            <div class="relative z-10 hidden sm:flex items-center justify-center pl-4">
+                                <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-background shadow-sm group-hover:border-pink-500/30 group-hover:text-pink-600 transition-all duration-300 group-hover:scale-110"
+                                    :class="{ 'border-pink-500/30 text-pink-600 scale-110': isBulkCardActive }">
+                                    <ArrowRight class="h-5 w-5" />
+                                </div>
                             </div>
                         </button>
 
-                        <!-- Complete Project Generation (New) -->
-                        <button v-if="currentMode === 'auto'" @click="generateChapter('bulk')"
-                            :disabled="isGenerating || !canGenerateMoreChapters"
-                            class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-gradient-to-br from-card to-pink-50/50 dark:to-pink-950/10 p-5 text-left shadow-sm transition-all hover:border-pink-500/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full overflow-hidden">
-                            <div
-                                class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Sparkles class="h-12 w-12 text-pink-500" />
-                            </div>
-                            <div
-                                class="rounded-full bg-pink-100 p-2.5 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400 relative z-10">
-                                <Sparkles class="h-5 w-5" />
-                            </div>
-                            <div class="flex-1 relative z-10">
-                                <h3 class="font-semibold text-sm sm:text-base">Complete Project</h3>
-                                <p class="text-xs text-muted-foreground mt-1">
-                                    Generate all remaining chapters at once
-                                </p>
-                            </div>
-                            <div
-                                class="mt-auto flex items-center text-xs font-medium text-pink-600 opacity-0 transition-opacity group-hover:opacity-100 relative z-10">
-                                Generate all
-                                <ArrowRight class="ml-1 h-3.5 w-3.5" />
-                            </div>
-                        </button>
+                        <!-- Granular Controls Row -->
+                        <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                            <!-- Start Writing -->
+                            <button @click="nextChapterNumber ? startChapter(nextChapterNumber) : null"
+                                :disabled="!canGenerateMoreChapters"
+                                class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full min-h-[140px]">
+                                <div
+                                    class="rounded-full bg-green-100 p-2.5 text-green-600 dark:bg-green-900/20 dark:text-green-400">
+                                    <Edit class="h-5 w-5" />
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="font-semibold text-sm sm:text-base">Start Writing</h3>
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        {{ canGenerateMoreChapters ? `Begin Chapter ${nextChapterNumber} manually` :
+                                            'All chapters created' }}
+                                    </p>
+                                </div>
+                                <div
+                                    class="mt-auto flex items-center text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                                    Take the next step
+                                    <ArrowRight class="ml-1 h-3.5 w-3.5" />
+                                </div>
+                            </button>
 
-                        <!-- Manual Mode Info (if manual) -->
-                        <div v-if="currentMode === 'manual'"
-                            class="flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-muted/30 p-5 text-left sm:col-span-2 lg:col-span-2">
-                            <div
-                                class="rounded-full bg-gray-100 p-2.5 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                                <BookOpen class="h-5 w-5" />
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-sm sm:text-base">Manual Mode Active</h3>
-                                <p class="text-sm text-muted-foreground mt-1">Switch to AI mode to enable generation
-                                    features.</p>
+                            <!-- Defense Preparation Core Action -->
+                            <button @click="router.visit(route('projects.defense', project.slug))"
+                                class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-amber-500/50 hover:shadow-md h-full min-h-[140px]">
+                                <div
+                                    class="rounded-full bg-amber-100 p-2.5 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">
+                                    <Shield class="h-5 w-5" />
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <h3 class="font-semibold text-sm sm:text-base">Defense Preparation</h3>
+                                        <Badge variant="secondary"
+                                            class="text-[10px] bg-amber-500/10 text-amber-600 border-none">NEW</Badge>
+                                    </div>
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Practice with AI examiners, master your presentation, and simulate your final
+                                        defense.
+                                    </p>
+                                </div>
+                                <div
+                                    class="mt-auto flex items-center text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100">
+                                    Enter Defense Mode
+                                    <ArrowRight class="ml-1 h-3.5 w-3.5" />
+                                </div>
+                            </button>
+
+                            <!-- Generate Chapter -->
+                            <button v-if="currentMode === 'auto'" @click="generateChapter('progressive')"
+                                :disabled="isGenerating || !canGenerateMoreChapters"
+                                class="group relative flex flex-col items-start gap-4 rounded-2xl border border-border/50 bg-card p-5 text-left shadow-sm transition-all hover:border-purple-500/50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed h-full min-h-[140px]">
+                                <div
+                                    class="rounded-full bg-purple-100 p-2.5 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
+                                    <Brain class="h-5 w-5" />
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="font-semibold text-sm sm:text-base">Generate Chapter</h3>
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        {{ isGenerating ? 'Generating content...' : 'Let AI draft the next chapter' }}
+                                    </p>
+                                </div>
+                                <div
+                                    class="mt-auto flex items-center text-xs font-medium text-purple-600 opacity-0 transition-opacity group-hover:opacity-100">
+                                    Start generation
+                                    <ArrowRight class="ml-1 h-3.5 w-3.5" />
+                                </div>
+                            </button>
+
+                            <!-- Manual Mode Info (if manual) -->
+                            <div v-if="currentMode === 'manual'"
+                                class="flex flex-col items-start justify-center gap-4 rounded-2xl border border-border/50 bg-muted/30 p-5 text-left h-full min-h-[140px]">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="rounded-full bg-gray-100 p-2 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                        <BookOpen class="h-4 w-4" />
+                                    </div>
+                                    <h3 class="font-semibold text-sm">Manual Mode Active</h3>
+                                </div>
+                                <p class="text-sm text-muted-foreground">
+                                    Switch to AI mode to enable generation features.
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -1248,7 +1308,7 @@ onMounted(() => {
                             <div class="flex items-center justify-between rounded-lg bg-muted/50 p-3">
                                 <span class="text-sm text-muted-foreground">Chapters Done</span>
                                 <span class="font-mono font-semibold">{{ completedChapters }} / {{ estimatedChapters
-                                }}</span>
+                                    }}</span>
                             </div>
 
                         </div>

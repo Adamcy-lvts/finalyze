@@ -292,7 +292,7 @@ HTML;
 
                 $metadata = [
                     'title' => $project->title,
-                    'author' => $project->user->name ?? 'Unknown',
+                    'author' => $project->student_name ?: ($project->user->name ?? 'Unknown'),
                 ];
 
                 if ($this->convertWithPandoc($fullHtml, $filename, $metadata)) {
@@ -361,7 +361,7 @@ HTML;
         $html .= '<div style="text-align: center; margin-bottom: 3em;">';
         $html .= '<h1>'.htmlspecialchars(strtoupper($project->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
         $html .= '<p>BY</p>';
-        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->user->name ?? 'AUTHOR NAME'), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
+        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->student_name ?: ($project->user->name ?? 'AUTHOR NAME')), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
 
         if ($project->abstract) {
             $html .= '<div style="margin-top: 2em;">';
@@ -466,7 +466,7 @@ HTML;
 
                 $metadata = [
                     'title' => htmlspecialchars($project->title.' - Chapter '.$chapter->chapter_number, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
-                    'author' => htmlspecialchars($project->user->name ?? 'Unknown', ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                    'author' => htmlspecialchars($project->student_name ?: ($project->user->name ?? 'Unknown'), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
                 ];
 
                 if ($this->convertWithPandoc($chapterHtml, $filename, $metadata)) {
@@ -554,7 +554,7 @@ HTML;
 
                 $metadata = [
                     'title' => $project->title.' (Selected Chapters)',
-                    'author' => $project->user->name ?? 'Unknown',
+                    'author' => $project->student_name ?: ($project->user->name ?? 'Unknown'),
                 ];
 
                 if ($this->convertWithPandoc($html, $filename, $metadata)) {
@@ -626,7 +626,7 @@ HTML;
         $html .= '<h1>'.htmlspecialchars(strtoupper($project->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
         $html .= '<p>(Selected Chapters: '.implode(', ', $chapterNumbers).')</p>';
         $html .= '<p>BY</p>';
-        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->user->name ?? 'AUTHOR NAME'), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
+        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->student_name ?: ($project->user->name ?? 'AUTHOR NAME')), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
 
         if ($project->university) {
             $html .= '<p>'.htmlspecialchars(strtoupper($project->university), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
@@ -694,7 +694,7 @@ HTML;
 
         // Only set basic document properties - no complex formatting
         $properties = $phpWord->getDocInfo();
-        $properties->setCreator($project->user->name ?? 'Unknown');
+        $properties->setCreator($project->student_name ?: ($project->user->name ?? 'Unknown'));
         $properties->setTitle($project->title);
 
         // NO font settings, NO styles, NO language settings
@@ -734,7 +734,7 @@ HTML;
         );
 
         $section->addText(
-            strtoupper($project->user->name ?? 'AUTHOR NAME'),
+            strtoupper($project->student_name ?: ($project->user->name ?? 'AUTHOR NAME')),
             ['size' => 14, 'bold' => true],
             ['alignment' => 'center', 'spaceAfter' => 400]
         );
@@ -814,7 +814,7 @@ HTML;
         );
 
         $section->addText(
-            'Author: '.$project->user->name,
+            'Author: '.($project->student_name ?: $project->user->name),
             [], // No font formatting
             ['alignment' => 'center', 'spaceAfter' => 100]
         );

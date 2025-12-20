@@ -330,7 +330,7 @@ class PdfExportService
         // Create new PDF with FPDI
         $pdf = new Fpdi;
         $pdf->SetCreator('Finalyze');
-        $pdf->SetAuthor($project->user->name ?? 'Unknown');
+        $pdf->SetAuthor($project->student_name ?: ($project->user->name ?? 'Unknown'));
         $pdf->SetTitle($project->title);
 
         // Disable header and footer lines

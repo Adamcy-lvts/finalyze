@@ -23,6 +23,7 @@ interface Project {
     university: string;
     full_university_name: string;
     supervisor_name: string | null;
+    description: string | null;
 }
 
 interface Props {
@@ -187,261 +188,183 @@ const goBackToTopicSelection = async () => {
 
 <template>
     <AppLayout title="Topic Approval">
-        <div class="min-h-screen bg-gradient-to-b from-background via-background/95 to-muted/20">
-            <div class="mx-auto max-w-4xl space-y-10 p-6 pb-20 lg:p-10">
-                <!-- Back Navigation -->
-                <div class="flex items-center justify-between">
-                    <Button @click="goBackToTopicSelection" variant="ghost" size="sm"
-                        class="group text-muted-foreground hover:text-foreground transition-colors">
-                        <div
-                            class="flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mr-2">
-                            <ArrowLeft class="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-                        </div>
-                        Back to Topic Selection
-                    </Button>
-                </div>
+        <div class="min-h-screen bg-background relative selection:bg-primary/10 selection:text-primary">
+            <!-- Ambient Background Effects -->
+            <div class="fixed inset-0 pointer-events-none z-0">
+                <div class="absolute top-0 right-0 w-3/4 h-3/4 bg-yellow-500/5 rounded-full blur-[120px] opacity-50"></div>
+                <div class="absolute bottom-0 left-0 w-1/2 h-1/2 bg-yellow-500/5 rounded-full blur-[100px] opacity-30"></div>
+            </div>
 
-                <!-- Header -->
-                <div class="space-y-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <div
-                        class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 shadow-lg shadow-yellow-500/10 ring-1 ring-yellow-500/20">
-                        <Clock class="h-10 w-10 text-yellow-600" />
+            <!-- Compact Header -->
+            <header class="sticky top-0 z-40 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+                <div class="container mx-auto flex h-16 items-center justify-between py-4 px-4">
+                    <div class="flex items-center gap-4">
+                        <Button @click="goBackToTopicSelection" variant="ghost" size="icon" class="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80">
+                            <ArrowLeft class="h-4 w-4" />
+                        </Button>
+                        <div class="flex flex-col">
+                            <h1 class="text-sm font-semibold leading-none flex items-center gap-2">
+                                Topic Approval
+                            </h1>
+                            <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Step 3 of 4</p>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container mx-auto max-w-5xl py-8 pb-24 px-4 relative z-10 space-y-8">
+                <!-- Hero Section -->
+                <div class="space-y-4 text-center pb-2">
+                    <div class="flex justify-center mb-6">
+                        <div class="relative flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-tr from-yellow-500/20 to-orange-500/20 border border-white/10 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+                            <div class="absolute inset-0 rounded-full bg-yellow-500/10 blur-xl"></div>
+                            <Clock class="h-8 w-8 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)] relative z-10" />
+                        </div>
                     </div>
                     <div class="space-y-2">
-                        <h1
-                            class="text-4xl font-bold tracking-tight sm:text-5xl bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                        <h2 class="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-br from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent">
                             Awaiting Supervisor Approval
-                        </h1>
-                        <p class="mx-auto max-w-2xl text-lg text-muted-foreground leading-relaxed">
-                            Your project topic is ready for review. Share it with your supervisor and update the status
-                            below.
+                        </h2>
+                        <p class="mx-auto max-w-[600px] text-muted-foreground text-lg leading-relaxed">
+                            Your project topic is ready for review. Share it with your supervisor and update the status below.
                         </p>
                     </div>
                 </div>
 
-                <!-- Project Context -->
-                <div class="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <!-- Field of Study -->
-                        <Card v-if="project.field_of_study"
-                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div
-                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors blur-2xl">
-                            </div>
-                            <div class="p-6 relative">
-                                <div
-                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 group-hover:scale-110 group-hover:bg-blue-500/20 transition-all duration-300">
-                                    <BookOpen class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span
-                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Field
-                                        of Study</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground">
-                                        {{ project.field_of_study }}
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- Academic Level -->
-                        <Card
-                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div
-                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-purple-500/10 group-hover:bg-purple-500/20 transition-colors blur-2xl">
-                            </div>
-                            <div class="p-6 relative">
-                                <div
-                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all duration-300">
-                                    <GraduationCap class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span
-                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Academic
-                                        Level</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground capitalize">
-                                        {{ project.type }}
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- University -->
-                        <Card
-                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div
-                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors blur-2xl">
-                            </div>
-                            <div class="p-6 relative">
-                                <div
-                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500 group-hover:scale-110 group-hover:bg-orange-500/20 transition-all duration-300">
-                                    <School class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span
-                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">University</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground"
-                                        :title="project.full_university_name || project.university">
-                                        {{ project.full_university_name || project.university }}
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <!-- Supervisor -->
-                        <Card
-                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 hover:-translate-y-1">
-                            <div
-                                class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-green-500/10 group-hover:bg-green-500/20 transition-colors blur-2xl">
-                            </div>
-                            <div class="p-6 relative">
-                                <div
-                                    class="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 text-green-500 group-hover:scale-110 group-hover:bg-green-500/20 transition-all duration-300">
-                                    <User class="h-5 w-5" />
-                                </div>
-                                <div class="space-y-1">
-                                    <span
-                                        class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Supervisor</span>
-                                    <div class="font-bold text-lg leading-tight text-foreground">
-                                        {{ project.supervisor_name || 'Not assigned' }}
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
+                <!-- Project Context Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                    <div class="flex flex-col gap-1 p-3 rounded-xl bg-card/50 border border-border/50 backdrop-blur-sm">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium flex items-center gap-1.5">
+                            <BookOpen class="h-3 w-3" /> Field
+                        </span>
+                        <span class="text-sm font-medium truncate" :title="project.field_of_study">{{ project.field_of_study }}</span>
+                    </div>
+                    <div class="flex flex-col gap-1 p-3 rounded-xl bg-card/50 border border-border/50 backdrop-blur-sm">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium flex items-center gap-1.5">
+                            <GraduationCap class="h-3 w-3" /> Level
+                        </span>
+                        <span class="text-sm font-medium truncate capitalize">{{ project.type }}</span>
+                    </div>
+                    <div class="flex flex-col gap-1 p-3 rounded-xl bg-card/50 border border-border/50 backdrop-blur-sm">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium flex items-center gap-1.5">
+                            <School class="h-3 w-3" /> Institution
+                        </span>
+                        <span class="text-sm font-medium truncate" :title="project.full_university_name || project.university">{{ project.university }}</span>
+                    </div>
+                    <div class="flex flex-col gap-1 p-3 rounded-xl bg-card/50 border border-border/50 backdrop-blur-sm">
+                        <span class="text-[10px] uppercase text-muted-foreground font-medium flex items-center gap-1.5">
+                            <User class="h-3 w-3" /> Supervisor
+                        </span>
+                        <span class="text-sm font-medium truncate">{{ project.supervisor_name || 'Not assigned' }}</span>
                     </div>
                 </div>
 
-                <div class="grid gap-8 md:grid-cols-1 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
-                    <!-- Selected Topic Display -->
-                    <Card class="relative border-border/50 shadow-lg shadow-primary/5 overflow-hidden group">
-                        <div
-                            class="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 transition-colors blur-3xl pointer-events-none">
-                        </div>
-                        <div
-                            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-20">
-                        </div>
-
-                        <CardHeader class="pb-2 relative border-b border-border/40 bg-muted/10">
-                            <div class="flex items-center gap-3">
-                                <div class="p-2 rounded-md bg-primary/10 text-primary">
-                                    <MessageSquare class="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <CardTitle class="text-xl">Selected Topic</CardTitle>
-                                    <CardDescription>The topic currently pending approval</CardDescription>
-                                </div>
+                <!-- Selected Topic Card -->
+                <Card class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm overflow-hidden">
+                    <CardHeader class="border-b border-border/40 bg-muted/10 pb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-lg bg-primary/10 text-primary">
+                                <MessageSquare class="h-5 w-5" />
                             </div>
-                        </CardHeader>
-                        <CardContent class="p-6 md:p-8 relative">
+                            <div>
+                                <CardTitle class="text-lg">Selected Topic</CardTitle>
+                                <CardDescription>The topic currently pending approval</CardDescription>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent class="p-6 md:p-8 space-y-6">
                             <div class="space-y-4">
                                 <SafeHtmlText
-                                    v-if="project.title"
+                                    v-if="project.topic"
                                     as="h3"
                                     class="text-2xl font-bold text-foreground leading-tight"
-                                    :content="project.title"
-                                />
-                                <SafeHtmlText
-                                    as="div"
-                                    class="prose prose-invert max-w-none text-muted-foreground leading-relaxed"
                                     :content="project.topic"
                                 />
+                                <div class="relative pl-4 border-l-2 border-primary/20" v-if="project.description">
+                                    <h4 class="text-sm font-semibold text-muted-foreground mb-2">Description / Scope</h4>
+                                    <SafeHtmlText
+                                        as="div"
+                                        class="prose prose-invert prose-sm sm:prose-base max-w-none text-foreground/80 leading-relaxed"
+                                        :content="project.description"
+                                    />
+                                </div>
                             </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Action Cards -->
+                <div class="grid gap-6 md:grid-cols-2">
+                    <!-- Share with Supervisor -->
+                    <Card class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:border-blue-500/30 flex flex-col h-full">
+                        <div class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors blur-3xl"></div>
+                        <CardHeader class="relative">
+                            <CardTitle class="flex items-center gap-2 text-lg group-hover:text-blue-500 transition-colors">
+                                <FileText class="h-5 w-5 text-blue-500" />
+                                Share with Supervisor
+                            </CardTitle>
+                            <CardDescription>Download a professional PDF proposal to submit to your supervisor.</CardDescription>
+                        </CardHeader>
+                        <CardContent class="mt-auto pt-0 relative">
+                            <Button @click="exportTopicPdf" :disabled="isExporting" size="lg" variant="outline" class="w-full h-12 border-blue-200/20 hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/50 transition-all font-medium">
+                                <Download v-if="!isExporting" class="mr-2 h-4 w-4" />
+                                <Clock v-else class="mr-2 h-4 w-4 animate-spin" />
+                                {{ isExporting ? 'Generating PDF...' : 'Download Proposal PDF' }}
+                            </Button>
                         </CardContent>
                     </Card>
 
-                    <!-- Action Area -->
-                    <div class="grid gap-6 md:grid-cols-2">
-                        <!-- Export for Supervisor Review -->
-                        <Card
-                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:border-blue-500/30 flex flex-col">
-                            <div
-                                class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors blur-3xl">
-                            </div>
-                            <CardHeader class="relative">
-                                <CardTitle
-                                    class="flex items-center gap-2 text-lg group-hover:text-blue-500 transition-colors">
-                                    <FileText class="h-5 w-5 text-blue-500" />
-                                    Share with Supervisor
-                                </CardTitle>
-                                <CardDescription>Download a professional PDF proposal to submit to your supervisor.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent class="mt-auto pt-0 relative">
-                                <Button @click="exportTopicPdf" :disabled="isExporting" size="lg" variant="outline"
-                                    class="w-full h-12 border-blue-200/20 hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/50 transition-all">
-                                    <Download v-if="!isExporting" class="mr-2 h-5 w-5" />
-                                    <Clock v-else class="mr-2 h-5 w-5 animate-spin" />
-                                    {{ isExporting ? 'Generating PDF...' : 'Download Proposal PDF' }}
-                                </Button>
-                            </CardContent>
-                        </Card>
-
-                        <!-- Approval Actions -->
-                        <Card
-                            class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:border-green-500/30 flex flex-col">
-                            <div
-                                class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-green-500/5 group-hover:bg-green-500/10 transition-colors blur-3xl">
-                            </div>
-                            <CardHeader class="relative">
-                                <CardTitle
-                                    class="flex items-center gap-2 text-lg group-hover:text-green-500 transition-colors">
-                                    <ShieldCheck class="h-5 w-5 text-green-600" />
-                                    Update Status
-                                </CardTitle>
-                                <CardDescription>Record your supervisor's decision to proceed.</CardDescription>
-                            </CardHeader>
-                            <CardContent class="mt-auto pt-0 grid grid-cols-2 gap-3 relative">
-                                <Button @click="() => showApprovalDialog(true)" :disabled="isSubmitting"
-                                    class="h-12 bg-green-600 hover:bg-green-700 text-white shadow-md shadow-green-600/20 transition-all hover:scale-[1.02]">
-                                    <CheckCircle class="mr-2 h-5 w-5" />
-                                    Approved
-                                </Button>
-
-                                <Button @click="() => showApprovalDialog(false)" :disabled="isSubmitting"
-                                    variant="outline"
-                                    class="h-12 border-red-200/20 text-red-500 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-600 transition-all hover:scale-[1.02]">
-                                    <XCircle class="mr-2 h-5 w-5" />
-                                    Rejected
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    </div>
+                    <!-- Update Status -->
+                    <Card class="group relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:border-green-500/30 flex flex-col h-full">
+                        <div class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-green-500/5 group-hover:bg-green-500/10 transition-colors blur-3xl"></div>
+                        <CardHeader class="relative">
+                            <CardTitle class="flex items-center gap-2 text-lg group-hover:text-green-500 transition-colors">
+                                <ShieldCheck class="h-5 w-5 text-green-600" />
+                                Update Status
+                            </CardTitle>
+                            <CardDescription>Record your supervisor's decision to proceed.</CardDescription>
+                        </CardHeader>
+                        <CardContent class="mt-auto pt-0 grid grid-cols-2 gap-3 relative">
+                            <Button @click="() => showApprovalDialog(true)" :disabled="isSubmitting" class="h-12 bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/10 transition-all hover:scale-[1.02] font-medium">
+                                <CheckCircle class="mr-2 h-4 w-4" />
+                                Approved
+                            </Button>
+                            <Button @click="() => showApprovalDialog(false)" :disabled="isSubmitting" variant="outline" class="h-12 border-red-200/20 text-red-500 hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-600 transition-all hover:scale-[1.02] font-medium">
+                                <XCircle class="mr-2 h-4 w-4" />
+                                Rejected
+                            </Button>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 <!-- Confirmation Dialog -->
                 <Dialog v-model:open="showConfirmDialog">
-                    <DialogContent class="sm:max-w-md border-border/50 shadow-2xl">
+                    <DialogContent class="sm:max-w-md border-border/50 shadow-2xl bg-background/95 backdrop-blur-xl">
                         <DialogHeader>
                             <DialogTitle class="flex items-center gap-2 text-xl">
-                                <div :class="pendingApproval ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'"
-                                    class="p-2 rounded-full">
+                                <div :class="pendingApproval ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-500' : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500'" class="p-2 rounded-full">
                                     <CheckCircle v-if="pendingApproval" class="h-5 w-5" />
                                     <XCircle v-else class="h-5 w-5" />
                                 </div>
                                 {{ pendingApproval ? 'Confirm Approval' : 'Confirm Rejection' }}
                             </DialogTitle>
-                            <DialogDescription class="pt-2 text-base">
+                            <DialogDescription class="pt-2 text-base text-muted-foreground">
                                 {{
                                     pendingApproval
-                                        ? `Great news! Confirm that your supervisor has approved this topic. We will proceed to
-                                the next stage.`
-                                        : `Confirm that your supervisor wants you to change this topic. You will be redirected
-                                to select a new one.`
+                                        ? `Great news! Confirm that your supervisor has approved this topic. We will proceed to the next stage.`
+                                        : `Confirm that your supervisor wants you to change this topic. You will be redirected to select a new one.`
                                 }}
                             </DialogDescription>
                         </DialogHeader>
                         <DialogFooter class="gap-2 sm:gap-0 mt-4">
                             <Button @click="showConfirmDialog = false" variant="ghost"> Cancel </Button>
-                            <Button @click="confirmApproval" :disabled="isSubmitting"
-                                :class="pendingApproval ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'"
-                                class="min-w-[100px]">
+                            <Button @click="confirmApproval" :disabled="isSubmitting" :class="pendingApproval ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'" class="min-w-[100px]">
                                 <Clock v-if="isSubmitting" class="mr-2 h-4 w-4 animate-spin" />
                                 {{ isSubmitting ? 'Processing...' : 'Confirm' }}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-            </div>
+            </main>
         </div>
     </AppLayout>
 </template>

@@ -10,7 +10,7 @@
     <div class="title-page">
         <div class="university">{!! strtoupper($project->title) !!}</div>
         <div class="main-title">BY</div>
-        <div class="author-name">{{ strtoupper($project->user->name) }}</div>
+        <div class="author-name">{{ strtoupper($project->student_name ?: $project->user->name) }}</div>
         @if($project->student_id)
             <div class="student-id">{{ $project->student_id }}</div>
         @endif

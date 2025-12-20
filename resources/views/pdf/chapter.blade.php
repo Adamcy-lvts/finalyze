@@ -297,7 +297,7 @@
             <strong>Project Title:</strong> {{ $project->title }}
         </div>
         <div class="info-item">
-            <strong>Student Name:</strong> {{ $project->user->name }}
+            <strong>Student Name:</strong> {{ $project->student_name ?: $project->user->name }}
         </div>
         <div class="info-item">
             <strong>Course of Study:</strong> {{ $project->course }}

@@ -207,7 +207,7 @@ class ProjectStateMiddleware
             'projects.bulk-generate', 'api.projects.bulk-generate.stream',
             'api.projects.bulk-generate.start', 'api.projects.bulk-generate.status', 'api.projects.bulk-generate.cancel',
             'projects.analysis',
-
+            'projects.defense',
         ];
 
         $isAllowedRoute = in_array($currentRoute, $allowedRoutes);

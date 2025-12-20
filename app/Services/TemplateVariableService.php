@@ -98,7 +98,7 @@ class TemplateVariableService
         $documentType = trim($documentType) !== '' ? strtolower($documentType) : '';
 
         return [
-            'student_name' => $user->name ?? '',
+            'student_name' => $project->student_name ?: ($user->name ?? ''),
             'student_id' => $studentId,
             'student_id_inline' => $studentIdInline,
             'matric_number' => $settings['matric_number'] ?? '',

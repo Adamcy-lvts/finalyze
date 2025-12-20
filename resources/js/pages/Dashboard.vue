@@ -6,7 +6,8 @@ import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
-import { router } from '@inertiajs/vue3';
+import { router, Link } from '@inertiajs/vue3';
+import { route } from 'ziggy-js';
 import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info, HelpCircle } from 'lucide-vue-next';
 import { computed, onMounted } from 'vue';
 import { driver } from 'driver.js';
@@ -221,25 +222,31 @@ onMounted(() => {
                                 <div id="quick-actions" v-if="activeProject" class="flex gap-2 w-full md:w-auto">
                                     <!-- Show Complete Setup only for projects in setup phase -->
                                     <Button v-if="needsSetupCompletion(activeProject)"
-                                        @click="() => router.visit(route('projects.show', activeProject!.slug))"
+                                        as-child
                                         class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
-                                        <span class="mr-2">🚀</span>
-                                        Complete Setup
+                                        <Link :href="route('projects.show', activeProject!.slug)">
+                                            <span class="mr-2">🚀</span>
+                                            Complete Setup
+                                        </Link>
                                     </Button>
                                     <!-- Show Continue Writing for projects in writing phase -->
                                     <Button v-else-if="isInWritingPhase(activeProject)"
-                                        @click="() => router.visit(route('projects.writing', activeProject!.slug))"
+                                        as-child
                                         class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
-                                        <PenTool class="mr-2 h-4 w-4" />
-                                        Continue Writing
+                                        <Link :href="route('projects.writing', activeProject!.slug)">
+                                            <PenTool class="mr-2 h-4 w-4" />
+                                            Continue Writing
+                                        </Link>
                                     </Button>
                                     <!-- Show View Project for other statuses (topic selection, guidance, etc.) -->
                                     <Button v-else
-                                        @click="() => router.visit(route('projects.show', activeProject!.slug))"
+                                        as-child
                                         class="w-full md:w-auto shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all">
-                                        <Target class="mr-2 h-4 w-4" />
+                                        <Link :href="route('projects.show', activeProject!.slug)">
+                                            <Target class="mr-2 h-4 w-4" />
 
-                                        View Project
+                                            View Project
+                                        </Link>
                                     </Button>
                                 </div>
                                 <Button id="help-button" variant="outline" size="icon" @click="startTour"
@@ -357,7 +364,7 @@ onMounted(() => {
                                 <div v-if="activeProject"
                                     class="group relative overflow-hidden rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm text-card-foreground shadow-sm transition-all duration-300 hover:shadow-lg hover:border-primary/20">
                                     <div
-                                        class="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                        class="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
                                     <div class="p-4 md:p-6 relative z-10">
                                         <div class="flex flex-col md:flex-row items-start justify-between mb-6 gap-4">
@@ -435,33 +442,37 @@ onMounted(() => {
                                     </div>
 
                                     <div
-                                        class="bg-muted/30 p-4 flex flex-col sm:flex-row justify-end gap-3 border-t border-border/50">
+                                        class="relative z-10 bg-muted/30 p-4 flex flex-col sm:flex-row justify-end gap-3 border-t border-border/50">
                                         <!-- Show Complete Setup only for projects in setup phase -->
                                         <div v-if="needsSetupCompletion(activeProject)" class="w-full flex justify-end">
-                                            <Button size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20"
-                                                @click="() => router.visit(route('projects.show', activeProject!.slug))">
-                                                <span class="mr-2">🚀</span>
-                                                Complete Setup
+                                            <Button as-child size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20">
+                                                <Link :href="route('projects.show', activeProject!.slug)">
+                                                    <span class="mr-2">🚀</span>
+                                                    Complete Setup
+                                                </Link>
                                             </Button>
                                         </div>
                                         <!-- Show writing actions for projects in writing phase -->
                                         <template v-else-if="isInWritingPhase(activeProject)">
-                                            <Button variant="ghost" size="sm" class="w-full sm:w-auto"
-                                                @click="() => router.visit(route('projects.show', activeProject!.slug))">
-                                                View Details
+                                            <Button as-child variant="ghost" size="sm" class="w-full sm:w-auto">
+                                                <Link :href="route('projects.show', activeProject!.slug)">
+                                                    View Details
+                                                </Link>
                                             </Button>
-                                            <Button size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20"
-                                                @click="() => router.visit(route('projects.writing', activeProject!.slug))">
-                                                <PenTool class="mr-2 h-4 w-4" />
-                                                Open Writer
+                                            <Button as-child size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20">
+                                                <Link :href="route('projects.writing', activeProject!.slug)">
+                                                    <PenTool class="mr-2 h-4 w-4" />
+                                                    Open Writer
+                                                </Link>
                                             </Button>
                                         </template>
                                         <!-- Show View Project for other statuses -->
                                         <template v-else>
-                                            <Button size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20"
-                                                @click="() => router.visit(route('projects.show', activeProject!.slug))">
-                                                <Target class="mr-2 h-4 w-4" />
-                                                View Project
+                                            <Button as-child size="sm" class="w-full sm:w-auto shadow-md shadow-primary/20">
+                                                <Link :href="route('projects.show', activeProject!.slug)">
+                                                    <Target class="mr-2 h-4 w-4" />
+                                                    View Project
+                                                </Link>
                                             </Button>
                                         </template>
                                     </div>
@@ -477,10 +488,11 @@ onMounted(() => {
                                     <h3 class="text-xl font-semibold mb-2">No Active Project</h3>
                                     <p class="text-muted-foreground mb-6 max-w-sm mx-auto">Start a new project to begin
                                         tracking your progress and using our AI tools.</p>
-                                    <Button @click="() => router.visit(route('projects.create'))" size="lg"
-                                        class="shadow-lg shadow-primary/20">
-                                        <Plus class="mr-2 h-4 w-4" />
-                                        Create New Project
+                                    <Button as-child size="lg" class="shadow-lg shadow-primary/20">
+                                        <Link :href="route('projects.create')">
+                                            <Plus class="mr-2 h-4 w-4" />
+                                            Create New Project
+                                        </Link>
                                     </Button>
                                 </div>
 

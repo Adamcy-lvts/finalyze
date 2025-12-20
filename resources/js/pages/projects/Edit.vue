@@ -20,6 +20,7 @@ import { Link, router } from '@inertiajs/vue3';
 import { useUrlSearchParams } from '@vueuse/core';
 import { AlertCircle, ArrowLeft, Check, ChevronRight, ChevronsUpDown, Loader2, Lock, Plus, Trash2, Save, FileText, GraduationCap, BookOpen, RotateCcw } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { route } from 'ziggy-js';
 import { toast } from 'vue-sonner';
 import * as z from 'zod';
 
@@ -38,6 +39,7 @@ interface Project {
     faculty: string | null;
     course: string;
     supervisor_name: string | null;
+    student_name: string | null;
     settings: {
         department?: string;
         matric_number?: string;
@@ -102,6 +104,7 @@ const formSchema = toTypedSchema(
         faculty: z.string().min(1, 'Faculty is required'),
         course: z.string().min(1, 'Course is required'),
         supervisor_name: z.string().nullable(),
+        student_name: z.string().nullable(),
 
         // Academic Details - Student Info
         department: z.string().nullable(),
@@ -290,6 +293,7 @@ const formValues = ref({
     faculty: resolveSelectValue(faculties as any, props.project.faculty),
     course: props.project.course || '',
     supervisor_name: props.project.supervisor_name || '',
+    student_name: props.project.student_name || '',
     department: props.project.settings?.department || '',
     matric_number: props.project.settings?.matric_number || '',
     academic_session: props.project.settings?.academic_session || '',
@@ -347,10 +351,16 @@ const getStatusBadgeVariant = computed(() => {
 });
 
 // Form submission handler
-const onSubmit = (values: Record<string, any>) => {
+const onSubmit = (values?: Record<string, any> | SubmitEvent) => {
     processing.value = true;
 
-    const { department, matric_number, academic_session, ...rest } = values;
+    if (values && 'preventDefault' in values) {
+        values.preventDefault();
+    }
+
+    const resolvedValues =
+        values && 'preventDefault' in values ? formValues.value : values || formValues.value;
+    const { department, matric_number, academic_session, ...rest } = resolvedValues;
 
     const data = {
         ...rest,
@@ -371,24 +381,32 @@ const onSubmit = (values: Record<string, any>) => {
         abbreviations: abbreviations.value.filter((a) => a.abbreviation && a.full_form),
     };
 
-    router.patch(route('projects.update', props.project.slug), data, {
-        preserveScroll: true,
-        onSuccess: () => {
-            toast('Success!', {
-                description: 'Project details updated successfully',
-            });
-            isDirty.value = false;
-        },
-        onError: (errors) => {
-            console.error('Update errors:', errors);
-            toast('Update Failed', {
-                description: 'Please check the form for errors and try again.',
-            });
-        },
-        onFinish: () => {
-            processing.value = false;
-        },
-    });
+    try {
+        router.patch(route('projects.update', props.project.slug), data, {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast('Success!', {
+                    description: 'Project details updated successfully',
+                });
+                isDirty.value = false;
+            },
+            onError: (errors) => {
+                console.error('Update errors:', errors);
+                toast('Update Failed', {
+                    description: 'Please check the form for errors and try again.',
+                });
+            },
+            onFinish: () => {
+                processing.value = false;
+            },
+        });
+    } catch (error) {
+        console.error('Update failed to send:', error);
+        toast('Update Failed', {
+            description: 'An unexpected error occurred while saving. Please try again.',
+        });
+        processing.value = false;
+    }
 };
 
 
@@ -447,8 +465,8 @@ onBeforeUnmount(() => {
 
 <template>
     <AppLayout title="Edit Project">
-        <Form v-slot="{ meta }" :validation-schema="formSchema" :initial-values="formValues"
-            @submit="onSubmit" @invalid-submit="onSubmit" keep-values>
+        <Form v-slot="{ meta }" :validation-schema="formSchema" :initial-values="formValues" @submit="onSubmit"
+            keep-values>
             <div class="min-h-screen bg-muted/10 pb-20">
                 <div class="mx-auto max-w-5xl space-y-6 p-4 md:space-y-8 md:p-6 lg:p-10">
                     <!-- Header Section -->
@@ -457,8 +475,8 @@ onBeforeUnmount(() => {
                             <div class="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Link :href="route('projects.show', project.slug)"
                                     class="hover:text-primary transition-colors flex items-center gap-1">
-                                <ArrowLeft class="h-3 w-3" />
-                                Back to Project
+                                    <ArrowLeft class="h-3 w-3" />
+                                    Back to Project
                                 </Link>
                                 <span class="text-muted-foreground/40">/</span>
                                 <span class="text-foreground font-medium">Edit Details</span>
@@ -552,11 +570,8 @@ onBeforeUnmount(() => {
                                                     <label
                                                         class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Title
                                                         / Topic</label>
-                                                    <SafeHtmlText
-                                                        as="p"
-                                                        class="text-lg font-medium text-foreground"
-                                                        :content="project.title || project.topic || 'No title set'"
-                                                    />
+                                                    <SafeHtmlText as="p" class="text-lg font-medium text-foreground"
+                                                        :content="project.title || project.topic || 'No title set'" />
                                                 </div>
                                             </div>
                                         </div>
@@ -567,8 +582,7 @@ onBeforeUnmount(() => {
                                                 <FormItem>
                                                     <FormLabel>Description</FormLabel>
                                                     <FormControl>
-                                                        <Textarea
-                                                            :value="componentField.modelValue ?? ''"
+                                                        <Textarea :value="componentField.modelValue ?? ''"
                                                             placeholder="Brief description of your project..." rows="4"
                                                             class="resize-none" @input="
                                                                 (e: any) => {
@@ -798,10 +812,8 @@ onBeforeUnmount(() => {
                                                 <FormItem>
                                                     <FormLabel>Supervisor Name</FormLabel>
                                                     <FormControl>
-                                                        <Input
-                                                            :value="componentField.modelValue ?? ''"
-                                                            placeholder="e.g., Dr. Jane Smith"
-                                                            @input="
+                                                        <Input :value="componentField.modelValue ?? ''"
+                                                            placeholder="e.g., Dr. Jane Smith" @input="
                                                                 (e: any) => {
                                                                     const val = e?.target?.value ?? '';
                                                                     componentField['onUpdate:modelValue']?.(val);
@@ -814,14 +826,34 @@ onBeforeUnmount(() => {
                                                 </FormItem>
                                             </FormField>
 
+                                            <FormField v-slot="{ componentField }" name="student_name">
+                                                <FormItem>
+                                                    <FormLabel>Student Name</FormLabel>
+                                                    <FormControl>
+                                                        <Input :value="componentField.modelValue ?? ''"
+                                                            placeholder="Leave blank to use your account name" @input="
+                                                                (e: any) => {
+                                                                    const val = e?.target?.value ?? '';
+                                                                    componentField['onUpdate:modelValue']?.(val);
+                                                                    formValues.student_name = val;
+                                                                    isDirty = true;
+                                                                }
+                                                            " />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Name to appear on cover pages and PDFs. If blank, your account
+                                                        name will be used.
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+
                                             <FormField v-slot="{ componentField }" name="department">
                                                 <FormItem>
                                                     <FormLabel>Department</FormLabel>
                                                     <FormControl>
-                                                        <Input
-                                                            :value="componentField.modelValue ?? ''"
-                                                            placeholder="Department name"
-                                                            @input="
+                                                        <Input :value="componentField.modelValue ?? ''"
+                                                            placeholder="Department name" @input="
                                                                 (e: any) => {
                                                                     const val = e?.target?.value ?? '';
                                                                     componentField['onUpdate:modelValue']?.(val);
@@ -838,10 +870,8 @@ onBeforeUnmount(() => {
                                                 <FormItem>
                                                     <FormLabel>Student ID / Matric Number</FormLabel>
                                                     <FormControl>
-                                                        <Input
-                                                            :value="componentField.modelValue ?? ''"
-                                                            placeholder="e.g., 2019/123456"
-                                                            @input="
+                                                        <Input :value="componentField.modelValue ?? ''"
+                                                            placeholder="e.g., 2019/123456" @input="
                                                                 (e: any) => {
                                                                     const val = e?.target?.value ?? '';
                                                                     componentField['onUpdate:modelValue']?.(val);
@@ -858,10 +888,8 @@ onBeforeUnmount(() => {
                                                 <FormItem>
                                                     <FormLabel>Academic Session</FormLabel>
                                                     <FormControl>
-                                                        <Input
-                                                            :value="componentField.modelValue ?? ''"
-                                                            placeholder="e.g., 2023/2024"
-                                                            @input="
+                                                        <Input :value="componentField.modelValue ?? ''"
+                                                            placeholder="e.g., 2023/2024" @input="
                                                                 (e: any) => {
                                                                     const val = e?.target?.value ?? '';
                                                                     componentField['onUpdate:modelValue']?.(val);
@@ -883,7 +911,8 @@ onBeforeUnmount(() => {
                                 <Card class="border-none shadow-md ring-1 ring-black/5">
                                     <CardHeader>
                                         <CardTitle>Preliminary Pages</CardTitle>
-                                        <CardDescription>Use the rich text editor to customize your preliminary pages. Insert variables for dynamic content that will be filled automatically.
+                                        <CardDescription>Use the rich text editor to customize your preliminary pages.
+                                            Insert variables for dynamic content that will be filled automatically.
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent class="space-y-8">
@@ -904,12 +933,15 @@ onBeforeUnmount(() => {
                                                         </div>
                                                     </div>
                                                     <FormControl>
-                                                        <RichTextEditor ref="dedicationEditor" v-model="formValues.dedication"
+                                                        <RichTextEditor ref="dedicationEditor"
+                                                            v-model="formValues.dedication"
                                                             placeholder="Dedicate your work to someone special..."
                                                             :min-height="'200px'"
                                                             @update:model-value="isDirty = true" />
                                                     </FormControl>
-                                                    <FormDescription>Use template variables like &#123;&#123;supervisor_name&#125;&#125; for dynamic content</FormDescription>
+                                                    <FormDescription>Use template variables like
+                                                        &#123;&#123;supervisor_name&#125;&#125; for dynamic content
+                                                    </FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
@@ -936,7 +968,8 @@ onBeforeUnmount(() => {
                                                             :min-height="'300px'"
                                                             @update:model-value="isDirty = true" />
                                                     </FormControl>
-                                                    <FormDescription>Include mentors, supervisors, family, and contributors</FormDescription>
+                                                    <FormDescription>Include mentors, supervisors, family, and
+                                                        contributors</FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
@@ -957,12 +990,14 @@ onBeforeUnmount(() => {
                                                         </div>
                                                     </div>
                                                     <FormControl>
-                                                        <RichTextEditor ref="abstractEditor" v-model="formValues.abstract"
+                                                        <RichTextEditor ref="abstractEditor"
+                                                            v-model="formValues.abstract"
                                                             placeholder="Write your project abstract..."
                                                             :min-height="'350px'"
                                                             @update:model-value="isDirty = true" />
                                                     </FormControl>
-                                                    <FormDescription>Concise summary of your research objectives, methods, findings, and conclusions</FormDescription>
+                                                    <FormDescription>Concise summary of your research objectives,
+                                                        methods, findings, and conclusions</FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
@@ -983,12 +1018,14 @@ onBeforeUnmount(() => {
                                                         </div>
                                                     </div>
                                                     <FormControl>
-                                                        <RichTextEditor ref="declarationEditor" v-model="formValues.declaration"
+                                                        <RichTextEditor ref="declarationEditor"
+                                                            v-model="formValues.declaration"
                                                             placeholder="Declare your work's originality..."
                                                             :min-height="'250px'"
                                                             @update:model-value="isDirty = true" />
                                                     </FormControl>
-                                                    <FormDescription>Student's declaration of originality and academic integrity</FormDescription>
+                                                    <FormDescription>Student's declaration of originality and academic
+                                                        integrity</FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
@@ -1009,12 +1046,14 @@ onBeforeUnmount(() => {
                                                         </div>
                                                     </div>
                                                     <FormControl>
-                                                        <RichTextEditor ref="certificationEditor" v-model="formValues.certification"
+                                                        <RichTextEditor ref="certificationEditor"
+                                                            v-model="formValues.certification"
                                                             placeholder="Supervisor's certification of the work..."
                                                             :min-height="'250px'"
                                                             @update:model-value="isDirty = true" />
                                                     </FormControl>
-                                                    <FormDescription>Supervisor's certification that the work meets academic standards</FormDescription>
+                                                    <FormDescription>Supervisor's certification that the work meets
+                                                        academic standards</FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>

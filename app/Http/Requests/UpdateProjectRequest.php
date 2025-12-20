@@ -36,6 +36,7 @@ class UpdateProjectRequest extends FormRequest
             'faculty' => 'required|string|max:255',
             'course' => 'required|string|max:255',
             'supervisor_name' => 'nullable|string|max:255',
+            'student_name' => 'nullable|string|max:255',
 
             // Academic Details - Student Information (stored in settings)
             'settings' => 'nullable|array',
