@@ -293,7 +293,7 @@
 
             <div class="topic-container">
                 <div class="topic-title">
-                    {{ $project->topic ?? $project->title ?? 'Untitled Project Topic' }}
+                    {!! $project->topic ?? $project->title ?? 'Untitled Project Topic' !!}
                 </div>
                 
                 @if($project->description)

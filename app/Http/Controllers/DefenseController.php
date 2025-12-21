@@ -3,10 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Chapter;
+use App\Models\DefenseFeedback;
+use App\Models\DefensePreparation;
 use App\Models\DefenseQuestion;
+use App\Models\DefenseSession;
 use App\Models\Project;
 use App\Services\AIContentGenerator;
 use App\Services\ChapterContentAnalysisService;
+use App\Services\Defense\DefenseCreditService;
+use App\Services\Defense\DefenseSimulationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -17,10 +22,20 @@ class DefenseController extends Controller
 
     private ChapterContentAnalysisService $contentAnalysis;
 
-    public function __construct(AIContentGenerator $aiGenerator, ChapterContentAnalysisService $contentAnalysis)
-    {
+    private DefenseSimulationService $defenseSimulation;
+
+    private DefenseCreditService $defenseCredit;
+
+    public function __construct(
+        AIContentGenerator $aiGenerator,
+        ChapterContentAnalysisService $contentAnalysis,
+        DefenseSimulationService $defenseSimulation,
+        DefenseCreditService $defenseCredit
+    ) {
         $this->aiGenerator = $aiGenerator;
         $this->contentAnalysis = $contentAnalysis;
+        $this->defenseSimulation = $defenseSimulation;
+        $this->defenseCredit = $defenseCredit;
     }
 
     /**
@@ -247,6 +262,580 @@ class DefenseController extends Controller
     }
 
     /**
+     * Start a defense simulation session (text mode)
+     */
+    public function startSession(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $validated = $request->validate([
+            'selected_panelists' => 'required|array|min:1',
+            'selected_panelists.*' => 'string',
+            'difficulty_level' => 'nullable|in:undergraduate,masters,doctoral',
+            'time_limit_minutes' => 'nullable|integer|min:5|max:120',
+            'question_limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        if (! $this->defenseCredit->hasEnoughCredits($request->user(), 'text')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient credit balance for defense simulation.',
+            ], 402);
+        }
+
+        $session = $this->defenseSimulation->startSession($project, $validated);
+
+        return response()->json([
+            'success' => true,
+            'session' => $session->fresh(),
+        ]);
+    }
+
+    /**
+     * Get session details
+     */
+    public function getSession(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        return response()->json([
+            'success' => true,
+            'session' => $session->load('messages', 'feedback'),
+        ]);
+    }
+
+    /**
+     * List defense sessions for a project
+     */
+    public function listSessions(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $sessions = DefenseSession::where('project_id', $project->id)
+            ->orderByDesc('created_at')
+            ->limit(25)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'sessions' => $sessions,
+        ]);
+    }
+
+    /**
+     * Get active defense session for a project (in_progress)
+     */
+    public function getActiveSession(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('status', 'in_progress')
+            ->orderByDesc('started_at')
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'session' => $session,
+        ]);
+    }
+
+    /**
+     * Fetch next panelist question
+     */
+    public function getNextQuestion(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'persona' => 'nullable|string',
+            'request_hint' => 'nullable|boolean',
+        ]);
+
+        try {
+            $message = $this->defenseSimulation->generatePanelistQuestion(
+                $session,
+                $validated['persona'] ?? null,
+                (bool) ($validated['request_hint'] ?? false)
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 409);
+        } catch (\Exception $e) {
+            $status = str_contains($e->getMessage(), 'Insufficient credit balance') ? 402 : 500;
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'session' => $session->fresh(),
+        ]);
+    }
+
+    /**
+     * Submit a student response
+     */
+    public function submitResponse(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'response' => 'required|string|min:3|max:8000',
+            'response_time_ms' => 'nullable|integer|min:0|max:600000',
+        ]);
+
+        try {
+            $result = $this->defenseSimulation->processStudentResponse(
+                $session,
+                $validated['response'],
+                $validated['response_time_ms'] ?? null
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 409);
+        } catch (\Exception $e) {
+            $status = str_contains($e->getMessage(), 'Insufficient credit balance') ? 402 : 500;
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'],
+            'evaluation' => $result['evaluation'],
+            'performance_metrics' => $result['metrics'],
+        ]);
+    }
+
+    /**
+     * End a defense session
+     */
+    public function endSession(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        Log::info('Defense endSession requested', [
+            'session_id' => $session->id,
+            'project_id' => $project->id,
+            'status' => $session->status,
+            'questions_asked' => $session->questions_asked,
+            'started_at' => $session->started_at,
+        ]);
+
+        if ($session->status === 'completed') {
+            $feedback = DefenseFeedback::where('session_id', $session->id)->first();
+
+            Log::info('Defense endSession already completed', [
+                'session_id' => $session->id,
+                'feedback_exists' => (bool) $feedback,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'session' => $session->fresh(),
+                'feedback' => $feedback,
+            ]);
+        }
+
+        try {
+            $feedback = $this->defenseSimulation->endSession($session);
+        } catch (\RuntimeException $e) {
+            Log::warning('Defense endSession runtime exception', [
+                'session_id' => $session->id,
+                'message' => $e->getMessage(),
+                'status_before' => $session->status,
+            ]);
+            if ($session->status !== 'completed') {
+                $durationSeconds = $session->started_at
+                    ? (int) max(0, abs(now()->diffInSeconds($session->started_at, false)))
+                    : $session->session_duration_seconds;
+                $session->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'session_duration_seconds' => $durationSeconds,
+                ]);
+            }
+            $feedback = DefenseFeedback::where('session_id', $session->id)->first();
+
+            Log::info('Defense endSession forced completion', [
+                'session_id' => $session->id,
+                'status_after' => $session->fresh()->status,
+                'feedback_exists' => (bool) $feedback,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'session' => $session->fresh(),
+                'feedback' => $feedback,
+                'message' => $e->getMessage(),
+            ]);
+        } catch (\Exception $e) {
+            $status = str_contains($e->getMessage(), 'Insufficient credit balance') ? 402 : 500;
+
+            Log::error('Defense endSession failed', [
+                'session_id' => $session->id,
+                'message' => $e->getMessage(),
+                'status_code' => $status,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'session' => $session->fresh(),
+            'feedback' => $feedback,
+        ]);
+    }
+
+    /**
+     * Abandon a session (manual stop without feedback)
+     */
+    public function abandonSession(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        $session->update([
+            'status' => 'abandoned',
+            'completed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'session' => $session->fresh(),
+        ]);
+    }
+
+    /**
+     * Get feedback for a session
+     */
+    public function getFeedback(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        $feedback = DefenseFeedback::where('session_id', $session->id)->first();
+
+        return response()->json([
+            'success' => true,
+            'feedback' => $feedback,
+        ]);
+    }
+
+    /**
+     * Get session transcript
+     */
+    public function getTranscript(Request $request, $project_id, $session_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $session = DefenseSession::where('project_id', $project->id)
+            ->where('id', $session_id)
+            ->firstOrFail();
+
+        return response()->json([
+            'success' => true,
+            'messages' => $session->messages()->orderBy('created_at')->get(),
+        ]);
+    }
+
+    /**
+     * Defense executive briefing (AI-generated)
+     */
+    public function getExecutiveBriefing(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $preparation = DefensePreparation::firstOrCreate([
+            'user_id' => $project->user_id,
+            'project_id' => $project->id,
+        ]);
+
+        $forceRefresh = (bool) $request->boolean('force_refresh');
+
+        if ($preparation->executive_briefing && ! $forceRefresh) {
+            return response()->json([
+                'success' => true,
+                'briefing' => $preparation->executive_briefing,
+                'cached' => true,
+            ]);
+        }
+
+        if (! $this->defenseCredit->hasEnoughCredits($request->user(), 'text')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient credit balance for defense briefing.',
+            ], 402);
+        }
+
+        $prompt = $this->buildExecutiveBriefingPrompt($project);
+        $briefing = $this->aiGenerator->generate($prompt, [
+            'feature' => 'defense_briefing',
+            'model' => 'gpt-4o',
+            'temperature' => 0.3,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        $this->defenseCredit->deductForTextExchange(
+            $request->user(),
+            null,
+            $briefing,
+            'Defense executive briefing'
+        );
+
+        $preparation->update([
+            'executive_briefing' => $briefing,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'briefing' => $briefing,
+        ]);
+    }
+
+    /**
+     * Analyze opening statement
+     */
+    public function analyzeOpeningStatement(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $preparation = DefensePreparation::firstOrCreate([
+            'user_id' => $project->user_id,
+            'project_id' => $project->id,
+        ]);
+
+        if (! $this->defenseCredit->hasEnoughCredits($request->user(), 'text')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient credit balance for opening statement analysis.',
+            ], 402);
+        }
+
+        $validated = $request->validate([
+            'opening_statement' => 'required|string|min:20|max:5000',
+        ]);
+
+        $prompt = $this->buildOpeningStatementPrompt($project, $validated['opening_statement']);
+        $analysis = $this->aiGenerator->generate($prompt, [
+            'feature' => 'defense_opening_analysis',
+            'model' => 'gpt-4o-mini',
+            'temperature' => 0.2,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        $this->defenseCredit->deductForTextExchange(
+            $request->user(),
+            null,
+            $analysis,
+            'Opening statement analysis'
+        );
+
+        $preparation->update([
+            'opening_statement' => $validated['opening_statement'],
+            'opening_analysis' => $analysis,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'analysis' => $analysis,
+        ]);
+    }
+
+    /**
+     * Generate opening statement
+     */
+    public function getOpeningStatement(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $preparation = DefensePreparation::firstOrCreate([
+            'user_id' => $project->user_id,
+            'project_id' => $project->id,
+        ]);
+
+        $forceRefresh = (bool) $request->boolean('force_refresh');
+
+        if ($preparation->opening_statement && ! $forceRefresh) {
+            return response()->json([
+                'success' => true,
+                'opening_statement' => $preparation->opening_statement,
+                'cached' => true,
+            ]);
+        }
+
+        if (! $this->defenseCredit->hasEnoughCredits($request->user(), 'text')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient credit balance for opening statement generation.',
+            ], 402);
+        }
+
+        $prompt = $this->buildOpeningStatementGenerationPrompt($project);
+        $statement = $this->aiGenerator->generate($prompt, [
+            'feature' => 'defense_opening_statement',
+            'model' => 'gpt-4o-mini',
+            'temperature' => 0.35,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        $this->defenseCredit->deductForTextExchange(
+            $request->user(),
+            null,
+            $statement,
+            'Opening statement generation'
+        );
+
+        $preparation->update([
+            'opening_statement' => $statement,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'opening_statement' => $statement,
+        ]);
+    }
+
+    /**
+     * Presentation guide
+     */
+    public function getPresentationGuide(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $preparation = DefensePreparation::firstOrCreate([
+            'user_id' => $project->user_id,
+            'project_id' => $project->id,
+        ]);
+
+        $forceRefresh = (bool) $request->boolean('force_refresh');
+
+        if ($preparation->presentation_guide && ! $forceRefresh) {
+            return response()->json([
+                'success' => true,
+                'guide' => $preparation->presentation_guide,
+                'cached' => true,
+            ]);
+        }
+
+        if (! $this->defenseCredit->hasEnoughCredits($request->user(), 'text')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient credit balance for presentation guide.',
+            ], 402);
+        }
+
+        $prompt = $this->buildPresentationGuidePrompt($project);
+        $guide = $this->aiGenerator->generate($prompt, [
+            'feature' => 'defense_presentation_guide',
+            'model' => 'gpt-4o-mini',
+            'temperature' => 0.3,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        $this->defenseCredit->deductForTextExchange(
+            $request->user(),
+            null,
+            $guide,
+            'Defense presentation guide'
+        );
+
+        $preparation->update([
+            'presentation_guide' => $guide,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'guide' => $guide,
+        ]);
+    }
+
+    /**
+     * Get saved defense preparation content
+     */
+    public function getPreparation(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        $preparation = DefensePreparation::where('project_id', $project->id)
+            ->where('user_id', $project->user_id)
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'preparation' => $preparation,
+        ]);
+    }
+
+    /**
+     * Estimate defense cost
+     */
+    public function estimateCost(Request $request, $project_id)
+    {
+        $project = Project::findOrFail($project_id);
+        abort_if($project->user_id !== auth()->id(), 403);
+
+        return response()->json([
+            'success' => true,
+            'estimates' => $this->defenseCredit->estimateSessionCost('text', 30),
+            'minimum_balance' => config('pricing.minimum_balance.defense', 500),
+        ]);
+    }
+
+    /**
      * Build AI prompt for defense questions
      */
     private function buildDefenseQuestionsPrompt($project, $chapterContent, $focus, $count)
@@ -315,6 +904,132 @@ CATEGORY: [category]
 
 Generate thoughtful, academic questions that test deep understanding of the research.
 PROMPT;
+    }
+
+    private function buildExecutiveBriefingPrompt(Project $project): string
+    {
+        $context = $this->buildProjectContext($project);
+
+        return <<<PROMPT
+You are an academic defense coach. Create an executive briefing for a thesis defense, organized into 4-5 key slides.
+
+{$context}
+
+Return a valid JSON object with this structure:
+{
+    "slides": [
+        {
+            "title": "Slide Title (e.g., Overview, Methodology, Findings)",
+            "content": "Markdown content for the slide body (bullet points, short paragraphs)."
+        }
+    ]
+}
+
+Ensure the slides cover:
+1. Concise Overview
+2. Key Methodology
+3. Major Findings
+4. Implications & Contributions
+5. Chapter-by-Chapter Key Points (Brief breakdown)
+6. Potential Weak Points (for defense prep)
+PROMPT;
+    }
+
+    private function buildOpeningStatementPrompt(Project $project, string $statement): string
+    {
+        $context = $this->buildProjectContext($project);
+
+        return <<<PROMPT
+You are an academic defense coach. Evaluate the opening statement below.
+
+{$context}
+
+Opening Statement:
+{$statement}
+
+Provide:
+- Clarity score (0-100)
+- Confidence score (0-100)
+- Key strengths (2-3 bullets)
+- Improvements (2-3 bullets)
+- A revised 60-90 second version.
+PROMPT;
+    }
+
+    private function buildOpeningStatementGenerationPrompt(Project $project): string
+    {
+        $context = $this->buildProjectContext($project);
+
+        return <<<PROMPT
+You are an academic defense coach. Draft a strong 60-90 second opening statement for a thesis defense.
+
+{$context}
+
+Requirements:
+- 120 to 180 words.
+- Clear problem framing, core contribution, and practical impact.
+- Confident but not exaggerated tone.
+- No bullet points, write as a single short speech.
+PROMPT;
+    }
+
+    private function buildPresentationGuidePrompt(Project $project): string
+    {
+        $context = $this->buildProjectContext($project);
+
+        return <<<PROMPT
+You are an academic defense coach. Create a structured presentation guide for a thesis defense.
+
+{$context}
+
+Return a valid JSON object wrapped in a markdown code block (```json ... ```).
+The JSON object must have a "slides" key containing an array of 8-12 slide objects.
+Each slide object must have:
+- "title": string (e.g., "Introduction", "Methodology")
+- "duration": string (e.g., "1 min")
+- "content": string (bullet points or short paragraph for the slide body)
+- "talking_points": array of strings (key script notes for the speaker)
+- "visuals": string (description of recommended visuals/diagrams)
+
+Example format:
+```json
+{
+    "slides": [
+        {
+            "title": "Introduction",
+            "duration": "2 mins",
+            "content": "- Hook statement\n- Problem context",
+            "talking_points": ["Start with a story...", "Define the core gap..."],
+            "visuals": " infographic of the problem"
+        }
+    ]
+}
+```
+PROMPT;
+    }
+
+    private function buildProjectContext(Project $project): string
+    {
+        $project->loadMissing('chapters', 'universityRelation');
+
+        $context = "Project Title: {$project->title}\n";
+        $context .= "Topic: {$project->topic}\n";
+        $context .= "Field of Study: {$project->field_of_study}\n";
+        $context .= "University: {$project->universityRelation?->name}\n";
+        $context .= "Course: {$project->course}\n";
+
+        $chapters = $project->chapters->sortBy('chapter_number');
+        if ($chapters->isNotEmpty()) {
+            $context .= "\n=== CHAPTER SUMMARIES ===\n";
+            foreach ($chapters as $chapter) {
+                if ($chapter->content && $this->contentAnalysis->hasMinimumWordCountForDefense($chapter)) {
+                    $preview = substr($chapter->content, 0, 1500);
+                    $context .= "\nChapter {$chapter->chapter_number}: {$chapter->title}\n{$preview}\n";
+                }
+            }
+        }
+
+        return $context;
     }
 
     /**

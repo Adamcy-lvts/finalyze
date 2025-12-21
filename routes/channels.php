@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Project;
+use App\Models\DefenseSession;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -63,4 +64,18 @@ Broadcast::channel('admin.ai', function ($user) {
  */
 Broadcast::channel('admin.notifications', function ($user) {
     return $user && $user->hasAnyRole(['super_admin', 'admin', 'support']);
+});
+
+/**
+ * Defense session channel
+ * Only the session owner can listen for updates.
+ */
+Broadcast::channel('defense.{sessionId}', function ($user, $sessionId) {
+    $session = DefenseSession::find($sessionId);
+
+    if (! $session) {
+        return false;
+    }
+
+    return (int) $user->id === (int) $session->user_id;
 });

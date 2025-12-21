@@ -177,6 +177,16 @@ class Project extends Model
         return $this->hasMany(ProjectGeneration::class);
     }
 
+    public function defenseSessions(): HasMany
+    {
+        return $this->hasMany(DefenseSession::class);
+    }
+
+    public function defensePreparation(): HasOne
+    {
+        return $this->hasOne(DefensePreparation::class);
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProjectCategory::class, 'project_category_id');

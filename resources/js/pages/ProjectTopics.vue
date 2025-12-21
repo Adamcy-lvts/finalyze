@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import TopicDetailsDialog, { type TopicDetails } from '@/components/topics/TopicDetailsDialog.vue';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 import {
     BookOpen,
@@ -25,7 +28,14 @@ import {
     X,
     LogOut,
     ArrowRight,
-    Target
+    Target,
+    Download,
+    FileText,
+    GraduationCap,
+    School,
+    User as UserIcon,
+    Building2,
+    BookMarked
 } from 'lucide-vue-next';
 
 // Interfaces
@@ -278,6 +288,95 @@ const getFacultyBadgeColor = (faculty?: string) => {
 
     const index = Math.abs(hash) % colors.length;
     return colors[index];
+};
+const isGuestDownloadModalOpen = ref(false);
+const isExporting = ref(false);
+const guestData = reactive({
+    topic_id: null as number | null,
+    student_name: '',
+    email: '',
+    university: '',
+    faculty: '',
+    department: '',
+    course: '',
+    matric_no: '',
+    academic_level: 'Undergraduate',
+});
+
+const openGuestDownloadModal = (topic: Topic | TopicDetails) => {
+    guestData.topic_id = topic.id;
+    // Pre-fill some data if we can infer it from the topic
+    if (topic.faculty) guestData.faculty = topic.faculty;
+    if (topic.course) guestData.course = topic.course;
+    if (topic.academic_level) guestData.academic_level = topic.academic_level;
+    
+    isGuestDownloadModalOpen.value = true;
+};
+
+const handleGuestDownload = async () => {
+    if (!guestData.topic_id) return;
+    
+    isExporting.value = true;
+    try {
+        const response = await fetch(route('project-topics.download-proposal'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'Accept': 'application/pdf',
+            },
+            body: JSON.stringify(guestData),
+        });
+
+        if (!response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Download failed');
+            }
+            throw new Error('Download failed');
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+             const errorData = await response.json();
+             throw new Error(errorData.message || 'The server returned an error instead of a PDF.');
+        }
+
+        const blob = await response.blob();
+        
+        // Optional: Check if it's actually a PDF by checking the first few bytes
+        // But for now, we'll trust the response.ok check above.
+        
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Add a timestamp to client-side filename too for extra uniqueness
+        const timestamp = new Date().getTime();
+        link.download = `project_proposal_${guestData.topic_id}_${timestamp}.pdf`;
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        // Small delay before cleanup to ensure browser starts the download
+        setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(link);
+        }, 100);
+
+        toast('📄 PDF Generated!', {
+            description: 'Your project proposal has been downloaded successfully.',
+        });
+        isGuestDownloadModalOpen.value = false;
+    } catch (error: any) {
+        console.error('Download error:', error);
+        toast('Download Failed', {
+            description: error.message || 'Could not generate PDF. Please try again.',
+        });
+    } finally {
+        isExporting.value = false;
+    }
 };
 </script>
 
@@ -539,10 +638,22 @@ const getFacultyBadgeColor = (faculty?: string) => {
                                     <Target class="h-3.5 w-3.5" />
                                     <span>{{ topic.research_type || 'Research' }}</span>
                                 </div>
-                                <Button @click.stop="startProject(topic)" size="sm"
-                                    class="bg-indigo-600 hover:bg-indigo-500 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-lg text-xs font-semibold px-4 h-9">
-                                    Start Project
-                                </Button>
+                                <div class="flex items-center gap-2">
+                                    <Button 
+                                        type="button"
+                                        variant="ghost" 
+                                        size="icon" 
+                                        @click.stop="openGuestDownloadModal(topic)"
+                                        class="h-9 w-9 rounded-lg text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                                        title="Download Proposal PDF"
+                                    >
+                                        <Download class="h-4 w-4" />
+                                    </Button>
+                                    <Button @click.stop="startProject(topic)" size="sm"
+                                        class="bg-indigo-600 hover:bg-indigo-500 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-lg text-xs font-semibold px-4 h-9">
+                                        Start Project
+                                    </Button>
+                                </div>
                             </div>
 
                         </div>
@@ -574,13 +685,121 @@ const getFacultyBadgeColor = (faculty?: string) => {
 
         <TopicDetailsDialog v-model:open="isTopicModalOpen" :topic="selectedTopic" title-label="Topic Details">
             <template #footer="{ topic }">
-                <Button
-                    type="button"
-                    class="bg-indigo-600 hover:bg-indigo-500 text-white border-0"
-                    @click="startProject(topic)"
-                >
-                    Start Project
-                </Button>
+                <div class="flex items-center gap-3">
+                    <Button 
+                        type="button"
+                        variant="outline" 
+                        class="border-white/10 hover:bg-white/5 text-zinc-300"
+                        @click="openGuestDownloadModal(topic)"
+                    >
+                        <Download class="mr-2 h-4 w-4" />
+                        Download Proposal
+                    </Button>
+                    <Button
+                        type="button"
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white border-0"
+                        @click="startProject(topic)"
+                    >
+                        Start Project
+                    </Button>
+                </div>
             </template>
         </TopicDetailsDialog>
+
+        <!-- Guest Download Modal -->
+        <Dialog v-model:open="isGuestDownloadModalOpen">
+            <DialogContent class="sm:max-w-xl border-white/10 bg-zinc-900/95 backdrop-blur-xl text-zinc-100">
+                <DialogHeader>
+                    <DialogTitle class="text-2xl font-bold flex items-center gap-3">
+                        <div class="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                            <FileText class="h-6 w-6" />
+                        </div>
+                        Download Topic Proposal
+                    </DialogTitle>
+                    <DialogDescription class="text-zinc-400 text-base pt-2">
+                        Enter your project details to generate a professional PDF proposal for your supervisor.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="grid gap-6 py-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <Label for="student_name" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Full Name</Label>
+                            <Input id="student_name" v-model="guestData.student_name" placeholder="John Doe" class="bg-zinc-950/50 border-white/10 text-zinc-100 focus-visible:ring-indigo-500/50" />
+                        </div>
+                        <div class="space-y-2">
+                            <Label for="email" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Email Address</Label>
+                            <Input id="email" v-model="guestData.email" type="email" placeholder="john@example.com" class="bg-zinc-950/50 border-white/10 text-zinc-100 focus-visible:ring-indigo-500/50" />
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="university" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">University / Institution</Label>
+                        <div class="relative">
+                            <School class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                            <Input id="university" v-model="guestData.university" placeholder="Name of your university" class="bg-zinc-950/50 border-white/10 text-zinc-100 pl-10 focus-visible:ring-indigo-500/50" />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <Label for="faculty" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Faculty</Label>
+                            <div class="relative">
+                                <Building2 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                                <Input id="faculty" v-model="guestData.faculty" placeholder="e.g. Science" class="bg-zinc-950/50 border-white/10 text-zinc-100 pl-10 focus-visible:ring-indigo-500/50" />
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <Label for="department" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Department</Label>
+                            <div class="relative">
+                                <BookMarked class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                                <Input id="department" v-model="guestData.department" placeholder="e.g. Computer Science" class="bg-zinc-950/50 border-white/10 text-zinc-100 pl-10 focus-visible:ring-indigo-500/50" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <Label for="course" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Program of Study</Label>
+                            <div class="relative">
+                                <GraduationCap class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                                <Input id="course" v-model="guestData.course" placeholder="e.g. Software Engineering" class="bg-zinc-950/50 border-white/10 text-zinc-100 pl-10 focus-visible:ring-indigo-500/50" />
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <Label for="academic_level" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Academic Level</Label>
+                            <select id="academic_level" v-model="guestData.academic_level" class="w-full h-10 rounded-md border border-white/10 bg-zinc-950/50 px-3 py-2 text-sm text-zinc-100 focus:ring-1 focus:ring-indigo-500/50">
+                                <option value="Undergraduate">Undergraduate</option>
+                                <option value="Postgraduate (Masters)">Postgraduate (Masters)</option>
+                                <option value="PhD">PhD</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <Label for="matric_no" class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Matriculation No. (Optional)</Label>
+                        <div class="relative">
+                            <UserIcon class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                            <Input id="matric_no" v-model="guestData.matric_no" placeholder="e.g. U2023/12345" class="bg-zinc-950/50 border-white/10 text-zinc-100 pl-10 focus-visible:ring-indigo-500/50" />
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter class="mt-4 gap-3 sm:gap-0">
+                    <Button variant="ghost" @click="isGuestDownloadModalOpen = false" class="text-zinc-400 hover:text-white hover:bg-white/5">
+                        Cancel
+                    </Button>
+                    <Button 
+                        @click="handleGuestDownload" 
+                        :disabled="isExporting || !guestData.student_name || !guestData.university || !guestData.faculty || !guestData.department || !guestData.course"
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white min-w-[140px] shadow-lg shadow-indigo-500/20"
+                    >
+                        <Clock v-if="isExporting" class="mr-2 h-4 w-4 animate-spin" />
+                        <Download v-else class="mr-2 h-4 w-4" />
+                        {{ isExporting ? 'Generating PDF...' : 'Download Proposal' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
 	</template>

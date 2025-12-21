@@ -5,13 +5,14 @@ namespace App\Actions\Topics;
 use App\Models\Project;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Enums\Orientation;
 use Spatie\LaravelPdf\Facades\Pdf;
 
 class ExportTopicPdfAction
 {
-    public function execute(Project $project)
+    public function execute(Project $project, bool $isGuest = false)
     {
         $startTime = microtime(true);
 
@@ -19,17 +20,20 @@ class ExportTopicPdfAction
             'project_id' => $project->id,
             'user_id' => auth()->id(),
             'project_slug' => $project->slug,
+            'is_guest' => $isGuest,
             'timestamp' => now()->toDateTimeString(),
         ]);
 
         try {
-            // Ensure user owns the project
-            Log::info('PDF Export: Checking user authorization', [
-                'project_user_id' => $project->user_id,
-                'auth_user_id' => auth()->id(),
-                'is_authorized' => $project->user_id === auth()->id(),
-            ]);
-            abort_if($project->user_id !== auth()->id(), 403);
+            // Ensure user owns the project (skip if guest)
+            if (! $isGuest) {
+                Log::info('PDF Export: Checking user authorization', [
+                    'project_user_id' => $project->user_id,
+                    'auth_user_id' => auth()->id(),
+                    'is_authorized' => $project->user_id === auth()->id(),
+                ]);
+                abort_if($project->user_id !== auth()->id(), 403);
+            }
 
             // Ensure project has a topic to export
             Log::info('PDF Export: Checking project topic', [
@@ -38,8 +42,10 @@ class ExportTopicPdfAction
             ]);
             abort_if(empty($project->topic), 404, 'No topic available for export');
 
-            // Load project with all necessary relationships for PDF generation
-            $project->load(['user', 'category']);
+            // Load project with all necessary relationships for PDF generation (skip if guest as they are already mocked)
+            if (! $isGuest) {
+                $project->load(['user', 'category']);
+            }
 
             Log::info('PDF Export: Project data loaded', [
                 'project_id' => $project->id,
@@ -53,9 +59,10 @@ class ExportTopicPdfAction
 
             // Create a unique filename
             $fileName = sprintf(
-                'project_topic_proposal_%s_%s.pdf',
+                'project_topic_proposal_%s_%s_%s.pdf',
                 $project->slug,
-                now()->format('Ymd-His')
+                now()->format('Ymd-His'),
+                Str::random(6)
             );
 
             // Create directory if it doesn't exist
@@ -198,11 +205,24 @@ class ExportTopicPdfAction
                     'delete_after_send' => true,
                 ]);
 
-                // Return file download response
-                return response()->download($filePath, $fileName, [
+                // Read file contents and delete explicitly for maximum reliability
+                $content = File::get($filePath);
+                $size = File::size($filePath);
+                File::delete($filePath);
+
+                Log::info('PDF Export: Sending response from memory', [
+                    'filename' => $fileName,
+                    'file_size' => $size,
+                ]);
+
+                return response($content, 200, [
                     'Content-Type' => 'application/pdf',
                     'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
-                ])->deleteFileAfterSend(true);
+                    'Content-Length' => $size,
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                    'Pragma' => 'no-cache',
+                    'Expires' => '0',
+                ]);
 
             } catch (\Exception $e) {
                 Log::error('PDF Generation Error', [

@@ -79,6 +79,7 @@ Route::get('/', function (\App\Services\PaystackService $paystackService) {
 
 Route::get('/project-topics', [\App\Http\Controllers\PublicTopicController::class, 'index'])->name('project-topics.index');
 Route::post('/project-topics/start', [\App\Http\Controllers\PublicTopicController::class, 'start'])->name('project-topics.start');
+Route::post('/project-topics/download-proposal', [\App\Http\Controllers\PublicTopicController::class, 'downloadProposal'])->name('project-topics.download-proposal');
 
 // Test broadcast route (for testing Reverb)
 Route::get('/test-broadcast', function () {

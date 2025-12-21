@@ -26,10 +26,12 @@ const lowlight = createLowlight(common)
 interface Props {
   content: string
   showFontControls?: boolean
+  viewerClass?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  showFontControls: true
+  showFontControls: true,
+  viewerClass: 'prose-sm'
 })
 
 // Helper function to convert Mermaid markdown code blocks to HTML for the Mermaid extension
@@ -330,14 +332,14 @@ const editor = useEditor({
   ],
   editorProps: {
     attributes: {
-      class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none'
+      class: `prose dark:prose-invert max-w-none focus:outline-none ${props.viewerClass}`
     }
   }
 })
 
 // Font size controls - Microsoft Word standard sizes
-const fontSize = ref('12') // Default 12pt
-const fontSizes = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '22', '24', '26', '28', '36', '48', '72']
+const fontSize = ref('11.5') // Default 11.5pt
+const fontSizes = ['8', '9', '10', '11', '11.5', '12', '14', '16', '18', '20', '22', '24', '26', '28', '36', '48', '72']
 
 const changeFontSize = (size: string) => {
   fontSize.value = size
@@ -352,7 +354,7 @@ onMounted(() => {
   setTimeout(() => {
     if (editor.value) {
       // Set default font size for all content
-      editor.value.chain().selectAll().setFontSize('12pt').run()
+      editor.value.chain().selectAll().setFontSize('11.5pt').run()
     }
   }, 100)
 })
@@ -392,23 +394,43 @@ onBeforeUnmount(() => {
 }
 
 :deep(.ProseMirror h1) {
+  font-family: 'Outfit', sans-serif;
   font-size: 1.5rem;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.2;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
   color: var(--foreground);
+  letter-spacing: -0.02em;
   page-break-after: avoid;
 }
 
+@media (min-width: 768px) {
+  :deep(.ProseMirror h1) {
+    font-size: 1.875rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+}
+
 :deep(.ProseMirror h2) {
+  font-family: 'Outfit', sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.3;
   margin-top: 1.25rem;
   margin-bottom: 0.625rem;
   color: var(--foreground);
+  letter-spacing: -0.01em;
   page-break-after: avoid;
+}
+
+@media (min-width: 768px) {
+  :deep(.ProseMirror h2) {
+    font-size: 1.5rem;
+    margin-top: 1.75rem;
+    margin-bottom: 0.875rem;
+  }
 }
 
 :deep(.ProseMirror h3) {
@@ -499,9 +521,18 @@ onBeforeUnmount(() => {
 
 /* Academic formatting improvements */
 :deep(.ProseMirror) {
-  font-family: 'Times New Roman', 'Liberation Serif', serif;
-  font-size: 14pt;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  /* ~15px */
   line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+  :deep(.ProseMirror) {
+    font-size: 1.0625rem;
+    /* ~17px */
+    line-height: 1.7;
+  }
 }
 
 /* Better spacing for academic structure */

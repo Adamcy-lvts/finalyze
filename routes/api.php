@@ -143,6 +143,44 @@ Route::middleware(['auth:sanctum'])->group(function () {
             ->name('api.defense.mark-helpful');
         Route::delete('{project_id}/defense/questions/{question}', [DefenseController::class, 'hideQuestion'])
             ->name('api.defense.hide');
+
+        // Defense simulation sessions (Phase 1)
+        Route::post('{project_id}/defense/sessions', [DefenseController::class, 'startSession'])
+            ->name('api.defense.sessions.start');
+        Route::get('{project_id}/defense/sessions', [DefenseController::class, 'listSessions'])
+            ->name('api.defense.sessions.index');
+        Route::get('{project_id}/defense/sessions/active', [DefenseController::class, 'getActiveSession'])
+            ->name('api.defense.sessions.active');
+        Route::get('{project_id}/defense/sessions/{session}', [DefenseController::class, 'getSession'])
+            ->name('api.defense.sessions.show');
+        Route::post('{project_id}/defense/sessions/{session}/end', [DefenseController::class, 'endSession'])
+            ->name('api.defense.sessions.end');
+        Route::delete('{project_id}/defense/sessions/{session}', [DefenseController::class, 'abandonSession'])
+            ->name('api.defense.sessions.abandon');
+
+        Route::get('{project_id}/defense/sessions/{session}/next-question', [DefenseController::class, 'getNextQuestion'])
+            ->name('api.defense.sessions.next-question');
+        Route::post('{project_id}/defense/sessions/{session}/respond', [DefenseController::class, 'submitResponse'])
+            ->name('api.defense.sessions.respond');
+
+        Route::get('{project_id}/defense/sessions/{session}/feedback', [DefenseController::class, 'getFeedback'])
+            ->name('api.defense.sessions.feedback');
+        Route::get('{project_id}/defense/sessions/{session}/transcript', [DefenseController::class, 'getTranscript'])
+            ->name('api.defense.sessions.transcript');
+
+        // Defense preparation tools
+        Route::get('{project_id}/defense/executive-briefing', [DefenseController::class, 'getExecutiveBriefing'])
+            ->name('api.defense.executive-briefing');
+        Route::post('{project_id}/defense/opening-statement/analyze', [DefenseController::class, 'analyzeOpeningStatement'])
+            ->name('api.defense.opening-statement');
+        Route::get('{project_id}/defense/opening-statement', [DefenseController::class, 'getOpeningStatement'])
+            ->name('api.defense.opening-statement.generate');
+        Route::get('{project_id}/defense/presentation-guide', [DefenseController::class, 'getPresentationGuide'])
+            ->name('api.defense.presentation-guide');
+        Route::get('{project_id}/defense/estimate-cost', [DefenseController::class, 'estimateCost'])
+            ->name('api.defense.estimate-cost');
+        Route::get('{project_id}/defense/preparation', [DefenseController::class, 'getPreparation'])
+            ->name('api.defense.preparation');
     });
 
     // AI Writing Assistant (manual editor)

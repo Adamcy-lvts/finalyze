@@ -42,6 +42,15 @@ return [
         // Average words for defense questions (per chapter)
         'defense_words' => 1000,
 
+        // Base cost to start a defense session
+        'defense_session_base' => 200,
+
+        // Post-session feedback generation
+        'defense_feedback_generation' => 500,
+
+        // Audio mode multiplier (Phase 2)
+        'defense_audio_multiplier' => 2.0,
+
         // Average words for content expansion
         'expand_words' => 300,
 
