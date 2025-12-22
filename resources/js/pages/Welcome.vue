@@ -39,7 +39,16 @@ import {
     Loader2,
     LogOut,
     School,
-    Lightbulb
+    Lightbulb,
+    Terminal,
+    Wifi,
+    WifiOff,
+    RefreshCw,
+    Play,
+    Pause,
+    RotateCcw,
+    AlertTriangle,
+    Edit
 } from 'lucide-vue-next';
 
 // Types
@@ -92,11 +101,146 @@ const processingPackage = ref<number | null>(null)
 const showTopups = ref(false)
 const currentPackage = ref<Package | null>(null)
 
+const testimonials = [
+    {
+        name: 'Adebayo O.',
+        initials: 'AO',
+        major: 'B.Sc. Computer Science',
+        text: 'The Literature Review used to take me weeks to draft. With Finalyze, I was able to synthesize 15 papers into a coherent chapter in just two days. The citations are actually accurate!',
+        gradient: 'from-indigo-500 to-purple-500',
+        border: 'hover:border-indigo-500/30'
+    },
+    {
+        name: 'Chidi N.',
+        initials: 'CN',
+        major: 'M.Sc. Economics',
+        text: 'I was struggling with my methodology section until I found this. It guided me through the right terminology and structure. I just defended my project and got an A!',
+        gradient: 'from-purple-500 to-rose-500',
+        border: 'hover:border-purple-500/30',
+        offset: true
+    },
+    {
+        name: 'Fatima E.',
+        initials: 'FE',
+        major: 'B.A. Political Science',
+        text: 'The topic generator is a lifesaver. My supervisor rejected 3 of my initial ideas, but the one I got from Finalyze was approved immediately. It really understands academic standards.',
+        gradient: 'from-emerald-500 to-teal-500',
+        border: 'hover:border-emerald-500/30'
+    }
+];
+
 // Flash messages
 const flash = computed(() => page.props.flash as { success?: string; error?: string })
 
 // Check if user is logged in
 const isAuthenticated = computed(() => !!page.props.auth?.user)
+
+// Simulation State
+const simulationStatus = ref<'idle' | 'running' | 'completed'>('idle');
+const simulationProgress = ref(0);
+const simulationLogs = ref<{ timestamp: string, message: string, type: string }[]>([]);
+const currentSimulationStage = ref(-1);
+
+const simulationStages = ref<any[]>([
+    { id: 'mining', name: 'Literature Mining', description: 'Collecting research papers from academic databases', type: 'mining', time: '12.4s', words: 0, target: 0 },
+    { id: 'ch1', name: 'Chapter 1', subtitle: 'Introduction', description: 'Processing and saving Chapter 1...', type: 'chapter', time: '35.6s', words: 0, target: 1500 },
+    { id: 'ch2', name: 'Chapter 2', subtitle: 'Literature Review', description: 'Processing and saving Chapter 2...', type: 'chapter', time: '87.7s', words: 0, target: 2000 },
+    { id: 'ch3', name: 'Chapter 3', subtitle: 'Research Methodology', description: 'Processing and saving Chapter 3...', type: 'chapter', time: '61.6s', words: 0, target: 1500 },
+    { id: 'ch4', name: 'Chapter 4', subtitle: 'Results and Discussion', description: 'Processing and saving Chapter 4...', type: 'chapter', time: '96.5s', words: 0, target: 2000 },
+    { id: 'ch5', name: 'Chapter 5', subtitle: 'Summary and Conclusion', description: 'Processing and saving Chapter 5...', type: 'chapter', time: '42.2s', words: 0, target: 1500 },
+    { id: 'final', name: 'Finalizing Project', description: 'Formatting content and preparing final document', type: 'final', time: '15.1s', words: 0, target: 0 },
+]);
+
+let simulationTimeout: any = null;
+
+const startSimulation = () => {
+    if (simulationStatus.value === 'running') return;
+    
+    simulationStatus.value = 'running';
+    simulationProgress.value = 0;
+    simulationLogs.value = [];
+    currentSimulationStage.value = 0;
+    
+    // Reset stages
+    simulationStages.value.forEach(s => {
+        s.words = 0;
+    });
+
+    const runStage = async (index: number) => {
+        if (index >= simulationStages.value.length) {
+            simulationStatus.value = 'completed';
+            simulationProgress.value = 100;
+            currentSimulationStage.value = index;
+            // Wait 10 seconds and restart the loop
+            simulationTimeout = setTimeout(() => {
+                simulationStatus.value = 'idle';
+                startSimulation();
+            }, 10000);
+            return;
+        }
+
+        currentSimulationStage.value = index;
+        const stage = simulationStages.value[index];
+
+        const timestamp = () => new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+        if (stage.type === 'mining') {
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: 'Searching multiple academic databases in parallel...', type: 'info' });
+            await new Promise(r => setTimeout(r, 1200));
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: 'Found 12 papers from Crossref', type: 'mining' });
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: 'Found 8 papers from OpenAlex', type: 'mining' });
+            await new Promise(r => setTimeout(r, 800));
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: 'Literature mining completed - 8 papers collected', type: 'success' });
+            simulationProgress.value = Math.round(((index + 1) / simulationStages.value.length) * 100);
+            runStage(index + 1);
+        } else if (stage.type === 'chapter') {
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: `Starting ${stage.name}: ${stage.subtitle}`, type: 'stage' });
+            
+            const duration = 5; // seconds
+            const targetWordCount = stage.target + Math.floor(Math.random() * 100);
+            
+            gsap.to(stage, {
+                words: targetWordCount,
+                duration: duration,
+                ease: "none",
+                onUpdate: () => {
+                    const stageBaseProgress = (index / simulationStages.value.length) * 100;
+                    const stageContribution = (1 / simulationStages.value.length) * 100;
+                    simulationProgress.value = Math.round(stageBaseProgress + (stageContribution * (stage.words / targetWordCount)));
+                }
+            });
+
+            await new Promise(r => setTimeout(r, duration * 1000));
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: `${stage.name} completed (${Math.round(stage.words).toLocaleString()} words)`, type: 'success' });
+            runStage(index + 1);
+        } else if (stage.type === 'final') {
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: 'Formatting final document...', type: 'info' });
+            await new Promise(r => setTimeout(r, 2000));
+            simulationLogs.value.unshift({ timestamp: timestamp(), message: 'Project generation successful!', type: 'success' });
+            simulationProgress.value = 100;
+            runStage(index + 1);
+        }
+    };
+
+    runStage(0);
+};
+
+const resetSimulation = () => {
+    if (simulationTimeout) clearTimeout(simulationTimeout);
+    simulationStatus.value = 'idle';
+    simulationProgress.value = 0;
+    simulationLogs.value = [];
+    currentSimulationStage.value = -1;
+    simulationStages.value.forEach(s => {
+        s.words = 0;
+    });
+};
+
+onMounted(() => {
+    setTimeout(() => {
+        startSimulation();
+    }, 1000);
+});
 
 
 // Claim free package
@@ -405,6 +549,32 @@ onMounted(() => {
             }
         });
 
+        // Testimonials Animation
+        const testimonialItems = document.querySelectorAll('.testimonials-grid > div');
+        testimonialItems.forEach((item, i) => {
+            gsap.fromTo(item, 
+                { 
+                    y: 40, 
+                    opacity: 0,
+                    visibility: 'hidden'
+                },
+                {
+                    scrollTrigger: {
+                        trigger: item,
+                        start: 'top 92%',
+                        toggleActions: 'play none none reverse'
+                    },
+                    y: 0,
+                    opacity: 1,
+                    visibility: 'visible',
+                    duration: 1.2,
+                    delay: i * 0.15,
+                    ease: 'power3.out',
+                    clearProps: 'transform,visibility'
+                }
+            );
+        });
+
         ScrollTrigger.refresh();
 
         // Journey Section Animation (Detailed Loop)
@@ -413,14 +583,16 @@ onMounted(() => {
 
         if (journeySteps.length > 0) {
             // Colors for each step
-            const stepColors = ['#818cf8', '#c084fc', '#fbbf24', '#34d399']; // Indigo, Purple, Amber, Emerald
+            const stepColors = ['#818cf8', '#c084fc', '#fbbf24', '#34d399', '#60a5fa']; // Indigo, Purple, Amber, Emerald, Blue
+            let journeyLoopTl: gsap.core.Timeline | null = null;
 
             // Initial Timeline (Entrance)
             const entryTl = gsap.timeline({
                 scrollTrigger: {
                     trigger: '#how-it-works',
                     start: 'top 75%',
-                    onEnter: () => startJourneyLoop()
+                    onEnter: () => startJourneyLoop(),
+                    once: true
                 }
             });
 
@@ -434,7 +606,12 @@ onMounted(() => {
 
             // Master Loop function
             function startJourneyLoop() {
+                if (journeyLoopTl) {
+                    journeyLoopTl.kill();
+                }
+
                 const masterTl = gsap.timeline({ repeat: -1, repeatDelay: 1 });
+                journeyLoopTl = masterTl;
 
                 // Reset State
                 masterTl.set(journeyLine, { width: '0%', opacity: 1 })
@@ -451,11 +628,12 @@ onMounted(() => {
                     const icons = step.querySelectorAll('.journey-step-icon');
                     const completedBgs = step.querySelectorAll('.step-completed-bg');
                     const mobileLine = step.querySelector('.mobile-line-progress');
-                    const color = stepColors[index];
+                    const color = stepColors[index] ?? stepColors[stepColors.length - 1];
+                    const connectorColor = stepColors[index + 1] ?? color;
 
                     // Set mobile line color
                     if (mobileLine) {
-                        gsap.set(mobileLine, { backgroundColor: color });
+                        gsap.set(mobileLine, { backgroundColor: connectorColor });
                     }
 
                     // Step Processing State
@@ -487,6 +665,7 @@ onMounted(() => {
                 masterTl.to(journeyLine, { opacity: 0, duration: 0.5, delay: 0.5 });
             }
         }
+
     });
 });
 
@@ -610,26 +789,15 @@ onUnmounted(() => {
             <section class="relative pt-24 pb-24 md:pt-32 md:pb-40 overflow-hidden">
                 <div class="max-w-7xl mx-auto px-6 text-center hero-content">
 
-                    <div
-                        class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900/50 border border-white/10 text-zinc-400 text-xs font-medium mb-8 backdrop-blur-md">
-                        <span class="relative flex h-2 w-2">
-                            <span
-                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                        </span>
-                        v2.0 Now Available: Advanced Citation Manager
-                    </div>
-
                     <h1
                         class="text-4xl md:text-5xl lg:text-7xl font-semibold tracking-tight mb-8 leading-[1.1] text-white">
-                        Research smarter. <br />
-                        <span class="text-zinc-500">Write with confidence.</span>
+                        AI that works with you end to end. <br />
+                        <span class="text-zinc-500">From topic to defense.</span>
                     </h1>
 
                     <p class="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-                        The AI companion that understands your entire project context.
-                        Structured guidance, verifiable citations, and academic-grade writing tailored for university
-                        success.
+                        For final year projects and theses: choose a topic, get approval, write with AI assistance,
+                        generate full drafts, and prepare for defense backed by verified citations.
                     </p>
 
                     <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -643,10 +811,10 @@ onUnmounted(() => {
                             <Sparkles class="w-4 h-4" />
                             Start Your Project
                         </Link>
-                        <button @click="scrollTo('features')"
+                        <button @click="scrollTo('demo')"
                             class="h-12 px-8 rounded-xl bg-zinc-900/50 border border-zinc-800 text-white font-medium hover:bg-zinc-900 hover:border-zinc-700 transition-all backdrop-blur-sm flex items-center justify-center gap-2 w-full sm:w-auto hover:-translate-y-1">
-                            <LayoutTemplate class="w-4 h-4 text-zinc-400" />
-                            View Examples
+                            <Play class="w-4 h-4 text-zinc-400" />
+                            Watch System Demo
                         </button>
                     </div>
 
@@ -657,7 +825,7 @@ onUnmounted(() => {
                         </div>
 
                         <div
-                            class="relative rounded-2xl border border-white/10 bg-[#0c0c0e]/80 backdrop-blur-sm shadow-2xl shadow-black/50 overflow-hidden transform rotate-x-2 transition-transform duration-1000 hover:rotate-0">
+                            class="group relative rounded-2xl border border-white/10 bg-[#0c0c0e]/80 backdrop-blur-sm shadow-2xl shadow-black/50 overflow-hidden transform rotate-x-2 transition-transform duration-1000 hover:rotate-0 flex flex-col">
                             <!-- Mac-style Header (Browser Frame) -->
                             <div
                                 class="h-10 border-b border-white/5 bg-[#0c0c0e] flex items-center px-4 justify-between">
@@ -674,8 +842,9 @@ onUnmounted(() => {
                                 <div class="w-16"></div>
                             </div>
 
-                            <div class="bg-[#09090b]">
-                                <img src="/img/finalyze_dasboard.png" alt="Finalyze Dashboard" class="w-full h-auto" />
+                            <div class="relative bg-[#09090b] overflow-hidden aspect-[16/10]">
+                                <img src="/img/finalyze_dasboard.png" alt="Finalyze Dashboard"
+                                    class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]" />
                             </div>
                         </div>
                     </div>
@@ -833,20 +1002,20 @@ onUnmounted(() => {
                             Simple Workflow
                         </div>
                         <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white tracking-tight">
-                            From Idea to Approval in <span class="text-indigo-500">Minutes</span>
+                            From Idea to Draft in <span class="text-indigo-500">Minutes</span>
                         </h2>
                         <p class="text-zinc-400 text-lg">
-                            Stop worrying about "what to write". Finalyze guides you from a blank page to a signed-off topic.
+                            Stop worrying about "what to write". Finalyze guides you from a blank page to an approved topic and a full draft.
                         </p>
                     </div>
 
                     <div class="relative">
                         <!-- Connecting Line (Desktop) -->
-                        <div class="hidden md:block absolute top-[2.5rem] left-[12.5%] w-[75%] h-0.5 bg-zinc-800/50">
-                            <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 w-0 journey-line-progress"></div>
+                        <div class="hidden md:block absolute top-[2.5rem] left-[10%] w-[80%] h-0.5 bg-zinc-800/50">
+                            <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 via-purple-500 via-amber-500 via-emerald-500 to-blue-500 w-0 journey-line-progress"></div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 relative journey-steps">
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-12 relative journey-steps">
                             <!-- Step 1: Profile -->
                             <div class="relative group journey-step-item">
                                 <div class="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-[#09090b] border border-zinc-800 relative z-10 mx-auto mb-8 transition-all duration-300 journey-step-icon-bg">
@@ -855,7 +1024,7 @@ onUnmounted(() => {
                                     <School class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
                                 </div>
                                 <!-- Mobile connector -->
-                                <div class="md:hidden absolute left-5 top-10 bottom-[-48px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-64px] w-0.5 bg-zinc-800/50 overflow-hidden">
                                     <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
                                 </div>
 
@@ -865,9 +1034,9 @@ onUnmounted(() => {
                                         <div class="absolute inset-0 bg-indigo-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
                                         <School class="w-5 h-5 text-indigo-400 transition-colors relative z-10 journey-step-icon" />
                                     </div>
-                                    <h3 class="text-xl font-bold text-white mb-2">1. Profile Setup</h3>
+                                    <h3 class="text-xl font-bold text-white mb-2">1. Project Setup</h3>
                                     <p class="text-sm text-zinc-400 leading-relaxed">
-                                        Tell us your university, faculty, and level. We tailor the AI to your specific institution's standards.
+                                        Choose your academic level and project type so we can tailor the structure and requirements.
                                     </p>
                                 </div>
                             </div>
@@ -880,7 +1049,7 @@ onUnmounted(() => {
                                     <Lightbulb class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
                                 </div>
                                 <!-- Mobile connector -->
-                                <div class="md:hidden absolute left-5 top-10 bottom-[-48px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-64px] w-0.5 bg-zinc-800/50 overflow-hidden">
                                     <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
                                 </div>
 
@@ -890,9 +1059,9 @@ onUnmounted(() => {
                                         <div class="absolute inset-0 bg-purple-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
                                         <Lightbulb class="w-5 h-5 text-purple-400 transition-colors relative z-10 journey-step-icon" />
                                     </div>
-                                    <h3 class="text-xl font-bold text-white mb-2">2. Topic Discovery</h3>
+                                    <h3 class="text-xl font-bold text-white mb-2">2. Create Project</h3>
                                     <p class="text-sm text-zinc-400 leading-relaxed">
-                                        Our AI analyzes your field to generate 5 novel, feasible research topics with descriptions.
+                                        Add your institution, department, and supervisor details to create your project workspace.
                                     </p>
                                 </div>
                             </div>
@@ -905,7 +1074,7 @@ onUnmounted(() => {
                                     <FileText class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
                                 </div>
                                 <!-- Mobile connector -->
-                                <div class="md:hidden absolute left-5 top-10 bottom-[-48px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-64px] w-0.5 bg-zinc-800/50 overflow-hidden">
                                     <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
                                 </div>
 
@@ -915,9 +1084,9 @@ onUnmounted(() => {
                                         <div class="absolute inset-0 bg-amber-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
                                         <FileText class="w-5 h-5 text-amber-400 transition-colors relative z-10 journey-step-icon" />
                                     </div>
-                                    <h3 class="text-xl font-bold text-white mb-2">3. Supervisor Proposal</h3>
+                                    <h3 class="text-xl font-bold text-white mb-2">3. Topic Selection</h3>
                                     <p class="text-sm text-zinc-400 leading-relaxed">
-                                        Download a professional PDF proposal to present to your supervisor. Get sign-off with confidence.
+                                        Generate topic ideas with AI or enter your own, then refine and select the best fit.
                                     </p>
                                 </div>
                             </div>
@@ -929,6 +1098,10 @@ onUnmounted(() => {
                                     <div class="absolute inset-0 bg-emerald-500/10 rounded-2xl opacity-0 transition-opacity step-completed-bg"></div>
                                     <CheckCircle class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
                                 </div>
+                                <!-- Mobile connector -->
+                                <div class="md:hidden absolute left-5 top-10 bottom-[-64px] w-0.5 bg-zinc-800/50 overflow-hidden">
+                                    <div class="absolute top-0 left-0 w-full h-0 mobile-line-progress"></div>
+                                </div>
 
                                 <div class="pl-16 md:pl-0 md:text-center relative">
                                     <div class="md:hidden absolute left-0 top-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#09090b] border border-zinc-800 z-10 journey-step-icon-bg">
@@ -936,9 +1109,30 @@ onUnmounted(() => {
                                         <div class="absolute inset-0 bg-emerald-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
                                         <CheckCircle class="w-5 h-5 text-emerald-400 transition-colors relative z-10 journey-step-icon" />
                                     </div>
-                                    <h3 class="text-xl font-bold text-white mb-2">4. Start Writing</h3>
+                                    <h3 class="text-xl font-bold text-white mb-2">4. Supervisor Approval</h3>
                                     <p class="text-sm text-zinc-400 leading-relaxed">
-                                        Once approved, the AI unlocks the Chapter Editor. It knows your context, so it writes like you—only better.
+                                        Share the selected topic for review and mark it approved to unlock the Chapter Editor.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Step 5: Writing -->
+                            <div class="relative group journey-step-item">
+                                <div class="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-[#09090b] border border-zinc-800 relative z-10 mx-auto mb-8 transition-all duration-300 journey-step-icon-bg">
+                                    <div class="absolute inset-[-4px] rounded-2xl border-2 border-dashed border-blue-500/50 opacity-0 processing-ring"></div>
+                                    <div class="absolute inset-0 bg-blue-500/10 rounded-2xl opacity-0 transition-opacity step-completed-bg"></div>
+                                    <PenTool class="w-8 h-8 text-zinc-500 transition-colors relative z-10 journey-step-icon" />
+                                </div>
+
+                                <div class="pl-16 md:pl-0 md:text-center relative">
+                                    <div class="md:hidden absolute left-0 top-0 flex items-center justify-center w-10 h-10 rounded-lg bg-[#09090b] border border-zinc-800 z-10 journey-step-icon-bg">
+                                        <div class="absolute inset-[-4px] rounded-lg border-2 border-dashed border-blue-500/50 opacity-0 processing-ring"></div>
+                                        <div class="absolute inset-0 bg-blue-500/10 rounded-lg opacity-0 transition-opacity step-completed-bg"></div>
+                                        <PenTool class="w-5 h-5 text-blue-400 transition-colors relative z-10 journey-step-icon" />
+                                    </div>
+                                    <h3 class="text-xl font-bold text-white mb-2">5. AI-Assisted Writing</h3>
+                                    <p class="text-sm text-zinc-400 leading-relaxed">
+                                        Use AI-assisted writing or generate a full project draft with all chapters and preliminary pages.
                                     </p>
                                 </div>
                             </div>
@@ -947,7 +1141,257 @@ onUnmounted(() => {
                 </div>
             </section>
 
+            <!-- Live Generation Simulation -->
+            <section id="demo" class="py-12 md:py-24 relative overflow-hidden bg-[#09090b]">
+                <div class="max-w-7xl mx-auto px-4 md:px-6 relative z-10">
+                    <div class="text-center max-w-4xl mx-auto mb-10 md:mb-16 gsap-fade-up">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] md:text-xs font-medium mb-6 md:mb-8 backdrop-blur-md">
+                            <span class="flex h-2 w-2 relative">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                            </span>
+                            Live System Demo
+                        </div>
+                        
+                        <div class="space-y-4 mb-8 md:mb-12">
+                            <h2 class="text-2xl md:text-5xl font-bold mb-4 md:mb-6 text-white tracking-tight leading-tight px-2">
+                                Watch the <span class="text-indigo-500">Engine</span> in Action
+                            </h2>
+                            <div class="flex items-center justify-center gap-4">
+                                <p v-if="simulationStatus === 'completed'" class="text-green-500 text-xs md:text-sm font-bold animate-bounce">Project Ready!</p>
+                                <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-[9px] md:text-[10px] font-bold text-green-500 uppercase tracking-widest">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                    System Online
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-zinc-400 text-sm md:text-lg max-w-2xl mx-auto px-4">
+                            Observe how our proprietary engine handles the heavy lifting—from literature mining to final academic formatting in real-time.
+                        </p>
+                    </div>
+
+                    <div class="grid lg:grid-cols-12 gap-8 md:gap-12 items-start relative px-1 md:px-0">
+                        <!-- Left: Stages Timeline -->
+                        <div class="lg:col-span-7 space-y-6 md:space-y-8 relative">
+                            <h3 class="text-lg md:text-xl font-bold text-white mb-4 md:mb-6 px-2">Generation Sequence</h3>
+                            
+                            <div class="relative space-y-0 pl-1 md:pl-2">
+                                <div v-for="(stage, index) in simulationStages" :key="stage.id" class="relative flex gap-3 md:gap-6 group">
+                                    <!-- Stage Icon/Indicator -->
+                                    <div class="flex flex-col items-center">
+                                        <div class="relative z-10 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full border-2 shadow-sm transition-all duration-500"
+                                            :class="{
+                                                'border-zinc-800 bg-zinc-900 scale-95 opacity-50': currentSimulationStage < index,
+                                                'border-primary bg-background ring-2 ring-primary/20 scale-110 shadow-[0_0_10px_rgba(var(--primary),0.3)]': currentSimulationStage === index,
+                                                'border-green-500 bg-green-500 text-white scale-100 shadow-green-500/20': currentSimulationStage > index,
+                                            }">
+                                            <Check v-if="currentSimulationStage > index" class="h-3 w-3 md:h-4 md:w-4 stroke-[3]" />
+                                            <Loader2 v-else-if="currentSimulationStage === index"
+                                                class="h-3 w-3 md:h-4 md:w-4 animate-spin text-primary" />
+                                            <component v-else :is="stage.type === 'mining' ? Search : stage.type === 'chapter' ? FileText : Sparkles"
+                                                class="h-3 w-3 md:h-3.5 md:w-3.5 text-zinc-500" />
+                                        </div>
+
+                                        <!-- Segmented Vertical Line -->
+                                        <div v-if="index < simulationStages.length - 1"
+                                            class="w-0.5 flex-1 transition-all duration-700 ease-in-out mt-[-2px] mb-[-2px]"
+                                            :class="{
+                                                'bg-green-500': currentSimulationStage > index,
+                                                'bg-zinc-800/50': currentSimulationStage <= index
+                                            }">
+                                            <div v-if="currentSimulationStage === index"
+                                                class="w-full h-full bg-gradient-to-b from-primary to-transparent animate-pulse shadow-[0_0_10px_rgba(var(--primary),0.5)]">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Content Card -->
+                                    <div class="flex-1 pb-6 md:pb-10 min-w-0">
+                                        <div
+                                            class="flex flex-col gap-3 md:gap-4 p-4 md:p-5 rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-md hover:bg-white/[0.05] transition-all duration-500"
+                                            :class="{ 'border-primary/20 bg-primary/[0.02]': currentSimulationStage === index }">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <div class="space-y-1">
+                                                    <div class="flex items-center gap-2 md:gap-3">
+                                                        <h4 class="font-bold text-base md:text-lg text-white" :class="{ 'text-primary': currentSimulationStage === index }">
+                                                            {{ stage.name }}
+                                                        </h4>
+                                                        <Badge v-if="currentSimulationStage >= index" variant="secondary" class="text-[9px] md:text-[10px] h-4 md:h-5 bg-zinc-800 text-zinc-400 border-none font-mono">
+                                                            {{ stage.time }}
+                                                        </Badge>
+                                                    </div>
+                                                    <p class="text-[11px] md:text-sm leading-relaxed" :class="currentSimulationStage === index ? 'text-zinc-300' : 'text-zinc-500'">
+                                                        {{ stage.type === 'chapter' && currentSimulationStage === index ? 'Generating content with AI-assisted research...' : 
+                                                           stage.type === 'chapter' && currentSimulationStage > index ? stage.subtitle : stage.description }}
+                                                     </p>
+                                                 </div>
+                                                 <div v-if="currentSimulationStage === index" class="hidden sm:block">
+                                                     <Loader2 class="h-5 w-5 animate-spin text-primary opacity-50" />
+                                                 </div>
+                                             </div>
+
+                                             <!-- Chapter Specific Progress UI -->
+                                             <div v-if="stage.type === 'chapter' && currentSimulationStage >= index" 
+                                                 class="bg-black/40 rounded-xl p-3 md:p-4 space-y-2 md:space-y-3 border border-white/5 shadow-inner">
+                                                 <div class="flex justify-between text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                                                     <span>Content Generation</span>
+                                                     <span class="font-mono">
+                                                         <span :class="currentSimulationStage === index ? 'text-primary' : 'text-green-500'">
+                                                             {{ Math.round(stage.words).toLocaleString() }}
+                                                         </span>
+                                                         <span class="opacity-30 mx-1">/</span>
+                                                         {{ stage.target.toLocaleString() }} words
+                                                     </span>
+                                                 </div>
+                                                 <div class="h-1.5 md:h-2 w-full bg-zinc-800 rounded-full overflow-hidden">
+                                                     <div class="h-full transition-all duration-500 ease-out relative"
+                                                         :class="currentSimulationStage === index ? 'bg-primary shadow-[0_0_15px_rgba(var(--primary),0.4)]' : 'bg-green-500'"
+                                                         :style="{ width: `${Math.min((stage.words / stage.target) * 100, 100)}%` }">
+                                                         <div v-if="currentSimulationStage === index"
+                                                             class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Sidebar: Controls & Logs -->
+                        <div class="lg:col-span-5 flex flex-col gap-6 lg:sticky lg:top-24 mt-4 lg:mt-0">
+                            <!-- Main Progress Card -->
+                            <div class="group relative">
+                                <div class="absolute -inset-0.5 bg-gradient-to-r from-primary to-purple-600 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-1000"></div>
+                                <Card class="relative border-white/5 bg-zinc-900/80 backdrop-blur-xl shadow-2xl p-6 md:p-8 rounded-2xl overflow-hidden">
+                                    <div class="flex flex-col items-center justify-center py-2 md:py-4">
+                                        <!-- Circular Progress Ring (Smaller on mobile) -->
+                                        <div class="relative w-36 h-36 md:w-48 md:h-48 mb-6 md:mb-8">
+                                            <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                                                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" class="text-zinc-800" stroke-width="8" />
+                                                <circle cx="50" cy="50" r="45" fill="none" stroke="url(#demo-gradient)" stroke-width="8" stroke-linecap="round" class="transition-all duration-1000 ease-out"
+                                                    :stroke-dasharray="2 * Math.PI * 45"
+                                                    :stroke-dashoffset="2 * Math.PI * 45 * (1 - simulationProgress / 100)" />
+                                                <defs>
+                                                    <linearGradient id="demo-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                        <stop offset="0%" stop-color="#3b82f6" />
+                                                        <stop offset="100%" stop-color="#8b5cf6" />
+                                                    </linearGradient>
+                                                </defs>
+                                            </svg>
+                                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                                <span class="text-3xl md:text-4xl font-bold text-white tracking-tighter tabular-nums">{{ simulationProgress }}%</span>
+                                                <span class="text-[9px] md:text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5 md:mt-1">
+                                                    {{ simulationStatus === 'completed' ? 'Complete' : 'Progress' }}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="text-center space-y-2 md:space-y-3 mb-6 md:mb-8">
+                                            <p class="text-zinc-300 text-xs md:text-sm font-medium leading-relaxed px-4">
+                                                {{ simulationStatus === 'completed' ? 'Your project has been successfully generated.' : 
+                                                   currentSimulationStage >= 0 ? `Processing ${simulationStages[currentSimulationStage].name}...` : 'System initialized and ready' }}
+                                            </p>
+                                            <div v-if="simulationStatus !== 'completed'" class="flex items-center justify-center gap-2 text-[10px] md:text-xs text-zinc-500 bg-zinc-800/80 px-4 py-1.5 md:py-2 rounded-full w-fit mx-auto border border-white/5">
+                                                <Clock class="h-3 md:h-3.5 w-3 md:w-3.5 text-primary" />
+                                                <span class="font-mono">~{{ Math.max(1, (simulationStages.length - currentSimulationStage)) * 2 }} mins remaining</span>
+                                            </div>
+                                            <div v-else class="flex items-center justify-center gap-2 text-[10px] md:text-xs text-green-500 bg-green-500/10 px-4 py-1.5 md:py-2 rounded-full w-fit mx-auto border border-green-500/20">
+                                                <Check class="h-3 md:h-3.5 w-3 md:w-3.5" />
+                                                <span class="font-mono">Process Complete</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Controls Map to status -->
+                                        <div class="w-full space-y-3 md:space-y-4 pt-4 border-t border-white/5">
+                                            <Button v-if="simulationStatus === 'idle'" @click="startSimulation" class="w-full bg-white text-black hover:bg-zinc-200 font-bold h-11 md:h-12 rounded-xl transition-all hover:scale-[1.02] text-sm md:text-base">
+                                                <Play class="mr-2 h-4 w-4 fill-current" /> Initialize Generation
+                                            </Button>
+
+                                            <Button v-if="simulationStatus === 'running'" variant="destructive" @click="resetSimulation" class="w-full bg-red-600/20 border border-red-500 text-red-500 hover:bg-red-600 hover:text-white font-bold h-11 md:h-12 rounded-xl transition-all shadow-lg shadow-red-500/10 text-sm md:text-base">
+                                                Cancel Process
+                                            </Button>
+
+                                            <div v-if="simulationStatus === 'completed'" class="grid grid-cols-2 gap-2 md:gap-3 animate-in fade-in zoom-in duration-500">
+                                                <Button class="bg-white text-black hover:bg-zinc-200 font-bold h-11 md:h-12 rounded-xl shadow-lg shadow-white/10 text-xs md:text-sm">
+                                                    <Edit class="mr-1.5 md:mr-2 h-3.5 w-3.5 md:h-4 md:w-4" /> View Chapters
+                                                </Button>
+                                                <Button variant="secondary" class="bg-zinc-800 text-white hover:bg-zinc-700 font-bold h-11 md:h-12 rounded-xl text-xs md:text-sm">
+                                                    <FileText class="mr-1.5 md:mr-2 h-3.5 w-3.5 md:h-4 md:w-4" /> Export PDF
+                                                </Button>
+                                            </div>
+
+                                            <div class="p-3 md:p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 transition-all duration-500" :class="{ 'opacity-100': simulationStatus === 'completed', 'opacity-50': simulationStatus !== 'completed' }">
+                                                <div class="flex gap-2 md:gap-3">
+                                                    <AlertTriangle class="h-3.5 w-3.5 md:h-4 md:w-4 text-amber-500 shrink-0 mt-0.5" />
+                                                    <p class="text-[9px] md:text-[10px] text-zinc-500 leading-relaxed">
+                                                        AI is not perfect and can make mistakes. Please review each chapter and make adjustments where necessary. 
+                                                        Defending your project requires thorough knowledge.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </Card>
+                            </div>
+
+                            <!-- System Logs Section -->
+                            <div class="space-y-3 flex-1 flex flex-col min-h-0">
+                                <div class="flex items-center justify-between px-1">
+                                    <div class="flex items-center gap-2">
+                                        <Terminal class="h-3.5 w-3.5 md:h-4 md:w-4 text-zinc-500" />
+                                        <h4 class="text-xs md:text-sm font-bold text-zinc-400">System Logs</h4>
+                                    </div>
+                                    <div class="flex gap-1">
+                                        <div class="w-2 h-2 rounded-full bg-red-500/50"></div>
+                                        <div class="w-2 h-2 rounded-full bg-amber-500/50"></div>
+                                        <div class="w-2 h-2 rounded-full bg-green-500/50"></div>
+                                    </div>
+                                </div>
+
+                                <div class="flex-1 min-h-[250px] md:min-h-[300px] bg-black border border-white/5 rounded-2xl overflow-hidden flex flex-col shadow-2xl">
+                                    <div class="bg-zinc-900/80 border-b border-white/5 px-4 py-1.5 md:py-2 flex justify-center shrink-0">
+                                        <span class="text-[8px] md:text-[9px] font-mono text-zinc-600 tracking-widest uppercase">generation_engine_v3.0.log</span>
+                                    </div>
+                                    <div class="flex-1 overflow-y-auto p-4 md:p-5 font-mono text-[9px] md:text-[11px] space-y-1.5 md:space-y-2 custom-scrollbar bg-[#050505]">
+                                        <div v-if="simulationLogs.length === 0" class="h-full flex flex-col items-center justify-center text-zinc-800 opacity-50">
+                                            <div class="animate-pulse flex flex-col items-center">
+                                                <Terminal class="h-8 w-8 md:h-10 md:w-10 mb-2 md:mb-3" />
+                                                <p class="text-[10px] md:text-xs">Waiting for initialization...</p>
+                                            </div>
+                                        </div>
+                                        <div v-for="(log, i) in simulationLogs" :key="i" 
+                                            class="flex gap-2 md:gap-3 animate-in fade-in slide-in-from-left-2 duration-300 border-l-2 pl-2 md:pl-3 py-0.5 transition-all hover:bg-white/[0.02]"
+                                            :class="{
+                                                'border-indigo-500/50': log.type === 'info',
+                                                'border-green-500/50': log.type === 'success',
+                                                'border-purple-500/50': log.type === 'stage',
+                                                'border-transparent': !['info', 'success', 'stage'].includes(log.type)
+                                            }">
+                                            <span class="text-zinc-700 shrink-0 text-[8px] md:text-[10px]">[{{ log.timestamp }}]</span>
+                                            <span class="leading-tight text-[9px] md:text-[11px]" :class="{
+                                                'text-indigo-400': log.type === 'info',
+                                                'text-green-400 font-medium': log.type === 'success',
+                                                'text-purple-400 font-bold': log.type === 'stage',
+                                                'text-amber-400': log.type === 'mining',
+                                                'text-zinc-400': !log.type
+                                            }">
+                                                <span v-if="log.type === 'stage'" class="text-zinc-600 mr-1 md:mr-2">$</span>
+                                                {{ log.message }}
+                                            </span>
+                                        </div>
+                                        <div v-if="simulationStatus === 'running'" class="h-2.5 w-1 md:h-3 md:w-1.5 bg-zinc-700 animate-pulse inline-block ml-1"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Comparison Section -->
+
             <section id="comparison" class="py-24 border-t border-white/5 bg-[#09090b]">
                 <div class="max-w-5xl mx-auto px-6">
                     <div class="text-center mb-16 gsap-fade-up">
@@ -1019,6 +1463,57 @@ onUnmounted(() => {
                                     <span>Structured academic workflow</span>
                                 </li>
                             </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Testimonials Section -->
+            <section id="testimonials" class="py-24 relative overflow-hidden bg-[#0c0c0e]">
+                <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+                    <div class="absolute bottom-0 right-0 w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[120px]"></div>
+                </div>
+
+                <div class="max-w-7xl mx-auto px-6 relative z-10">
+                    <div class="text-center max-w-3xl mx-auto mb-20 gsap-fade-up">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900/50 border border-white/10 text-amber-400 text-xs font-medium mb-6 backdrop-blur-md">
+                            <div class="flex gap-0.5">
+                                <Star v-for="i in 5" :key="i" class="w-3 h-3 fill-current" />
+                            </div>
+                            Loved by 2,000+ Students
+                        </div>
+                        <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white tracking-tight">
+                            Trusted by Students <span class="text-indigo-500">Worldwide</span>
+                        </h2>
+                        <p class="text-zinc-400 text-lg">
+                            Join thousands of successful graduates who used Finalyze to conquer their final year projects.
+                        </p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 testimonials-grid">
+                        <div v-for="(t, i) in testimonials" :key="i"
+                            :class="[
+                                'group relative p-8 rounded-2xl border border-white/5 bg-zinc-900/20 backdrop-blur-sm hover:bg-zinc-900/40 hover:-translate-y-2 transition-colors duration-300',
+                                t.border,
+                                t.offset ? 'lg:mt-8' : ''
+                            ]">
+                            <div class="flex gap-1 mb-6 text-amber-500/80">
+                                <Star v-for="j in 5" :key="j" class="w-4 h-4 fill-current" />
+                            </div>
+                            <p class="text-zinc-300 italic mb-8 leading-relaxed">
+                                "{{ t.text }}"
+                            </p>
+                            <div class="flex items-center gap-4">
+                                <div :class="['w-12 h-12 rounded-full bg-gradient-to-br p-[2px]', t.gradient]">
+                                    <div class="w-full h-full rounded-full bg-zinc-900 flex items-center justify-center font-bold text-white text-lg">
+                                        {{ t.initials }}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white">{{ t.name }}</h4>
+                                    <p class="text-xs text-zinc-500 font-medium">{{ t.major }}</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1262,10 +1757,9 @@ onUnmounted(() => {
             <!-- Footer -->
             <footer class="border-t border-white/5 bg-[#09090b] py-12">
                 <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div class="flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
-                        <Sparkles class="w-4 h-4 text-white" />
-                        <span class="font-bold text-zinc-200">Finalyze</span>
-                    </div>
+                    <Link :href="route('home')" class="opacity-50 hover:opacity-100 transition-opacity">
+                        <AppLogo class="h-7 w-auto fill-white" />
+                    </Link>
 
                     <div class="text-sm text-zinc-600">
                         &copy; {{ new Date().getFullYear() }} Finalyze. All rights reserved.
@@ -1288,4 +1782,51 @@ onUnmounted(() => {
 .hover-glow:hover {
     box-shadow: 0 0 30px -5px rgba(99, 102, 241, 0.3);
 }
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.2);
+    border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 163, 175, 0.4);
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+    animation: shimmer 2s infinite linear;
+}
+
+@keyframes gradient-x {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+.animate-gradient-x {
+    background-size: 200% 200%;
+    animation: gradient-x 15s ease infinite;
+}
+
+/* List Transitions */
+.list-enter-active,
+.list-leave-active {
+    transition: all 0.4s ease;
+}
+.list-enter-from {
+    opacity: 0;
+    transform: translateX(-20px);
+}
+.list-leave-to {
+    opacity: 0;
+    transform: translateY(-20px);
+}
+
 </style>
