@@ -48,7 +48,13 @@ import {
     Pause,
     RotateCcw,
     AlertTriangle,
-    Edit
+    Edit,
+    Shield,
+    Users,
+    MessageSquare,
+    Presentation,
+    Brain,
+    Trophy
 } from 'lucide-vue-next';
 
 // Types
@@ -708,6 +714,8 @@ onUnmounted(() => {
                         Topic Library</Link>
                     <button @click="scrollTo('features')"
                         class="hover:text-white transition-colors duration-300">Features</button>
+                    <button @click="scrollTo('defense')"
+                        class="hover:text-white transition-colors duration-300">Defense Lab</button>
                     <button @click="scrollTo('comparison')"
                         class="hover:text-white transition-colors duration-300">Comparison</button>
                     <button @click="scrollTo('pricing')"
@@ -767,6 +775,8 @@ onUnmounted(() => {
                     </Link>
                     <button @click="scrollTo('features'); isMobileMenuOpen = false"
                         class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Features</button>
+                    <button @click="scrollTo('defense'); isMobileMenuOpen = false"
+                        class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Defense Lab</button>
                     <button @click="scrollTo('comparison'); isMobileMenuOpen = false"
                         class="text-base font-medium text-zinc-400 hover:text-white transition-colors py-2 text-left">Comparison</button>
                     <button @click="scrollTo('pricing'); isMobileMenuOpen = false"
@@ -1382,6 +1392,137 @@ onUnmounted(() => {
                                             </span>
                                         </div>
                                         <div v-if="simulationStatus === 'running'" class="h-2.5 w-1 md:h-3 md:w-1.5 bg-zinc-700 animate-pulse inline-block ml-1"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Defense Lab Section -->
+            <section id="defense" class="py-24 md:py-32 relative overflow-hidden bg-[#0c0c0e]">
+                <!-- Background Decoration -->
+                <div class="absolute inset-0 z-0 pointer-events-none">
+                    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-rose-500/5 blur-[120px] rounded-full"></div>
+                </div>
+
+                <div class="max-w-7xl mx-auto px-6 relative z-10">
+                    <div class="text-center max-w-3xl mx-auto mb-20 gsap-fade-up">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium mb-6 backdrop-blur-md">
+                            <Shield class="w-3.5 h-3.5" />
+                            Final Milestone
+                        </div>
+                        <h2 class="text-3xl md:text-5xl font-bold mb-6 text-white tracking-tight">
+                            Defend with <span class="text-rose-500">Unshakable</span> Confidence
+                        </h2>
+                        <p class="text-zinc-400 text-lg">
+                            Master your research presentation with AI-powered simulators that predict examiner questions and refine your pitch.
+                        </p>
+                    </div>
+
+                    <div class="grid lg:grid-cols-2 gap-16 items-center">
+                        <div class="space-y-8 gsap-fade-up">
+                            <!-- Feature 1 -->
+                            <div class="group flex gap-6 p-6 rounded-2xl border border-white/5 bg-zinc-900/20 hover:bg-zinc-900/40 transition-all duration-300">
+                                <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+                                    <Users class="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-white mb-2">Mock Defense Simulator</h3>
+                                    <p class="text-zinc-400 text-sm leading-relaxed">
+                                        Face a rotating panel of AI examiners—from the skeptic to the methodologist—who challenge your thesis from multiple angles in a real-time chat simulation.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Feature 2 -->
+                            <div class="group flex gap-6 p-6 rounded-2xl border border-white/5 bg-zinc-900/20 hover:bg-zinc-900/40 transition-all duration-300">
+                                <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-400 group-hover:scale-110 transition-transform">
+                                    <Brain class="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-white mb-2">AI-Predicted Questions</h3>
+                                    <p class="text-zinc-400 text-sm leading-relaxed">
+                                        Our AI analyzes your specific project content to predict the 10 most likely (and most difficult) questions you'll face, providing expert-crafted strategies for each.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Feature 3 -->
+                            <div class="group flex gap-6 p-6 rounded-2xl border border-white/5 bg-zinc-900/20 hover:bg-zinc-900/40 transition-all duration-300">
+                                <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                                    <Presentation class="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-white mb-2">Presentation Deck Builder</h3>
+                                    <p class="text-zinc-400 text-sm leading-relaxed">
+                                        Generate a comprehensive slide outline and speaker notes tailored to your research findings. One-click export to a professional PPTX format.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Visual Preview Card -->
+                        <div class="relative gsap-fade-up">
+                            <div class="absolute -inset-4 bg-gradient-to-r from-rose-500/20 to-purple-600/20 rounded-[2.5rem] blur-2xl opacity-50"></div>
+                            <div class="relative bg-zinc-950 border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl">
+                                <!-- Simulation Header -->
+                                <div class="p-4 border-b border-white/5 flex items-center justify-between bg-zinc-900/50">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></div>
+                                        <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none">Simulation Active</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-400 border border-white/5">
+                                        Readiness Score: 85%
+                                    </div>
+                                </div>
+                                
+                                <!-- Simulation Content Preview -->
+                                <div class="p-6 space-y-6 min-h-[400px]">
+                                    <!-- Panelist Question -->
+                                    <div class="flex flex-col items-start space-y-2 max-w-[85%]">
+                                        <div class="flex items-center gap-2 px-1">
+                                            <span class="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Panelist (The Skeptic)</span>
+                                        </div>
+                                        <div class="p-4 rounded-2xl rounded-tl-none bg-zinc-800/80 border border-white/5 text-zinc-200 text-xs italic leading-relaxed">
+                                            "How does your proposed blockchain framework specifically address the latency issues inherent in public land registry transactions?"
+                                        </div>
+                                    </div>
+
+                                    <!-- Candidate Response -->
+                                    <div class="flex flex-col items-end space-y-2 ml-auto max-w-[85%]">
+                                        <div class="flex items-center gap-2 px-1">
+                                            <span class="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Candidate</span>
+                                        </div>
+                                        <div class="p-4 rounded-2xl rounded-tr-none bg-white text-black text-xs font-medium leading-relaxed">
+                                            "Our framework utilizes a sharding-inspired architecture combined with a private side-chain for high-frequency updates, significantly reducing..."
+                                        </div>
+                                    </div>
+
+                                    <!-- Score Booster Suggestion -->
+                                    <div class="mt-8 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                                        <div class="flex items-center gap-2 mb-2 font-bold text-[10px] uppercase">
+                                            <Brain class="w-3.5 h-3.5" />
+                                            Defense Strategy Booster
+                                        </div>
+                                        <p class="text-[11px] leading-relaxed opacity-90">
+                                            Highlight the distinction between "Settlement Layer" and "Transaction Layer" to show technical depth.
+                                        </p>
+                                    </div>
+
+                                    <!-- Prediction Cards Preview -->
+                                    <div class="grid grid-cols-2 gap-3 pt-4">
+                                        <div class="p-3 rounded-xl border border-white/5 bg-zinc-900 flex flex-col gap-2">
+                                            <Target class="w-4 h-4 text-rose-500" />
+                                            <span class="text-[10px] font-bold text-white">Predicted Question #4</span>
+                                            <span class="text-[9px] text-zinc-500 leading-tight">"What are the limitations of your methodology?"</span>
+                                        </div>
+                                        <div class="p-3 rounded-xl border border-white/5 bg-zinc-900 flex flex-col gap-2 opacity-50">
+                                            <Trophy class="w-4 h-4 text-amber-500" />
+                                            <span class="text-[10px] font-bold text-white">Winner Strategy</span>
+                                            <span class="text-[9px] text-zinc-500 leading-tight">Focus on data triangulation...</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

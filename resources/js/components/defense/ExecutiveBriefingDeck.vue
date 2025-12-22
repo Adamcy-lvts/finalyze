@@ -115,13 +115,13 @@ const formatContent = (text: string): string => {
                     leave-active-class="transition-opacity duration-200 ease-in absolute inset-0"
                     leave-from-class="opacity-100" leave-to-class="opacity-0">
                     <div :key="currentIndex" class="h-full flex flex-col">
-                        <h3 class="text-2xl md:text-4xl font-bold font-display text-white mb-8 md:mb-10 tracking-tight">
+                        <h3 class="text-xl md:text-4xl font-bold font-display text-white mb-6 md:mb-10 tracking-tight leading-tight">
                             {{ currentSlide.title }}
                         </h3>
 
                         <div class="flex-1 overflow-y-auto custom-scrollbar pr-4 md:pr-6 pb-4 max-w-4xl">
                             <div v-html="formatContent(currentSlide.content)"
-                                class="prose-base md:prose-xl dark:prose-invert leading-loose tracking-wide [&_p]:mb-6 [&_strong]:text-indigo-400 [&_strong]:font-semibold text-zinc-50 [&_ul]:list-none [&_ul]:pl-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-6 [&_li]:pl-4 [&_li]:border-l-2 [&_li]:border-indigo-500/50">
+                                class="prose-sm md:prose-xl dark:prose-invert leading-relaxed md:leading-loose tracking-wide [&_p]:mb-4 md:[&_p]:mb-6 [&_strong]:text-indigo-400 [&_strong]:font-semibold text-zinc-50 [&_ul]:list-none [&_ul]:pl-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-4 md:[&_li]:mb-6 [&_li]:pl-4 [&_li]:border-l-2 [&_li]:border-indigo-500/50">
                             </div>
                         </div>
                     </div>

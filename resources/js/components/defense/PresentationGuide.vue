@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { useSwipe } from '@vueuse/core';
 import {
     ChevronRight,
     History,
@@ -50,10 +51,23 @@ const prevSlide = () => {
         updateIndex(props.activeIndex - 1);
     }
 };
+
+const containerRef = ref<HTMLElement | null>(null);
+const { isSwiping, direction } = useSwipe(containerRef);
+
+watch(isSwiping, (newVal, oldVal) => {
+    if (oldVal && !newVal) {
+        if (direction.value === 'left') {
+            nextSlide();
+        } else if (direction.value === 'right') {
+            prevSlide();
+        }
+    }
+});
 </script>
 
 <template>
-    <div v-if="slides.length" class="flex flex-col gap-4 h-full">
+    <div v-if="slides.length" class="flex flex-col gap-4 h-full" ref="containerRef">
         <!-- Progress Bar -->
         <div class="w-full h-1 bg-zinc-800 rounded-full overflow-hidden shrink-0">
             <div class="h-full bg-indigo-500 transition-all duration-500 ease-out"
@@ -115,13 +129,14 @@ const prevSlide = () => {
                             <span
                                 class="text-[10px] uppercase tracking-wider text-indigo-400 font-bold mb-1 block">Slide
                                 {{ activeIndex + 1 }}</span>
-                            <h4 class="text-lg font-bold font-display text-white line-clamp-2 md:line-clamp-none">{{
+                            <h4 class="text-base md:text-lg font-bold font-display text-white line-clamp-2 md:line-clamp-none">{{
                                 slides[activeIndex].title }}</h4>
                         </div>
                         <Badge variant="outline"
                             class="bg-zinc-950/50 border-zinc-800 text-zinc-400 text-[10px] gap-1.5 font-mono shrink-0 ml-2">
                             <History class="h-3 w-3" />
-                            {{ slides[activeIndex].duration }}
+                            <span class="hidden sm:inline">{{ slides[activeIndex].duration }}</span>
+                            <span class="sm:hidden">{{ slides[activeIndex].duration.split(' ')[0] }}m</span>
                         </Badge>
                     </div>
 

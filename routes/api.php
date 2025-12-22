@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\PaperCollectionController;
 use App\Http\Controllers\ChapterAnalysisController;
 use App\Http\Controllers\DataCollectionController;
 use App\Http\Controllers\DefenseController;
+use App\Http\Controllers\DefenseDeckController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
 use App\Http\Controllers\AIAutocompleteController;
@@ -177,6 +178,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
             ->name('api.defense.opening-statement.generate');
         Route::get('{project_id}/defense/presentation-guide', [DefenseController::class, 'getPresentationGuide'])
             ->name('api.defense.presentation-guide');
+        Route::post('{project_id}/defense/deck', [DefenseDeckController::class, 'create'])
+            ->name('api.defense.deck.create');
+        Route::get('{project_id}/defense/deck', [DefenseDeckController::class, 'latest'])
+            ->name('api.defense.deck.latest');
+        Route::get('{project_id}/defense/deck/{deck}/download', [DefenseDeckController::class, 'download'])
+            ->name('api.defense.deck.download');
         Route::get('{project_id}/defense/estimate-cost', [DefenseController::class, 'estimateCost'])
             ->name('api.defense.estimate-cost');
         Route::get('{project_id}/defense/preparation', [DefenseController::class, 'getPreparation'])

@@ -88,12 +88,12 @@ const formatContent = (text: string): string => {
                         </div>
 
                         <!-- Question -->
-                        <div class="mb-10">
-                            <div class="flex items-start gap-4">
-                                <div class="h-10 w-10 shrink-0 rounded-xl bg-rose-500/10 flex items-center justify-center">
-                                    <HelpCircle class="h-5 w-5 text-rose-500" />
+                        <div class="mb-6 md:mb-10">
+                            <div class="flex items-start gap-3 md:gap-4">
+                                <div class="h-8 w-8 md:h-10 md:w-10 shrink-0 rounded-lg md:rounded-xl bg-rose-500/10 flex items-center justify-center">
+                                    <HelpCircle class="h-4 w-4 md:h-5 md:w-5 text-rose-500" />
                                 </div>
-                                <h3 class="text-2xl md:text-4xl font-bold font-display text-white tracking-tight leading-tight">
+                                <h3 class="text-xl md:text-4xl font-bold font-display text-white tracking-tight leading-snug md:leading-tight">
                                     {{ currentQuestion.question }}
                                 </h3>
                             </div>
@@ -101,14 +101,14 @@ const formatContent = (text: string): string => {
 
                         <!-- Answer -->
                         <div class="flex-1 overflow-y-auto custom-scrollbar pr-4 md:pr-6 pb-6">
-                            <div class="relative pl-6">
+                            <div class="relative pl-5 md:pl-6">
                                 <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 to-transparent rounded-full opacity-50"></div>
-                                <div class="flex items-center gap-2 mb-4 text-indigo-400 font-medium text-sm tracking-wide uppercase">
-                                    <Lightbulb class="h-4 w-4" />
+                                <div class="flex items-center gap-2 mb-3 md:mb-4 text-indigo-400 font-medium text-[10px] md:text-sm tracking-wide uppercase">
+                                    <Lightbulb class="h-3 w-3 md:h-4 md:w-4" />
                                     <span>Defense Strategy</span>
                                 </div>
                                 <div v-html="formatContent(currentQuestion.suggested_answer)"
-                                    class="text-zinc-300 text-lg md:text-xl leading-relaxed tracking-wide italic font-serif [&_p]:mb-6">
+                                    class="text-zinc-300 text-base md:text-xl leading-relaxed tracking-wide italic font-serif [&_p]:mb-4 md:[&_p]:mb-6">
                                 </div>
                             </div>
                         </div>

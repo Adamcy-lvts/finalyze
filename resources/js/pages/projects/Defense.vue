@@ -1,6 +1,6 @@
 <!-- resources/js/pages/projects/Defense.vue -->
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { toast } from 'vue-sonner';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -25,7 +25,8 @@ import {
     Trophy,
     History,
     FileText,
-    Maximize2
+    Maximize2,
+    ArrowUpDown
 } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -106,6 +107,11 @@ const startSlideIndex = ref(0); // For keeping sync between minimized and maximi
 const rawPresentationGuide = ref<string | null>(null); // Fallback for old data
 const isGuideLoading = ref(false);
 const isGuideExpanded = ref(false);
+const deckStatus = ref<'idle' | 'queued' | 'outlining' | 'outlined' | 'rendering' | 'ready' | 'failed'>('idle');
+const deckDownloadUrl = ref<string | null>(null);
+const deckError = ref<string | null>(null);
+const isDeckGenerating = ref(false);
+const deckPollInterval = ref<ReturnType<typeof setInterval> | null>(null);
 const openingStatement = ref('');
 const openingAnalysis = ref<string | null>(null);
 const isOpeningAnalyzing = ref(false);
@@ -125,6 +131,11 @@ const {
     isStarting,
     isSending,
 } = useDefenseSession(props.project.id);
+
+const isDeckSwapped = ref(false);
+const toggleDeckSwap = () => {
+    isDeckSwapped.value = !isDeckSwapped.value;
+};
 
 const personaLookup = computed(() => {
     return activeSimulationPersonas.value.reduce<Record<string, string>>((acc, persona) => {
@@ -381,6 +392,75 @@ const generateOpeningStatement = async () => {
     }
 };
 
+const setDeckState = (deck: { id: number; status: string; pptx_url?: string | null; error_message?: string | null } | null) => {
+    if (!deck) {
+        deckStatus.value = 'idle';
+        deckDownloadUrl.value = null;
+        deckError.value = null;
+        return;
+    }
+
+    deckStatus.value = (deck.status as typeof deckStatus.value) || 'idle';
+    deckDownloadUrl.value = deck.pptx_url ?? null;
+    deckError.value = deck.error_message ?? null;
+};
+
+const stopDeckPolling = () => {
+    if (deckPollInterval.value) {
+        clearInterval(deckPollInterval.value);
+        deckPollInterval.value = null;
+    }
+};
+
+const pollDeckStatus = () => {
+    stopDeckPolling();
+    deckPollInterval.value = setInterval(() => {
+        refreshDefenseDeckStatus();
+    }, 6000);
+};
+
+const refreshDefenseDeckStatus = async () => {
+    try {
+        const response = await axios.get(`/api/projects/${props.project.id}/defense/deck`);
+        const deck = response.data.deck ?? null;
+        setDeckState(deck);
+
+        if (deck?.status === 'ready' || deck?.status === 'failed' || deck?.status === 'idle') {
+            stopDeckPolling();
+        }
+    } catch (error) {
+        if (notifyLowBalance(error)) return;
+        console.error('Failed to refresh defense deck status:', error);
+    }
+};
+
+const generateDefenseDeck = async (force = false) => {
+    if (isDeckGenerating.value) return;
+    isDeckGenerating.value = true;
+
+    try {
+        const response = await axios.post(`/api/projects/${props.project.id}/defense/deck`, {
+            force_refresh: force ? 1 : 0,
+        });
+        setDeckState(response.data.deck ?? null);
+        if (response.data.deck?.status !== 'ready') {
+            pollDeckStatus();
+        }
+    } catch (error) {
+        if (notifyLowBalance(error)) return;
+        console.error('Failed to generate defense deck:', error);
+    } finally {
+        isDeckGenerating.value = false;
+    }
+};
+
+const downloadDefenseDeck = () => {
+    if (!deckDownloadUrl.value) return;
+    const link = document.createElement('a');
+    link.href = deckDownloadUrl.value;
+    link.click();
+};
+
 const generatePredictedQuestions = async () => {
     if (isGeneratingQuestions.value) return;
     isGeneratingQuestions.value = true;
@@ -573,6 +653,7 @@ onMounted(() => {
     loadPreparation();
     loadSessionHistory();
     loadActiveSession();
+    refreshDefenseDeckStatus();
 });
 
 const chatContainer = ref<HTMLElement | null>(null);
@@ -592,6 +673,10 @@ watch(isSimulating, (newVal) => {
     if (newVal) {
         scrollToBottom();
     }
+});
+
+onBeforeUnmount(() => {
+    stopDeckPolling();
 });
 
 </script>
@@ -686,81 +771,174 @@ watch(isSimulating, (newVal) => {
                 <div v-if="currentView === 'preparation' && !isSimulating"
                     class="grid gap-8 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-                    <!-- Left Column: Core Prep -->
-                    <div class="lg:col-span-8 space-y-8">
-                        <!-- AI Executive Summary -->
-                        <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
-                            <CardHeader class="pb-2">
-                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
-                                    <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
-                                        <Sparkles class="h-5 w-5 text-indigo-500" />
-                                        Executive Briefing
-                                    </CardTitle>
-                                    <Button variant="ghost" size="sm" class="text-xs gap-1.5 h-8 w-fit"
-                                        @click="refreshExecutiveBriefing" :disabled="isBriefingLoading">
-                                        <History class="h-3.5 w-3.5" />
-                                        {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
-                                    </Button>
-                                </div>
-                                <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
-                                    project's core value proposition, synthesized for your defense.</CardDescription>
-                            </CardHeader>
-                            <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
-                                <div v-if="briefingSlides.length > 0" class="h-full">
-                                    <ExecutiveBriefingDeck :slides="briefingSlides" :is-loading="isBriefingLoading"
-                                        @refresh="refreshExecutiveBriefing" />
-                                </div>
-                                <div v-else-if="executiveBriefing" class="relative z-10 space-y-4">
-                                    <div
-                                        class="absolute -left-6 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500/80 via-purple-500/80 to-transparent rounded-full opacity-60">
-                                    </div>
-                                    <RichTextViewer :content="executiveBriefing" :show-font-controls="false"
-                                        viewer-class="prose-sm md:prose-base dark:prose-invert leading-relaxed"
-                                        class="!bg-transparent" />
-                                </div>
-                                <div v-else
-                                    class="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                                    <div
-                                        class="h-12 w-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
-                                        <Sparkles class="h-6 w-6 text-indigo-500/50" />
-                                    </div>
-                                    <p class="text-base text-muted-foreground italic max-w-xs">
-                                        No executive briefing yet. Click “Refresh AI” to generate a comprehensive
-                                        summary of your research.
-                                    </p>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <!-- Predicted Questions -->
-                        <div class="space-y-4">
-                            <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
+                        <!-- Left Column: Core Prep -->
+                    <div class="lg:col-span-8 space-y-8 transition-all duration-500">
+                        <template v-if="!isDeckSwapped">
+                            <!-- AI Executive Summary -->
+                            <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <CardHeader class="pb-2">
                                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
                                         <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
-                                            <Target class="h-5 w-5 text-rose-500" />
-                                            Predicted Defense Questions
+                                            <Sparkles class="h-5 w-5 text-indigo-500" />
+                                            Executive Briefing
                                         </CardTitle>
                                         <div class="flex items-center gap-2">
-                                            <Badge variant="secondary" class="font-mono text-[10px]">{{
-                                                predictedQuestions.length }}
-                                                TOP QUESTIONS</Badge>
-                                            <Button variant="ghost" size="sm" class="text-xs h-8"
-                                                @click="generatePredictedQuestions" :disabled="isGeneratingQuestions">
-                                                <Sparkles class="h-3.5 w-3.5" />
-                                                {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
+                                            <Button variant="ghost" size="sm" class="text-xs gap-1.5 h-8 w-fit"
+                                                @click="refreshExecutiveBriefing" :disabled="isBriefingLoading">
+                                                <History class="h-3.5 w-3.5" />
+                                                {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
+                                            </Button>
+                                            <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-indigo-400" @click="toggleDeckSwap" title="Swap position">
+                                                <ArrowUpDown class="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </div>
-                                    <CardDescription class="text-rose-600/70 dark:text-rose-400/70 text-sm">
-                                        Identify and prepare for high-probability questions examiners might ask.
-                                    </CardDescription>
+                                    <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
+                                        project's core value proposition, synthesized for your defense.</CardDescription>
                                 </CardHeader>
-                                <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[450px]">
-                                    <PredictedQuestionsDeck :questions="predictedQuestions"
-                                        :is-loading="isGeneratingQuestions" />
+                                <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
+                                    <div v-if="briefingSlides.length > 0" class="h-full">
+                                        <ExecutiveBriefingDeck :slides="briefingSlides" :is-loading="isBriefingLoading"
+                                            @refresh="refreshExecutiveBriefing" />
+                                    </div>
+                                    <div v-else-if="executiveBriefing" class="relative z-10 space-y-4">
+                                        <div
+                                            class="absolute -left-6 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500/80 via-purple-500/80 to-transparent rounded-full opacity-60">
+                                        </div>
+                                        <RichTextViewer :content="executiveBriefing" :show-font-controls="false"
+                                            viewer-class="prose-sm md:prose-base dark:prose-invert leading-relaxed"
+                                            class="!bg-transparent" />
+                                    </div>
+                                    <div v-else
+                                        class="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                                        <div
+                                            class="h-12 w-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
+                                            <Sparkles class="h-6 w-6 text-indigo-500/50" />
+                                        </div>
+                                        <p class="text-base text-muted-foreground italic max-w-xs">
+                                            No executive briefing yet. Click “Refresh AI” to generate a comprehensive
+                                            summary of your research.
+                                        </p>
+                                    </div>
                                 </CardContent>
                             </Card>
-                        </div>
+                            <!-- Predicted Questions -->
+                            <div class="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                                <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
+                                    <CardHeader class="pb-2">
+                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                            <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
+                                                <Target class="h-5 w-5 text-rose-500" />
+                                                Predicted Defense Questions
+                                            </CardTitle>
+                                            <div class="flex items-center gap-2">
+                                                <Badge variant="secondary" class="font-mono text-[10px]">{{
+                                                    predictedQuestions.length }}
+                                                    TOP QUESTIONS</Badge>
+                                                <Button variant="ghost" size="sm" class="text-xs h-8"
+                                                    @click="generatePredictedQuestions" :disabled="isGeneratingQuestions">
+                                                    <Sparkles class="h-3.5 w-3.5" />
+                                                    {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
+                                                </Button>
+                                                <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-rose-400" @click="toggleDeckSwap" title="Swap position">
+                                                    <ArrowUpDown class="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <CardDescription class="text-rose-600/70 dark:text-rose-400/70 text-sm">
+                                            Identify and prepare for high-probability questions examiners might ask.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[450px]">
+                                        <PredictedQuestionsDeck :questions="predictedQuestions"
+                                            :is-loading="isGeneratingQuestions" />
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </template>
+                        <template v-else>
+                            <!-- Predicted Questions First -->
+                            <div class="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
+                                    <CardHeader class="pb-2">
+                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                            <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
+                                                <Target class="h-5 w-5 text-rose-500" />
+                                                Predicted Defense Questions
+                                            </CardTitle>
+                                            <div class="flex items-center gap-2">
+                                                <Badge variant="secondary" class="font-mono text-[10px]">{{
+                                                    predictedQuestions.length }}
+                                                    TOP QUESTIONS</Badge>
+                                                <Button variant="ghost" size="sm" class="text-xs h-8"
+                                                    @click="generatePredictedQuestions" :disabled="isGeneratingQuestions">
+                                                    <Sparkles class="h-3.5 w-3.5" />
+                                                    {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
+                                                </Button>
+                                                <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-rose-400" @click="toggleDeckSwap" title="Swap position">
+                                                    <ArrowUpDown class="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <CardDescription class="text-rose-600/70 dark:text-rose-400/70 text-sm">
+                                            Identify and prepare for high-probability questions examiners might ask.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[450px]">
+                                        <PredictedQuestionsDeck :questions="predictedQuestions"
+                                            :is-loading="isGeneratingQuestions" />
+                                    </CardContent>
+                                </Card>
+                            </div>
+                            <!-- Executive Briefing Second -->
+                            <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                                <CardHeader class="pb-2">
+                                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                        <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
+                                            <Sparkles class="h-5 w-5 text-indigo-500" />
+                                            Executive Briefing
+                                        </CardTitle>
+                                        <div class="flex items-center gap-2">
+                                            <Button variant="ghost" size="sm" class="text-xs gap-1.5 h-8 w-fit"
+                                                @click="refreshExecutiveBriefing" :disabled="isBriefingLoading">
+                                                <History class="h-3.5 w-3.5" />
+                                                {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
+                                            </Button>
+                                            <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-indigo-400" @click="toggleDeckSwap" title="Swap position">
+                                                <ArrowUpDown class="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
+                                        project's core value proposition, synthesized for your defense.</CardDescription>
+                                </CardHeader>
+                                <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
+                                    <div v-if="briefingSlides.length > 0" class="h-full">
+                                        <ExecutiveBriefingDeck :slides="briefingSlides" :is-loading="isBriefingLoading"
+                                            @refresh="refreshExecutiveBriefing" />
+                                    </div>
+                                    <div v-else-if="executiveBriefing" class="relative z-10 space-y-4">
+                                        <div
+                                            class="absolute -left-6 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500/80 via-purple-500/80 to-transparent rounded-full opacity-60">
+                                        </div>
+                                        <RichTextViewer :content="executiveBriefing" :show-font-controls="false"
+                                            viewer-class="prose-sm md:prose-base dark:prose-invert leading-relaxed"
+                                            class="!bg-transparent" />
+                                    </div>
+                                    <div v-else
+                                        class="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                                        <div
+                                            class="h-12 w-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
+                                            <Sparkles class="h-6 w-6 text-indigo-500/50" />
+                                        </div>
+                                        <p class="text-base text-muted-foreground italic max-w-xs">
+                                            No executive briefing yet. Click “Refresh AI” to generate a comprehensive
+                                            summary of your research.
+                                        </p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </template>
 
                         <!-- Quick Pitch Laboratory -->
                         <Card class="border-border/50 shadow-sm rounded-3xl overflow-hidden group">
@@ -832,13 +1010,25 @@ watch(isSimulating, (newVal) => {
                                     <CardDescription class="text-zinc-400 text-sm leading-relaxed max-w-[280px]">
                                         Step-by-step structure for high-impact defense slides.
                                     </CardDescription>
-                                    <div class="flex items-center gap-2">
+                                    <div class="flex items-center gap-2 flex-wrap justify-end">
                                         <Button v-if="presentationSlides.length || rawPresentationGuide"
                                             variant="outline" size="sm"
                                             class="h-7 text-xs gap-1.5 border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white"
                                             @click="loadPresentationGuide" :disabled="isGuideLoading">
                                             <History class="h-3 w-3" />
                                             {{ isGuideLoading ? 'Refreshing...' : 'Regenerate' }}
+                                        </Button>
+                                        <Button variant="outline" size="sm"
+                                            class="h-7 text-xs gap-1.5 border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white"
+                                            @click="generateDefenseDeck" :disabled="isDeckGenerating">
+                                            <FileText class="h-3 w-3" />
+                                            {{ isDeckGenerating ? 'Building...' : 'Generate PPTX' }}
+                                        </Button>
+                                        <Button v-if="deckStatus === 'ready' && deckDownloadUrl" variant="secondary"
+                                            size="sm" class="h-7 text-xs gap-1.5"
+                                            @click="downloadDefenseDeck">
+                                            <FileText class="h-3 w-3" />
+                                            Download
                                         </Button>
                                         <Button v-if="presentationSlides.length" variant="ghost" size="icon"
                                             class="h-7 w-7 text-zinc-400 hover:text-white"
@@ -849,6 +1039,17 @@ watch(isSimulating, (newVal) => {
                                 </div>
                             </CardHeader>
                             <CardContent class="p-4 md:p-6 h-[500px] flex flex-col">
+                                <div v-if="deckStatus !== 'idle'" class="mb-3 text-[11px] text-zinc-400">
+                                    <span v-if="deckStatus === 'queued'">Deck queued.</span>
+                                    <span v-else-if="deckStatus === 'outlining'">Generating slide outline with GPT-4o...</span>
+                                    <span v-else-if="deckStatus === 'outlined'">Outline complete. Rendering PPTX...</span>
+                                    <span v-else-if="deckStatus === 'rendering'">Rendering PPTX with Claude...</span>
+                                    <span v-else-if="deckStatus === 'ready'">PPTX ready for download.</span>
+                                    <span v-else-if="deckStatus === 'failed'">Failed to generate PPTX.</span>
+                                </div>
+                                <div v-if="deckStatus === 'failed' && deckError" class="mb-3 text-[11px] text-rose-400">
+                                    {{ deckError }}
+                                </div>
                                 <PresentationGuide :slides="presentationSlides" :is-loading="isGuideLoading"
                                     :raw-guide="rawPresentationGuide" v-model:active-index="activeSlideIndex"
                                     layout="compact" @regenerate="loadPresentationGuide" />

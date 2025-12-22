@@ -45,4 +45,9 @@ return [
         'merchant_email' => env('PAYSTACK_MERCHANT_EMAIL'),
     ],
 
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'skills_model' => env('ANTHROPIC_SKILLS_MODEL', 'claude-sonnet-4-5-20250929'),
+    ],
+
 ];

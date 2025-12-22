@@ -187,6 +187,11 @@ class Project extends Model
         return $this->hasOne(DefensePreparation::class);
     }
 
+    public function defenseSlideDecks(): HasMany
+    {
+        return $this->hasMany(DefenseSlideDeck::class);
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProjectCategory::class, 'project_category_id');
