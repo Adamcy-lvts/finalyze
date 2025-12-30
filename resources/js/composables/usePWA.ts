@@ -32,11 +32,24 @@ export function usePWA() {
     const handleBeforeInstallPrompt = (e: Event) => {
         e.preventDefault();
         deferredPrompt.value = e as BeforeInstallPromptEvent;
+        console.log('PWA: Install prompt available (from event)');
+    };
+
+    // Check for prompt captured before Vue mounted
+    const checkCapturedPrompt = () => {
+        if (typeof window !== 'undefined' && (window as any).deferredPWAPrompt) {
+            deferredPrompt.value = (window as any).deferredPWAPrompt as BeforeInstallPromptEvent;
+            console.log('PWA: Using pre-captured install prompt');
+        }
     };
 
     const handleAppInstalled = () => {
         deferredPrompt.value = null;
         isInstalled.value = true;
+        // Clear the global reference too
+        if (typeof window !== 'undefined') {
+            (window as any).deferredPWAPrompt = null;
+        }
     };
 
     const installApp = async () => {
@@ -58,8 +71,8 @@ export function usePWA() {
 
     const dismissInstallPrompt = () => {
         deferredPrompt.value = null;
-        // Store dismissal preference
-        localStorage.setItem('pwa-install-dismissed', Date.now().toString());
+        // Store dismissal preference permanently until cleared
+        localStorage.setItem('pwa-install-dismissed', 'true');
     };
 
     const shouldShowInstallPrompt = computed(() => {
@@ -67,16 +80,13 @@ export function usePWA() {
             return false;
         }
 
+        // Don't show if user has previously dismissed
         const dismissed = localStorage.getItem('pwa-install-dismissed');
         if (dismissed) {
-            // Don't show for 7 days after dismissal
-            const dismissedAt = parseInt(dismissed, 10);
-            const sevenDays = 7 * 24 * 60 * 60 * 1000;
-            if (Date.now() - dismissedAt < sevenDays) {
-                return false;
-            }
+            return false;
         }
 
+        // Show immediately on first visit when install is available
         return true;
     });
 
@@ -98,7 +108,12 @@ export function usePWA() {
         }
 
         if (typeof window !== 'undefined') {
+            // Check for prompt that was captured before Vue mounted
+            checkCapturedPrompt();
+
+            // Listen for future events
             window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.addEventListener('pwa-install-available', checkCapturedPrompt);
             window.addEventListener('appinstalled', handleAppInstalled);
             window.addEventListener('online', handleOnline);
             window.addEventListener('offline', handleOffline);
@@ -108,6 +123,7 @@ export function usePWA() {
     onUnmounted(() => {
         if (typeof window !== 'undefined') {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('pwa-install-available', checkCapturedPrompt);
             window.removeEventListener('appinstalled', handleAppInstalled);
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);

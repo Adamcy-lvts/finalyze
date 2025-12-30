@@ -58,6 +58,9 @@
         <meta name="apple-mobile-web-app-title" content="Finalyze">
         <meta name="application-name" content="Finalyze">
 
+        {{-- PWA Manifest --}}
+        <link rel="manifest" href="/build/manifest.webmanifest">
+
         {{-- Favicons and Icons --}}
         <link rel="icon" href="/favicon.ico" sizes="any">
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -86,5 +89,31 @@
     </head>
     <body class="font-sans antialiased">
         @inertia
+
+        {{-- PWA Service Worker Registration & Install Prompt Capture --}}
+        <script>
+            // Capture beforeinstallprompt early before Vue mounts
+            window.deferredPWAPrompt = null;
+            window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.deferredPWAPrompt = e;
+                console.log('PWA: beforeinstallprompt captured');
+                // Dispatch custom event for Vue to pick up
+                window.dispatchEvent(new CustomEvent('pwa-install-available'));
+            });
+
+            // Register service worker
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('/build/sw.js', { scope: '/' })
+                        .then(function(registration) {
+                            console.log('SW registered: ', registration);
+                        })
+                        .catch(function(error) {
+                            console.log('SW registration failed: ', error);
+                        });
+                });
+            }
+        </script>
     </body>
 </html>

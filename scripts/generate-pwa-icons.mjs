@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -7,18 +7,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
 const outputDir = join(rootDir, 'public/pwa-icons');
 
+// Source images
+const FY_ICON = join(rootDir, 'public/img/finalyze_icon_logo.png');
+
 // Dark background color
 const BG_COLOR = { r: 10, g: 10, b: 15, alpha: 1 }; // #0a0a0f
-
-// "Fy" SVG for small icons (white text on transparent)
-const FY_SVG = `<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g transform="translate(60, 100)">
-    <!-- F letter -->
-    <path d="M0 312V0h180v78H85v50h85v72H85v112H0z" fill="white"/>
-    <!-- y letter -->
-    <path d="M205 100h90l40 120 40-120h88l-90 215c-18 45-45 65-95 65-18 0-38-3-53-8v-68c10 3 22 5 32 5 24 0 35-8 42-26l2-6L205 100z" fill="white"/>
-  </g>
-</svg>`;
 
 // Full "finalyze" wordmark SVG (from AppLogo.vue)
 const WORDMARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1561.3 468.1" fill="white">
@@ -34,28 +27,32 @@ async function generateIcons() {
     console.log('Creating PWA icons directory...');
     await mkdir(outputDir, { recursive: true });
 
-    // Small icons with "Fy" - need dark background
+    // Small icons using the new fy icon logo
     const smallSizes = [
-        { name: 'pwa-64x64.png', size: 64 },
-        { name: 'pwa-192x192.png', size: 192 },
-        { name: 'apple-touch-icon-180x180.png', size: 180 },
+        { name: 'pwa-64x64.png', size: 64, padding: 8 },
+        { name: 'pwa-192x192.png', size: 192, padding: 24 },
+        { name: 'apple-touch-icon-180x180.png', size: 180, padding: 22 },
     ];
 
-    console.log('Generating small icons with "Fy"...');
-    for (const { name, size } of smallSizes) {
-        // Create dark background with Fy SVG
-        const svgWithBg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-            <rect width="${size}" height="${size}" fill="#0a0a0f"/>
-            <g transform="scale(${size / 512})">
-                <g transform="translate(60, 100)">
-                    <path d="M0 312V0h180v78H85v50h85v72H85v112H0z" fill="white"/>
-                    <path d="M205 100h90l40 120 40-120h88l-90 215c-18 45-45 65-95 65-18 0-38-3-53-8v-68c10 3 22 5 32 5 24 0 35-8 42-26l2-6L205 100z" fill="white"/>
-                </g>
-            </g>
-        </svg>`;
+    console.log('Generating small icons with fy logo...');
+    for (const { name, size, padding } of smallSizes) {
+        const iconSize = size - padding * 2;
 
-        await sharp(Buffer.from(svgWithBg))
-            .resize(size, size)
+        // Create dark background and composite the fy icon on top
+        await sharp({
+            create: {
+                width: size,
+                height: size,
+                channels: 4,
+                background: BG_COLOR,
+            },
+        })
+            .composite([
+                {
+                    input: await sharp(FY_ICON).resize(iconSize, iconSize, { fit: 'contain' }).toBuffer(),
+                    gravity: 'center',
+                },
+            ])
             .png()
             .toFile(join(outputDir, name));
 
@@ -112,19 +109,25 @@ async function generateIcons() {
 
     console.log('Generated: maskable-512x512.png');
 
-    // Also copy apple-touch-icon to public root
-    const appleTouchIconSvg = `<svg width="180" height="180" xmlns="http://www.w3.org/2000/svg">
-        <rect width="180" height="180" fill="#0a0a0f"/>
-        <g transform="scale(${180 / 512})">
-            <g transform="translate(60, 100)">
-                <path d="M0 312V0h180v78H85v50h85v72H85v112H0z" fill="white"/>
-                <path d="M205 100h90l40 120 40-120h88l-90 215c-18 45-45 65-95 65-18 0-38-3-53-8v-68c10 3 22 5 32 5 24 0 35-8 42-26l2-6L205 100z" fill="white"/>
-            </g>
-        </g>
-    </svg>`;
+    // Also copy apple-touch-icon to public root using the fy icon
+    const appleIconSize = 180;
+    const appleIconPadding = 22;
+    const appleIconInner = appleIconSize - appleIconPadding * 2;
 
-    await sharp(Buffer.from(appleTouchIconSvg))
-        .resize(180, 180)
+    await sharp({
+        create: {
+            width: appleIconSize,
+            height: appleIconSize,
+            channels: 4,
+            background: BG_COLOR,
+        },
+    })
+        .composite([
+            {
+                input: await sharp(FY_ICON).resize(appleIconInner, appleIconInner, { fit: 'contain' }).toBuffer(),
+                gravity: 'center',
+            },
+        ])
         .png()
         .toFile(join(rootDir, 'public/apple-touch-icon.png'));
 

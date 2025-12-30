@@ -1,8 +1,8 @@
-<svg width="166" height="166" viewBox="0 0 166 166" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g transform="translate(20, 30)">
-    <!-- F letter from Finalyze wordmark style -->
-    <path d="M6.1 121.1V12.1h57.6v30.5H38.1v16.3h24.1v28.4H38.1v33.8H6.1z" fill="white"/>
-    <!-- y letter from Finalyze wordmark style -->
-    <path d="M72.5 48.5h31.2l13.8 37.8 13.8-37.8h30.2l-29.5 72.6c-7.2 17.8-17.5 25.2-35.8 25.2-6.2 0-12.8-.8-17.8-2.2v-26.4c3.5.8 7.2 1.2 10.5 1.2 8.2 0 12.2-2.8 14.5-9.2l.8-2.2L72.5 48.5z" fill="white"/>
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" rx="6" fill="#0a0a0f"/>
+  <g transform="translate(3, 4) scale(0.022)">
+    <!-- fy logo path approximation -->
+    <path d="M180 950V350h120v-80c0-120 60-200 180-200 40 0 80 8 110 20l-30 100c-20-8-40-12-60-12-60 0-80 40-80 100v72h140v100H420v600H180z" fill="white"/>
+    <path d="M520 350h120l100 320 20 80h4l20-80 100-320h120L820 850c-40 100-100 150-200 150-40 0-80-8-110-20l30-100c20 8 50 12 70 12 60 0 90-30 110-80l10-30L520 350z" fill="white"/>
   </g>
 </svg>
