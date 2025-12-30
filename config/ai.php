@@ -56,10 +56,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Alert Email
+    |--------------------------------------------------------------------------
+    |
+    | Email address to receive low credit alerts. Set this in your .env file
+    | as AI_ALERT_EMAIL=admin@example.com
+    |
+    */
+    'alert_email' => env('AI_ALERT_EMAIL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Billing endpoints
     |--------------------------------------------------------------------------
+    |
+    | The official Usage/Costs API requires an Admin API key, which is different
+    | from the regular OpenAI API key. Generate one at:
+    | https://platform.openai.com/settings/organization/admin-keys
+    |
     */
     'billing_base' => env('OPENAI_BILLING_BASE', 'https://api.openai.com'),
+    'admin_api_key' => env('OPENAI_ADMIN_API_KEY'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Manual Credit Balance
+    |--------------------------------------------------------------------------
+    |
+    | Since the official OpenAI API doesn't expose credit balance, you can
+    | set your current credit balance manually here. This will be used for
+    | runway calculations and alerts.
+    |
+    */
+    'manual_credit_balance' => env('OPENAI_CREDIT_BALANCE', 0),
 
     /*
     |--------------------------------------------------------------------------

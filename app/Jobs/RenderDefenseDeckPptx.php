@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\DefenseSlideDeck;
-use App\Services\AI\ClaudeSkillsService;
 use App\Services\Defense\DefenseCreditService;
+use App\Services\Defense\PptxGenJsService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -18,24 +18,29 @@ class RenderDefenseDeckPptx implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 300;
+
     public int $tries = 2;
 
     public function __construct(private int $deckId) {}
 
-    public function handle(ClaudeSkillsService $skillsService, DefenseCreditService $creditService): void
-    {
+    public function handle(
+        DefenseCreditService $creditService,
+        PptxGenJsService $pptxGenJsService
+    ): void {
         $deck = DefenseSlideDeck::with('project', 'user')->find($this->deckId);
         if (! $deck || ! $deck->project || ! $deck->user) {
+            Log::warning('Defense deck PPTX render aborted: missing deck/project/user', [
+                'deck_id' => $this->deckId,
+            ]);
+
             return;
         }
 
-        if (! $creditService->hasEnoughCredits($deck->user, 'text')) {
-            $deck->update([
-                'status' => 'failed',
-                'error_message' => 'Insufficient credit balance for PPTX rendering.',
-            ]);
-            return;
-        }
+        Log::info('Defense deck PPTX render started', [
+            'deck_id' => $deck->id,
+            'project_id' => $deck->project_id,
+            'status' => $deck->status,
+        ]);
 
         $deck->update([
             'status' => 'rendering',
@@ -50,27 +55,26 @@ class RenderDefenseDeckPptx implements ShouldQueue
             $safeTitle = preg_replace('/[^A-Za-z0-9_\-]+/', '-', strtolower((string) $deck->project->title));
             $safeTitle = trim($safeTitle, '-') ?: 'defense-deck';
             $filename = "{$safeTitle}-{$deck->id}.pptx";
-
-            $result = $skillsService->generatePptx($slides, $deck->project->title, $filename);
-            $fileContent = $skillsService->downloadFile($result['file_id']);
-
             $storagePath = "defense-slides/{$deck->project_id}/{$filename}";
+
+            $tempPath = $pptxGenJsService->export($slides, $deck->project->title, $filename);
+            $fileContent = file_get_contents($tempPath);
+
             Storage::disk('public')->put($storagePath, $fileContent);
 
             $deck->update([
                 'pptx_path' => $storagePath,
                 'status' => 'ready',
                 'ai_models' => array_merge($deck->ai_models ?? [], [
-                    'pptx' => 'claude-skills-pptx',
+                    'pptx' => 'pptxgenjs',
                 ]),
             ]);
+            Log::info('Defense deck PPTX render completed', [
+                'deck_id' => $deck->id,
+                'project_id' => $deck->project_id,
+                'pptx_path' => $storagePath,
+            ]);
 
-            $creditService->deductForTextExchange(
-                $deck->user,
-                null,
-                json_encode($slides, JSON_UNESCAPED_SLASHES),
-                'Defense deck PPTX rendering'
-            );
         } catch (\Throwable $e) {
             Log::error('Defense deck PPTX rendering failed', [
                 'deck_id' => $deck->id,

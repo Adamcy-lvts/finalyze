@@ -4,13 +4,13 @@ use App\Http\Controllers\Admin\AdminAIController;
 use App\Http\Controllers\Admin\AdminAnalyticsController;
 use App\Http\Controllers\Admin\AdminAuditController;
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminFacultyStructureController;
 use App\Http\Controllers\Admin\AdminNotificationController;
 use App\Http\Controllers\Admin\AdminPackageController;
 use App\Http\Controllers\Admin\AdminPaymentController;
+use App\Http\Controllers\Admin\AdminProjectController;
 use App\Http\Controllers\Admin\AdminPromptPreviewController;
 use App\Http\Controllers\Admin\AdminPromptTemplateController;
-use App\Http\Controllers\Admin\AdminFacultyStructureController;
-use App\Http\Controllers\Admin\AdminProjectController;
 use App\Http\Controllers\Admin\AdminRegistrationInviteController;
 use App\Http\Controllers\Admin\AdminSystemController;
 use App\Http\Controllers\Admin\AdminUserController;
@@ -240,6 +240,8 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::post('/refresh', [AdminAIController::class, 'refresh'])->name('admin.ai.refresh');
         Route::post('/retry/{generation}', [AdminAIController::class, 'retry'])->name('admin.ai.retry');
         Route::post('/circuit/{service}/reset', [AdminAIController::class, 'resetCircuit'])->name('admin.ai.reset-circuit');
+        Route::get('/credit-settings', [AdminAIController::class, 'getCreditSettings'])->name('admin.ai.credit-settings');
+        Route::post('/credit-settings', [AdminAIController::class, 'updateCreditBalance'])->name('admin.ai.update-credit');
     });
 
     // System

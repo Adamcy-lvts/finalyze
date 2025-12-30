@@ -17,6 +17,8 @@ declare global {
     interface Window {
         Pusher: typeof Pusher;
         Echo: Echo;
+        GA_MEASUREMENT_ID?: string;
+        gtag?: (command: string, ...args: any[]) => void;
     }
 }
 
@@ -74,6 +76,22 @@ function updateCsrfToken(token?: string) {
 }
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const gaMeasurementId = typeof window !== 'undefined' ? window.GA_MEASUREMENT_ID : undefined;
+
+function trackPageView(url: string) {
+    if (!gaMeasurementId || typeof window === 'undefined' || typeof window.gtag !== 'function') {
+        return;
+    }
+
+    const pageLocation = new URL(url, window.location.origin).toString();
+
+    window.gtag('event', 'page_view', {
+        page_location: pageLocation,
+        page_path: url,
+        page_title: document.title,
+        send_to: gaMeasurementId,
+    });
+}
 
 // createInertiaApp({
 //     title: (title) => (title ? `${title} - ${appName}` : appName),
@@ -129,8 +147,11 @@ createInertiaApp({
         });
 
         // Re-apply theme after each Inertia navigation to avoid stale DOM theme state
-        router.on('finish', () => {
+        router.on('finish', (event) => {
             initializeTheme();
+            if (event.detail.page?.url) {
+                trackPageView(event.detail.page.url);
+            }
         });
 
 
@@ -138,6 +159,8 @@ createInertiaApp({
             .use(plugin)
             .use(ZiggyVue, ziggyConfig)
             .mount(el);
+
+        trackPageView(window.location.pathname + window.location.search + window.location.hash);
     },
     progress: {
         color: '#4B5563',

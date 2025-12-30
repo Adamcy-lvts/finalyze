@@ -30,24 +30,31 @@
               </div>
               <div class="text-right">
                 <p class="text-xs text-muted-foreground">Total</p>
-                <p class="text-lg font-bold text-foreground">{{ formatCurrency(totalRevenue) }}</p>
+                <p class="text-lg font-bold text-foreground">{{ formatCurrency(props.stats.revenue.last30) }}</p>
               </div>
             </div>
           </CardHeader>
           <CardContent class="pl-0">
-            <ChartContainer :config="revenueChartConfig" class="h-[280px] w-full">
-              <VisXYContainer :data="revenueData" :height="280" :margin="{ top: 5, right: 10, bottom: 0, left: 10 }">
-                <VisLine :x="(d: RevenuePoint) => d.date" :y="(d: RevenuePoint) => d.amount"
-                  :color="revenueChartConfig.revenue.color" :curve-type="'monotone'" :stroke-width="2" />
-                <VisAxis type="x" :x="(d: RevenuePoint) => d.date" :grid-line="false" :domain-line="false"
-                  :tick-line="false" :tick-format="formatShortDate" :tick-values="revenueData.map((d) => d.date)"
-                  color="#888888" />
-                <VisAxis type="y" :tick-line="false" :domain-line="false" :grid-line="true"
-                  :tick-format="(v: number) => formatCurrencyShort(v)" color="#888888" />
-                <ChartTooltip />
-                <ChartCrosshair />
-              </VisXYContainer>
-            </ChartContainer>
+            <template v-if="revenueData.length > 0">
+              <ChartContainer :config="revenueChartConfig" class="h-[280px] w-full">
+                <VisXYContainer :data="revenueData" :height="280" :margin="{ top: 5, right: 10, bottom: 0, left: 10 }">
+                  <VisLine :x="(d: RevenuePoint) => d.date" :y="(d: RevenuePoint) => d.amount"
+                    :color="revenueChartConfig.revenue.color" :curve-type="'monotone'" :stroke-width="2" />
+                  <VisAxis type="x" :x="(d: RevenuePoint) => d.date" :grid-line="false" :domain-line="false"
+                    :tick-line="false" :tick-format="formatShortDate" :tick-values="revenueData.map((d) => d.date)"
+                    color="#888888" />
+                  <VisAxis type="y" :tick-line="false" :domain-line="false" :grid-line="true"
+                    :tick-format="(v: number) => formatCurrencyShort(v)" color="#888888" />
+                  <ChartTooltip />
+                  <ChartCrosshair />
+                </VisXYContainer>
+              </ChartContainer>
+            </template>
+            <template v-else>
+              <div class="h-[280px] flex items-center justify-center text-muted-foreground">
+                No revenue data available
+              </div>
+            </template>
           </CardContent>
         </Card>
 
@@ -65,21 +72,28 @@
             </div>
           </CardHeader>
           <CardContent class="pl-0">
-            <ChartContainer :config="signupChartConfig" class="h-[280px] w-full">
-              <VisXYContainer :data="signupData" :height="280" :margin="{ top: 5, right: 10, bottom: 0, left: 10 }">
-                <VisGroupedBar :x="(d: SignupPoint) => d.label"
-                  :y="[(d: SignupPoint) => d.newUsers, (d: SignupPoint) => d.returning]"
-                  :color="[signupChartConfig.new.color, signupChartConfig.returning.color]" :rounded-corners="4"
-                  :bar-padding="0.2" />
-                <VisAxis type="x" :x="(d: SignupPoint) => d.label" :grid-line="false" :domain-line="false"
-                  :tick-line="false" color="#888888" />
-                <VisAxis type="y" :tick-line="false" :domain-line="false" :grid-line="true"
-                  :tick-format="(v: number) => Math.round(v)" color="#888888" />
-                <ChartTooltip />
-                <ChartCrosshair />
-              </VisXYContainer>
-              <ChartLegendContent :config="signupChartConfig" class="mt-4 justify-center" />
-            </ChartContainer>
+            <template v-if="signupData.length > 0">
+              <ChartContainer :config="signupChartConfig" class="h-[280px] w-full">
+                <VisXYContainer :data="signupData" :height="280" :margin="{ top: 5, right: 10, bottom: 0, left: 10 }">
+                  <VisGroupedBar :x="(d: SignupPoint) => d.label"
+                    :y="[(d: SignupPoint) => d.newUsers]"
+                    :color="[signupChartConfig.new.color]" :rounded-corners="4"
+                    :bar-padding="0.2" />
+                  <VisAxis type="x" :x="(d: SignupPoint) => d.label" :grid-line="false" :domain-line="false"
+                    :tick-line="false" color="#888888" />
+                  <VisAxis type="y" :tick-line="false" :domain-line="false" :grid-line="true"
+                    :tick-format="(v: number) => Math.round(v)" color="#888888" />
+                  <ChartTooltip />
+                  <ChartCrosshair />
+                </VisXYContainer>
+                <ChartLegendContent :config="signupChartConfig" class="mt-4 justify-center" />
+              </ChartContainer>
+            </template>
+            <template v-else>
+              <div class="h-[280px] flex items-center justify-center text-muted-foreground">
+                No signup data available
+              </div>
+            </template>
           </CardContent>
         </Card>
       </div>
@@ -94,26 +108,28 @@
             <div class="rounded-lg border border-border/50 bg-muted/30 p-4 hover:bg-muted/50 transition-colors">
               <div class="flex items-center justify-between mb-2">
                 <p class="text-sm font-medium text-muted-foreground">Queue</p>
-                <div class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <div class="h-2 w-2 rounded-full animate-pulse" :class="queueStatusColor"></div>
               </div>
-              <p class="text-2xl font-bold text-foreground">Healthy</p>
-              <p class="text-xs text-muted-foreground mt-1">12 pending • 0 failed</p>
+              <p class="text-2xl font-bold text-foreground capitalize">{{ props.systemHealth.queue.status }}</p>
+              <p class="text-xs text-muted-foreground mt-1">
+                {{ props.systemHealth.queue.pending }} pending &bull; {{ props.systemHealth.queue.failed }} failed
+              </p>
             </div>
             <div class="rounded-lg border border-border/50 bg-muted/30 p-4 hover:bg-muted/50 transition-colors">
               <div class="flex items-center justify-between mb-2">
-                <p class="text-sm font-medium text-muted-foreground">OpenAI</p>
+                <p class="text-sm font-medium text-muted-foreground">AI Tokens Today</p>
                 <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
               </div>
-              <p class="text-2xl font-bold text-foreground">Stable</p>
-              <p class="text-xs text-muted-foreground mt-1">Avg latency: 890ms</p>
+              <p class="text-2xl font-bold text-foreground">{{ formatNumber(props.systemHealth.aiTokensToday) }}</p>
+              <p class="text-xs text-muted-foreground mt-1">Total tokens used today</p>
             </div>
             <div class="rounded-lg border border-border/50 bg-muted/30 p-4 hover:bg-muted/50 transition-colors">
               <div class="flex items-center justify-between mb-2">
-                <p class="text-sm font-medium text-muted-foreground">Cache</p>
+                <p class="text-sm font-medium text-muted-foreground">Words Used</p>
                 <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
               </div>
-              <p class="text-2xl font-bold text-foreground">OK</p>
-              <p class="text-xs text-muted-foreground mt-1">Hit rate: 92%</p>
+              <p class="text-2xl font-bold text-foreground">{{ formatNumber(props.stats.wordsUsed.total) }}</p>
+              <p class="text-xs text-muted-foreground mt-1">All time word usage</p>
             </div>
           </div>
         </CardContent>
@@ -129,29 +145,39 @@ import { ChartContainer, ChartCrosshair, ChartLegendContent, ChartTooltip } from
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 
+interface Props {
+  stats: {
+    users: { total: number; trend: number }
+    revenue: { total: number; last30: number; trend: number }
+    projects: { total: number; trend: number }
+    wordsUsed: { total: number }
+  }
+  revenueChart: Array<{ date: string; amount: number }>
+  signupsChart: Array<{ label: string; date: string; newUsers: number }>
+  systemHealth: {
+    queue: { pending: number; failed: number; status: string }
+    aiTokensToday: number
+  }
+}
+
+const props = defineProps<Props>()
+
 type RevenuePoint = { date: Date; amount: number }
-type SignupPoint = { label: string; newUsers: number; returning: number }
+type SignupPoint = { label: string; newUsers: number }
 
-const today = new Date()
-const revenueData: RevenuePoint[] = [
-  { date: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000), amount: 180000 },
-  { date: new Date(today.getTime() - 24 * 24 * 60 * 60 * 1000), amount: 210000 },
-  { date: new Date(today.getTime() - 18 * 24 * 60 * 60 * 1000), amount: 265000 },
-  { date: new Date(today.getTime() - 12 * 24 * 60 * 60 * 1000), amount: 240000 },
-  { date: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000), amount: 300000 },
-  { date: new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000), amount: 320000 },
-  { date: today, amount: 340000 },
-]
+const revenueData = computed<RevenuePoint[]>(() => {
+  return props.revenueChart.map(item => ({
+    date: new Date(item.date),
+    amount: item.amount,
+  }))
+})
 
-const signupData: SignupPoint[] = [
-  { label: 'Mon', newUsers: 18, returning: 7 },
-  { label: 'Tue', newUsers: 24, returning: 10 },
-  { label: 'Wed', newUsers: 20, returning: 8 },
-  { label: 'Thu', newUsers: 28, returning: 12 },
-  { label: 'Fri', newUsers: 26, returning: 11 },
-  { label: 'Sat', newUsers: 16, returning: 6 },
-  { label: 'Sun', newUsers: 14, returning: 5 },
-]
+const signupData = computed<SignupPoint[]>(() => {
+  return props.signupsChart.map(item => ({
+    label: item.label,
+    newUsers: item.newUsers,
+  }))
+})
 
 const revenueChartConfig = {
   revenue: {
@@ -162,24 +188,25 @@ const revenueChartConfig = {
 
 const signupChartConfig = {
   new: {
-    label: 'New',
+    label: 'New Users',
     color: 'hsl(var(--primary))',
-  },
-  returning: {
-    label: 'Returning',
-    color: 'hsl(var(--muted-foreground))',
   },
 }
 
-const totalRevenue = computed(() => revenueData.reduce((sum, item) => sum + item.amount, 0))
-const weeklyNew = computed(() => signupData.reduce((sum, item) => sum + item.newUsers, 0))
+const weeklyNew = computed(() => signupData.value.reduce((sum, item) => sum + item.newUsers, 0))
 
 const statCards = computed(() => [
-  { label: 'Users', caption: 'Active users', value: '2,148', trend: 12 },
-  { label: 'Revenue', caption: 'Last 30 days', value: formatCurrency(totalRevenue.value), trend: 8 },
-  { label: 'Projects', caption: 'Total projects', value: '512', trend: 3 },
-  { label: 'Words Generated', caption: 'All time', value: '2.8M', trend: 15 },
+  { label: 'Users', caption: 'Total registered', value: formatNumber(props.stats.users.total), trend: props.stats.users.trend },
+  { label: 'Revenue', caption: 'Last 30 days', value: formatCurrency(props.stats.revenue.last30), trend: props.stats.revenue.trend },
+  { label: 'Projects', caption: 'Total projects', value: formatNumber(props.stats.projects.total), trend: props.stats.projects.trend },
+  { label: 'Total Revenue', caption: 'All time', value: formatCurrency(props.stats.revenue.total), trend: 0 },
 ])
+
+const queueStatusColor = computed(() => {
+  if (props.systemHealth.queue.status === 'healthy') return 'bg-emerald-500'
+  if (props.systemHealth.queue.status === 'warning') return 'bg-amber-500'
+  return 'bg-rose-500'
+})
 
 const formatShortDate = (value: number) => {
   const date = new Date(value)
@@ -194,5 +221,11 @@ const formatCurrencyShort = (value: number) => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
   return value.toString()
+}
+
+const formatNumber = (value: number) => {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return new Intl.NumberFormat('en').format(value)
 }
 </script>

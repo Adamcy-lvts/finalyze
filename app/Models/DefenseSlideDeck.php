@@ -15,6 +15,8 @@ class DefenseSlideDeck extends Model
         'project_id',
         'slides_json',
         'status',
+        'extraction_data',
+        'extraction_status',
         'pptx_path',
         'ai_models',
         'error_message',
@@ -23,6 +25,7 @@ class DefenseSlideDeck extends Model
     protected $casts = [
         'slides_json' => 'array',
         'ai_models' => 'array',
+        'extraction_data' => 'array',
     ];
 
     public function user(): BelongsTo

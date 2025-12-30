@@ -237,7 +237,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import RichTextViewer from '@/components/ui/rich-text-editor/RichTextViewer.vue'
 import { ClockIcon, MessageCircleIcon, TrashIcon, RotateCcwIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-vue-next'
-import { toast } from 'sonner'
+import { toast } from 'vue-sonner'
 
 interface Message {
   id: number

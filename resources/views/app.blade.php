@@ -56,6 +56,19 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600|inter:400,500,600,700|outfit:400,500,600,700,800" rel="stylesheet" />
 
+        @if (config('services.google_analytics.measurement_id'))
+            <!-- Google tag (gtag.js) -->
+            <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('services.google_analytics.measurement_id') }}"></script>
+            <script>
+                window.GA_MEASUREMENT_ID = "{{ config('services.google_analytics.measurement_id') }}";
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                window.gtag = window.gtag || gtag;
+                gtag('js', new Date());
+                gtag('config', window.GA_MEASUREMENT_ID, { send_page_view: false });
+            </script>
+        @endif
+
         @vite(['resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead
         <script src="https://js.paystack.co/v1/inline.js"></script>

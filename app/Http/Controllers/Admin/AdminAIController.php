@@ -5,26 +5,46 @@ namespace App\Http\Controllers\Admin;
 use App\Events\AIProvisioningUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\AdminNotification;
-use App\Models\AIUsageDaily;
 use App\Models\OpenAIBillingSnapshot;
+use App\Models\OpenAICreditSetting;
 use App\Services\AIProvisioningService;
 use App\Services\OpenAIBillingService;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class AdminAIController extends Controller
 {
     public function index(AIProvisioningService $provisioningService)
     {
-        $metrics = $provisioningService->getMetrics();
+        $days = request()->integer('days', 30);
+        $days = in_array($days, [7, 30, 90]) ? $days : 30;
 
-        $usageByModel = collect($this->usageByModel());
+        $metrics = $provisioningService->getMetrics();
+        $profitability = $provisioningService->getProfitabilityMetrics($days);
+        $usageTrends = $provisioningService->getUsageTrends($days);
+        $liabilityBreakdown = $provisioningService->getUserLiabilityBreakdown();
+        $modelBreakdown = $provisioningService->getModelBreakdown($days);
 
         $latestSnapshot = OpenAIBillingSnapshot::latest('fetched_at')->first();
 
+        // Get live balance info (from database settings + API costs)
+        $creditSettings = OpenAICreditSetting::current();
+
         return Inertia::render('Admin/AI/Index', [
             'metrics' => $metrics,
-            'usageByModel' => $usageByModel,
+            'profitability' => $profitability,
+            'usageTrends' => $usageTrends,
+            'liabilityBreakdown' => $liabilityBreakdown,
+            'modelBreakdown' => $modelBreakdown,
             'billingSnapshot' => $latestSnapshot,
+            'modelPricing' => config('ai.model_pricing'),
+            'selectedDays' => $days,
+            'creditSettings' => [
+                'initial_balance' => $creditSettings->initial_balance,
+                'balance_set_at' => $creditSettings->balance_set_at?->toIso8601String(),
+                'notes' => $creditSettings->notes,
+            ],
+            'balanceInfo' => $metrics['balance_info'] ?? null,
         ]);
     }
 
@@ -50,9 +70,15 @@ class AdminAIController extends Controller
 
     public function refresh(OpenAIBillingService $billingService, AIProvisioningService $provisioningService)
     {
+        $days = request()->integer('days', 30);
+        $days = in_array($days, [7, 30, 90]) ? $days : 30;
+
         $snapshot = $billingService->fetchAndStore();
         $metrics = $provisioningService->getMetrics();
-        $usageByModel = $this->usageByModel();
+        $profitability = $provisioningService->getProfitabilityMetrics($days);
+        $usageTrends = $provisioningService->getUsageTrends($days);
+        $liabilityBreakdown = $provisioningService->getUserLiabilityBreakdown();
+        $modelBreakdown = $provisioningService->getModelBreakdown($days);
 
         if (config('ai.alerts_enabled') && in_array($metrics['status'] ?? 'safe', ['warning', 'critical'])) {
             AdminNotification::create([
@@ -73,7 +99,7 @@ class AdminAIController extends Controller
         if ($snapshot) {
             broadcast(new AIProvisioningUpdated(
                 $metrics,
-                $usageByModel,
+                $modelBreakdown,
                 [
                     'available_usd' => $snapshot->available_usd,
                     'used_usd' => $snapshot->used_usd,
@@ -87,7 +113,10 @@ class AdminAIController extends Controller
         return response()->json([
             'success' => true,
             'metrics' => $metrics,
-            'usageByModel' => $usageByModel,
+            'profitability' => $profitability,
+            'usageTrends' => $usageTrends,
+            'liabilityBreakdown' => $liabilityBreakdown,
+            'modelBreakdown' => $modelBreakdown,
             'snapshot' => $snapshot,
         ]);
     }
@@ -102,22 +131,51 @@ class AdminAIController extends Controller
         ]);
     }
 
-    private function usageByModel()
+    /**
+     * Update OpenAI credit balance settings.
+     */
+    public function updateCreditBalance(Request $request, AIProvisioningService $provisioningService)
     {
-        return AIUsageDaily::query()
-            ->where('date', '>=', now()->subDays(7))
-            ->selectRaw('model, SUM(prompt_tokens) as prompt_tokens, SUM(completion_tokens) as completion_tokens, SUM(total_tokens) as total_tokens')
-            ->groupBy('model')
-            ->orderByDesc('total_tokens')
-            ->get()
-            ->map(function ($row) {
-                return [
-                    'model' => $row->model ?? 'unknown',
-                    'input_tokens' => (int) $row->prompt_tokens,
-                    'output_tokens' => (int) $row->completion_tokens,
-                ];
-            })
-            ->values()
-            ->toArray();
+        $validated = $request->validate([
+            'initial_balance' => 'required|numeric|min:0|max:10000',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        $settings = OpenAICreditSetting::current();
+        $settings->setBalance($validated['initial_balance'], $validated['notes'] ?? null);
+
+        // Get updated metrics with the new balance
+        $metrics = $provisioningService->getMetrics();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Credit balance updated successfully.',
+            'settings' => [
+                'initial_balance' => $settings->initial_balance,
+                'balance_set_at' => $settings->balance_set_at?->toIso8601String(),
+                'notes' => $settings->notes,
+            ],
+            'balance_info' => $metrics['balance_info'],
+            'metrics' => $metrics,
+        ]);
+    }
+
+    /**
+     * Get current credit settings.
+     */
+    public function getCreditSettings(AIProvisioningService $provisioningService)
+    {
+        $settings = OpenAICreditSetting::current();
+        $balanceInfo = $provisioningService->getLiveBalance();
+
+        return response()->json([
+            'success' => true,
+            'settings' => [
+                'initial_balance' => $settings->initial_balance,
+                'balance_set_at' => $settings->balance_set_at?->toIso8601String(),
+                'notes' => $settings->notes,
+            ],
+            'balance_info' => $balanceInfo,
+        ]);
     }
 }

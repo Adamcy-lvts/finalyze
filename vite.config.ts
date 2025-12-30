@@ -20,4 +20,13 @@ export default defineConfig({
             },
         }),
     ],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['vue', '@inertiajs/vue3', 'vue-sonner', 'lucide-vue-next'],
+                },
+            },
+        },
+    },
 });

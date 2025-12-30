@@ -5,9 +5,11 @@ namespace App\Console\Commands;
 use App\Events\AIProvisioningUpdated;
 use App\Models\AdminNotification;
 use App\Models\AIUsageDaily;
+use App\Notifications\LowCreditAlertNotification;
 use App\Services\AIProvisioningService;
 use App\Services\OpenAIBillingService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Notification;
 
 class FetchOpenAIBilling extends Command
 {
@@ -37,6 +39,7 @@ class FetchOpenAIBilling extends Command
         $status = $metrics['status'] ?? 'safe';
 
         if (config('ai.alerts_enabled') && in_array($status, ['warning', 'critical'])) {
+            // Create in-app notification
             AdminNotification::create([
                 'type' => 'ai_provisioning',
                 'title' => $status === 'critical' ? 'OpenAI balance critical' : 'OpenAI balance warning',
@@ -50,6 +53,15 @@ class FetchOpenAIBilling extends Command
                 'data' => $metrics,
                 'is_read' => false,
             ]);
+
+            // Send email alert if configured
+            $alertEmail = config('ai.alert_email');
+            if ($alertEmail) {
+                Notification::route('mail', $alertEmail)
+                    ->notify(new LowCreditAlertNotification($status, $metrics));
+
+                $this->info("Alert email sent to: {$alertEmail}");
+            }
         }
 
         // Broadcast updated metrics to admins

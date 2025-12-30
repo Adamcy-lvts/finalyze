@@ -50,4 +50,13 @@ return [
         'skills_model' => env('ANTHROPIC_SKILLS_MODEL', 'claude-sonnet-4-5-20250929'),
     ],
 
+    'pptx' => [
+        'engine' => env('PPTX_ENGINE', 'pptxgenjs'),
+        'node_binary' => env('NODE_BINARY', 'node'),
+    ],
+
+    'google_analytics' => [
+        'measurement_id' => env('GA_MEASUREMENT_ID'),
+    ],
+
 ];

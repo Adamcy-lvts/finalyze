@@ -831,10 +831,6 @@ const startTour = () => {
             showOnMobile: false
         },
         {
-            element: '#manual-editor-toolbar', /* Note: ChapterEditor might not have this ID in toolbars unless I added it? Checked IDs: I didn't add manual-editor-toolbar. I added view-controls. */
-            /* Checking what formatting toolbar exists. ChapterEditor uses RichTextEditor which has its own toolbar. */
-            /* I'll skip formatting toolbar for now or assume user finds it.*/
-            /* Let's focus on main controls */
             element: '#view-controls',
             popover: {
                 title: 'View Options',

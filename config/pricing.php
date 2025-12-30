@@ -97,4 +97,15 @@ return [
         'symbol' => '₦',
         'name' => 'Nigerian Naira',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Exchange Rate (NGN to USD)
+    |--------------------------------------------------------------------------
+    |
+    | Used for profitability calculations to convert NGN revenue to USD
+    | for comparison with OpenAI costs (which are in USD).
+    |
+    */
+    'ngn_to_usd_rate' => env('NGN_TO_USD_RATE', 1500),
 ];

@@ -4,29 +4,24 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { toast } from 'vue-sonner';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
+import { debounce } from 'lodash-es';
 import AppLayout from '@/layouts/AppLayout.vue';
 import {
     Shield,
-    MessageSquare,
     Presentation,
     Zap,
     ArrowLeft,
     Play,
-    CheckCircle2,
     Target,
-    BookOpen,
     Brain,
     Users,
-    ChevronRight,
-    Search,
     Mic,
-    MoreHorizontal,
     Sparkles,
-    Trophy,
     History,
-    FileText,
     Maximize2,
-    ArrowUpDown
+    ArrowUpDown,
+    RotateCcw,
+    Download
 } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,9 +30,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 import { Progress } from '@/components/ui/progress';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import RichTextViewer from '@/components/ui/rich-text-editor/RichTextViewer.vue';
-import PresentationGuide from '@/components/defense/PresentationGuide.vue';
+import DeckViewer from '@/components/defense/DeckViewer.vue';
 import ExecutiveBriefingDeck from '@/components/defense/ExecutiveBriefingDeck.vue';
 import PredictedQuestionsDeck from '@/components/defense/PredictedQuestionsDeck.vue';
 import { useDefenseSession } from '@/composables/useDefenseSession';
@@ -101,17 +96,37 @@ interface PresentationSlide {
     visuals: string;
 }
 
+interface DefenseDeckSlide {
+    title: string;
+    bullets: string[];
+    layout?: string;
+    visuals?: string;
+    speaker_notes?: string;
+    image_url?: string;
+    image_fit?: 'cover' | 'contain';
+    image_scale?: number;
+    image_position_x?: number;
+    image_position_y?: number;
+    charts?: unknown[];
+    tables?: unknown[];
+}
+
 const presentationSlides = ref<PresentationSlide[]>([]);
 const activeSlideIndex = ref(0);
 const startSlideIndex = ref(0); // For keeping sync between minimized and maximized
 const rawPresentationGuide = ref<string | null>(null); // Fallback for old data
 const isGuideLoading = ref(false);
 const isGuideExpanded = ref(false);
-const deckStatus = ref<'idle' | 'queued' | 'outlining' | 'outlined' | 'rendering' | 'ready' | 'failed'>('idle');
+const deckView = ref<'guide' | 'slides'>('slides');
+const deckStatus = ref<'idle' | 'queued' | 'outlining' | 'extracting' | 'extracted' | 'generating' | 'outlined' | 'rendering' | 'ready' | 'failed'>('idle');
 const deckDownloadUrl = ref<string | null>(null);
 const deckError = ref<string | null>(null);
 const isDeckGenerating = ref(false);
 const deckPollInterval = ref<ReturnType<typeof setInterval> | null>(null);
+const deckId = ref<number | null>(null);
+const deckSlides = ref<DefenseDeckSlide[]>([]);
+const activeDeckSlideIndex = ref(0);
+const isDeckSaving = ref(false);
 const openingStatement = ref('');
 const openingAnalysis = ref<string | null>(null);
 const isOpeningAnalyzing = ref(false);
@@ -160,6 +175,26 @@ const notifyLowBalance = (error: unknown) => {
 
 const dismissLowBalance = () => {
     lowBalanceMessage.value = null;
+};
+
+const normalizeDeckSlides = (slides: unknown): DefenseDeckSlide[] => {
+    if (!slides) return [];
+    if (Array.isArray(slides)) return slides as DefenseDeckSlide[];
+    if (typeof slides === 'string') {
+        try {
+            return normalizeDeckSlides(JSON.parse(slides));
+        } catch {
+            return [];
+        }
+    }
+    if (typeof slides === 'object') {
+        const maybeSlides = (slides as { slides?: unknown }).slides;
+        if (maybeSlides) {
+            return normalizeDeckSlides(maybeSlides);
+        }
+        return Object.values(slides as Record<string, DefenseDeckSlide>);
+    }
+    return [];
 };
 
 const startSimulation = async () => {
@@ -392,17 +427,24 @@ const generateOpeningStatement = async () => {
     }
 };
 
-const setDeckState = (deck: { id: number; status: string; pptx_url?: string | null; error_message?: string | null } | null) => {
+const setDeckState = (deck: { id: number; status: string; slides?: DefenseDeckSlide[]; pptx_url?: string | null; error_message?: string | null } | null) => {
     if (!deck) {
         deckStatus.value = 'idle';
         deckDownloadUrl.value = null;
         deckError.value = null;
+        deckId.value = null;
+        deckSlides.value = [];
         return;
     }
 
     deckStatus.value = (deck.status as typeof deckStatus.value) || 'idle';
     deckDownloadUrl.value = deck.pptx_url ?? null;
     deckError.value = deck.error_message ?? null;
+    deckId.value = deck.id ?? null;
+    deckSlides.value = normalizeDeckSlides(deck.slides);
+    if (deckSlides.value.length && activeDeckSlideIndex.value >= deckSlides.value.length) {
+        activeDeckSlideIndex.value = 0;
+    }
 };
 
 const stopDeckPolling = () => {
@@ -425,7 +467,7 @@ const refreshDefenseDeckStatus = async () => {
         const deck = response.data.deck ?? null;
         setDeckState(deck);
 
-        if (deck?.status === 'ready' || deck?.status === 'failed' || deck?.status === 'idle') {
+        if (deck?.status === 'ready' || deck?.status === 'outlined' || deck?.status === 'failed' || deck?.status === 'idle') {
             stopDeckPolling();
         }
     } catch (error) {
@@ -452,6 +494,96 @@ const generateDefenseDeck = async (force = false) => {
     } finally {
         isDeckGenerating.value = false;
     }
+};
+
+const exportDefenseDeck = async () => {
+    if (!deckId.value) return;
+    isDeckGenerating.value = true;
+    console.log('[DefenseDeck] Export requested', {
+        projectId: props.project.id,
+        deckId: deckId.value,
+    });
+
+    try {
+        const response = await axios.post(`/api/projects/${props.project.id}/defense/deck/${deckId.value}/export`);
+        console.log('[DefenseDeck] Export response', response.data);
+        setDeckState(response.data.deck ?? null);
+        pollDeckStatus();
+    } catch (error) {
+        console.error('[DefenseDeck] Export failed', error);
+        if (notifyLowBalance(error)) return;
+        console.error('Failed to export defense deck:', error);
+    } finally {
+        isDeckGenerating.value = false;
+    }
+};
+
+const downloadPptx = async () => {
+    // Always re-render to include latest changes, then download
+    if (!deckId.value) return;
+    isDeckGenerating.value = true;
+
+    try {
+        const response = await axios.post(`/api/projects/${props.project.id}/defense/deck/${deckId.value}/export`);
+        setDeckState(response.data.deck ?? null);
+
+        // Poll until ready, then download
+        const pollAndDownload = () => {
+            stopDeckPolling();
+            deckPollInterval.value = setInterval(async () => {
+                try {
+                    const statusResponse = await axios.get(`/api/projects/${props.project.id}/defense/deck`);
+                    const deck = statusResponse.data.deck ?? null;
+                    setDeckState(deck);
+
+                    if (deck?.status === 'ready' && deck?.pptx_url) {
+                        stopDeckPolling();
+                        isDeckGenerating.value = false;
+                        // Auto-download
+                        const link = document.createElement('a');
+                        link.href = deck.pptx_url;
+                        link.click();
+                    } else if (deck?.status === 'failed') {
+                        stopDeckPolling();
+                        isDeckGenerating.value = false;
+                    }
+                } catch (error) {
+                    console.error('Poll failed', error);
+                }
+            }, 3000);
+        };
+
+        pollAndDownload();
+    } catch (error) {
+        if (notifyLowBalance(error)) return;
+        console.error('Failed to export defense deck:', error);
+        isDeckGenerating.value = false;
+    }
+};
+const persistDeckSlides = async (slides: DefenseDeckSlide[]) => {
+    if (!deckId.value) return;
+    isDeckSaving.value = true;
+
+    try {
+        const response = await axios.patch(`/api/projects/${props.project.id}/defense/deck/${deckId.value}`, {
+            slides,
+        });
+        setDeckState(response.data.deck ?? null);
+    } catch (error) {
+        if (notifyLowBalance(error)) return;
+        console.error('Failed to save defense deck slides:', error);
+    } finally {
+        isDeckSaving.value = false;
+    }
+};
+
+const debouncedPersistDeckSlides = debounce((slides: DefenseDeckSlide[]) => {
+    void persistDeckSlides(slides);
+}, 800);
+
+const handleDeckSlidesChange = (slides: DefenseDeckSlide[]) => {
+    deckSlides.value = slides;
+    debouncedPersistDeckSlides(slides);
 };
 
 const downloadDefenseDeck = () => {
@@ -533,16 +665,16 @@ const loadPreparation = async () => {
             }
 
             // Basic load for prep data (users might need to refresh to get new JSON structure)
-        if (prep.presentation_guide) {
-            processGuideData(prep.presentation_guide);
+            if (prep.presentation_guide) {
+                processGuideData(prep.presentation_guide);
+            }
+            openingStatement.value = prep.opening_statement ?? '';
+            openingAnalysis.value = prep.opening_analysis ?? null;
+            if (!prep.opening_statement) {
+                await generateOpeningStatement();
+            }
         }
-        openingStatement.value = prep.opening_statement ?? '';
-        openingAnalysis.value = prep.opening_analysis ?? null;
-        if (!prep.opening_statement) {
-            await generateOpeningStatement();
-        }
-    }
-} catch (error) {
+    } catch (error) {
         notifyLowBalance(error);
         console.error('Failed to load preparation data:', error);
     }
@@ -677,6 +809,7 @@ watch(isSimulating, (newVal) => {
 
 onBeforeUnmount(() => {
     stopDeckPolling();
+    debouncedPersistDeckSlides.cancel();
 });
 
 </script>
@@ -771,13 +904,15 @@ onBeforeUnmount(() => {
                 <div v-if="currentView === 'preparation' && !isSimulating"
                     class="grid gap-8 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-                        <!-- Left Column: Core Prep -->
+                    <!-- Left Column: Core Prep -->
                     <div class="lg:col-span-8 space-y-8 transition-all duration-500">
                         <template v-if="!isDeckSwapped">
                             <!-- AI Executive Summary -->
-                            <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <Card
+                                class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <CardHeader class="pb-2">
-                                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                    <div
+                                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
                                         <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
                                             <Sparkles class="h-5 w-5 text-indigo-500" />
                                             Executive Briefing
@@ -788,13 +923,16 @@ onBeforeUnmount(() => {
                                                 <History class="h-3.5 w-3.5" />
                                                 {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
                                             </Button>
-                                            <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-indigo-400" @click="toggleDeckSwap" title="Swap position">
+                                            <Button variant="ghost" size="icon"
+                                                class="h-8 w-8 text-zinc-500 hover:text-indigo-400"
+                                                @click="toggleDeckSwap" title="Swap position">
                                                 <ArrowUpDown class="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </div>
                                     <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
-                                        project's core value proposition, synthesized for your defense.</CardDescription>
+                                        project's core value proposition, synthesized for your defense.
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
                                     <div v-if="briefingSlides.length > 0" class="h-full">
@@ -824,9 +962,11 @@ onBeforeUnmount(() => {
                             </Card>
                             <!-- Predicted Questions -->
                             <div class="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
-                                <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
+                                <Card
+                                    class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
                                     <CardHeader class="pb-2">
-                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                        <div
+                                            class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
                                             <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
                                                 <Target class="h-5 w-5 text-rose-500" />
                                                 Predicted Defense Questions
@@ -836,11 +976,14 @@ onBeforeUnmount(() => {
                                                     predictedQuestions.length }}
                                                     TOP QUESTIONS</Badge>
                                                 <Button variant="ghost" size="sm" class="text-xs h-8"
-                                                    @click="generatePredictedQuestions" :disabled="isGeneratingQuestions">
+                                                    @click="generatePredictedQuestions"
+                                                    :disabled="isGeneratingQuestions">
                                                     <Sparkles class="h-3.5 w-3.5" />
                                                     {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
                                                 </Button>
-                                                <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-rose-400" @click="toggleDeckSwap" title="Swap position">
+                                                <Button variant="ghost" size="icon"
+                                                    class="h-8 w-8 text-zinc-500 hover:text-rose-400"
+                                                    @click="toggleDeckSwap" title="Swap position">
                                                     <ArrowUpDown class="h-4 w-4" />
                                                 </Button>
                                             </div>
@@ -859,9 +1002,11 @@ onBeforeUnmount(() => {
                         <template v-else>
                             <!-- Predicted Questions First -->
                             <div class="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
+                                <Card
+                                    class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
                                     <CardHeader class="pb-2">
-                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                        <div
+                                            class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
                                             <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
                                                 <Target class="h-5 w-5 text-rose-500" />
                                                 Predicted Defense Questions
@@ -871,11 +1016,14 @@ onBeforeUnmount(() => {
                                                     predictedQuestions.length }}
                                                     TOP QUESTIONS</Badge>
                                                 <Button variant="ghost" size="sm" class="text-xs h-8"
-                                                    @click="generatePredictedQuestions" :disabled="isGeneratingQuestions">
+                                                    @click="generatePredictedQuestions"
+                                                    :disabled="isGeneratingQuestions">
                                                     <Sparkles class="h-3.5 w-3.5" />
                                                     {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
                                                 </Button>
-                                                <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-rose-400" @click="toggleDeckSwap" title="Swap position">
+                                                <Button variant="ghost" size="icon"
+                                                    class="h-8 w-8 text-zinc-500 hover:text-rose-400"
+                                                    @click="toggleDeckSwap" title="Swap position">
                                                     <ArrowUpDown class="h-4 w-4" />
                                                 </Button>
                                             </div>
@@ -891,9 +1039,11 @@ onBeforeUnmount(() => {
                                 </Card>
                             </div>
                             <!-- Executive Briefing Second -->
-                            <Card class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+                            <Card
+                                class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
                                 <CardHeader class="pb-2">
-                                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                                    <div
+                                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
                                         <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
                                             <Sparkles class="h-5 w-5 text-indigo-500" />
                                             Executive Briefing
@@ -904,13 +1054,16 @@ onBeforeUnmount(() => {
                                                 <History class="h-3.5 w-3.5" />
                                                 {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
                                             </Button>
-                                            <Button variant="ghost" size="icon" class="h-8 w-8 text-zinc-500 hover:text-indigo-400" @click="toggleDeckSwap" title="Swap position">
+                                            <Button variant="ghost" size="icon"
+                                                class="h-8 w-8 text-zinc-500 hover:text-indigo-400"
+                                                @click="toggleDeckSwap" title="Swap position">
                                                 <ArrowUpDown class="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </div>
                                     <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
-                                        project's core value proposition, synthesized for your defense.</CardDescription>
+                                        project's core value proposition, synthesized for your defense.
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
                                     <div v-if="briefingSlides.length > 0" class="h-full">
@@ -1007,33 +1160,36 @@ onBeforeUnmount(() => {
                                 </div>
                                 <div
                                     class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <CardDescription class="text-zinc-400 text-sm leading-relaxed max-w-[280px]">
+                                    <CardDescription class="text-zinc-400 text-xs leading-relaxed max-w-[220px]">
                                         Step-by-step structure for high-impact defense slides.
                                     </CardDescription>
-                                    <div class="flex items-center gap-2 flex-wrap justify-end">
-                                        <Button v-if="presentationSlides.length || rawPresentationGuide"
-                                            variant="outline" size="sm"
-                                            class="h-7 text-xs gap-1.5 border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white"
-                                            @click="loadPresentationGuide" :disabled="isGuideLoading">
-                                            <History class="h-3 w-3" />
-                                            {{ isGuideLoading ? 'Refreshing...' : 'Regenerate' }}
-                                        </Button>
-                                        <Button variant="outline" size="sm"
-                                            class="h-7 text-xs gap-1.5 border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white"
-                                            @click="generateDefenseDeck" :disabled="isDeckGenerating">
-                                            <FileText class="h-3 w-3" />
-                                            {{ isDeckGenerating ? 'Building...' : 'Generate PPTX' }}
-                                        </Button>
-                                        <Button v-if="deckStatus === 'ready' && deckDownloadUrl" variant="secondary"
-                                            size="sm" class="h-7 text-xs gap-1.5"
-                                            @click="downloadDefenseDeck">
-                                            <FileText class="h-3 w-3" />
-                                            Download
-                                        </Button>
-                                        <Button v-if="presentationSlides.length" variant="ghost" size="icon"
-                                            class="h-7 w-7 text-zinc-400 hover:text-white"
-                                            @click="isGuideExpanded = true">
-                                            <Maximize2 class="h-4 w-4" />
+                                    <div class="flex flex-col items-end gap-1.5">
+                                        <template v-if="deckSlides.length">
+                                            <Button variant="outline" size="sm"
+                                                class="h-7 text-[10px] gap-1.5 border-white/5 bg-white/5 hover:bg-white/10 text-zinc-400"
+                                                @click="generateDefenseDeck" :disabled="isDeckGenerating">
+                                                <RotateCcw class="h-3 w-3" />
+                                                Regenerate
+                                            </Button>
+                                            <div class="flex items-center gap-1.5">
+                                                <Button variant="secondary" size="sm"
+                                                    class="h-7 text-[10px] gap-1.5 px-3 font-bold"
+                                                    @click="downloadPptx" :disabled="isDeckGenerating">
+                                                    <Download class="h-3 w-3" />
+                                                    {{ isDeckGenerating ? 'Generating...' : 'Download PPTX' }}
+                                                </Button>
+                                                <Button variant="ghost" size="icon"
+                                                    class="h-7 w-7 text-zinc-500 hover:text-white"
+                                                    @click="isGuideExpanded = true">
+                                                    <Maximize2 class="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </template>
+                                        <Button v-else variant="secondary" size="sm"
+                                            class="h-8 text-xs gap-1.5 font-bold" @click="generateDefenseDeck"
+                                            :disabled="isDeckGenerating">
+                                            <Sparkles class="h-3.5 w-3.5" />
+                                            {{ isDeckGenerating ? 'Generating...' : 'Generate Guide' }}
                                         </Button>
                                     </div>
                                 </div>
@@ -1041,35 +1197,44 @@ onBeforeUnmount(() => {
                             <CardContent class="p-4 md:p-6 h-[500px] flex flex-col">
                                 <div v-if="deckStatus !== 'idle'" class="mb-3 text-[11px] text-zinc-400">
                                     <span v-if="deckStatus === 'queued'">Deck queued.</span>
-                                    <span v-else-if="deckStatus === 'outlining'">Generating slide outline with GPT-4o...</span>
-                                    <span v-else-if="deckStatus === 'outlined'">Outline complete. Rendering PPTX...</span>
-                                    <span v-else-if="deckStatus === 'rendering'">Rendering PPTX with Claude...</span>
+                                    <span v-else-if="deckStatus === 'outlining'">Generating slides with GPT-4o...</span>
+                                    <span v-else-if="deckStatus === 'extracting'">Extracting chapter data...</span>
+                                    <span v-else-if="deckStatus === 'extracted'">Extraction complete. Preparing
+                                        slides...</span>
+                                    <span v-else-if="deckStatus === 'generating'">Generating slides with
+                                        GPT-4o...</span>
+                                    <span v-else-if="deckStatus === 'outlined'">Slides ready for review.</span>
+                                    <span v-else-if="deckStatus === 'rendering'">Rendering PPTX...</span>
                                     <span v-else-if="deckStatus === 'ready'">PPTX ready for download.</span>
-                                    <span v-else-if="deckStatus === 'failed'">Failed to generate PPTX.</span>
+                                    <span v-else-if="deckStatus === 'failed'">Failed to generate deck.</span>
                                 </div>
                                 <div v-if="deckStatus === 'failed' && deckError" class="mb-3 text-[11px] text-rose-400">
                                     {{ deckError }}
                                 </div>
-                                <PresentationGuide :slides="presentationSlides" :is-loading="isGuideLoading"
-                                    :raw-guide="rawPresentationGuide" v-model:active-index="activeSlideIndex"
-                                    layout="compact" @regenerate="loadPresentationGuide" />
+                                <DeckViewer :project="project" :slides="deckSlides"
+                                    v-model:active-index="activeDeckSlideIndex" :is-saving="isDeckSaving" compact
+                                    :show-pptx="!!deckId" :pptx-url="deckDownloadUrl" :pptx-busy="isDeckGenerating"
+                                    @update:slides="handleDeckSlidesChange" @toggle-expand="isGuideExpanded = true"
+                                    @download-pptx="downloadPptx" @export-pptx="downloadPptx" />
                             </CardContent>
                         </Card>
 
                         <!-- Expanded Presentation Guide Dialog -->
                         <Dialog v-model:open="isGuideExpanded">
                             <DialogContent
-                                class="max-w-[95vw] w-full lg:max-w-screen-2xl h-[85vh] flex flex-col p-6 bg-zinc-950 border-white/10">
+                                class="max-w-[98vw] w-full lg:max-w-[98vw] h-[95vh] flex flex-col p-6 bg-zinc-950 border-white/10 shadow-2xl overflow-hidden rounded-3xl">
                                 <div class="flex items-center justify-between mb-2 shrink-0">
                                     <h3 class="text-xl font-display font-bold text-white flex items-center gap-2">
                                         <Presentation class="h-5 w-5 text-indigo-400" />
-                                        Presentation Guide
+                                        Defense Deck
                                     </h3>
                                 </div>
                                 <div class="flex-1 min-h-0 overflow-hidden">
-                                    <PresentationGuide :slides="presentationSlides" :is-loading="isGuideLoading"
-                                        :raw-guide="rawPresentationGuide" v-model:active-index="activeSlideIndex"
-                                        @regenerate="loadPresentationGuide" />
+                                    <DeckViewer :project="project" :slides="deckSlides"
+                                        v-model:active-index="activeDeckSlideIndex" :is-saving="isDeckSaving"
+                                        :show-pptx="!!deckId" :pptx-url="deckDownloadUrl" :pptx-busy="isDeckGenerating"
+                                        @update:slides="handleDeckSlidesChange" @download-pptx="downloadDefenseDeck"
+                                        @export-pptx="exportDefenseDeck" />
                                 </div>
                             </DialogContent>
                         </Dialog>
@@ -1095,7 +1260,8 @@ onBeforeUnmount(() => {
                                         class="flex items-center justify-between gap-3 rounded-2xl border border-border/50 p-3">
                                         <div class="space-y-1">
                                             <div class="text-xs font-semibold text-foreground">
-                                                {{ formatSessionDate(sessionItem.started_at || sessionItem.created_at) }}
+                                                {{ formatSessionDate(sessionItem.started_at || sessionItem.created_at)
+                                                }}
                                             </div>
                                             <div class="text-[11px] text-muted-foreground">
                                                 {{ sessionItem.status }} • {{ sessionItem.questions_asked }} Qs
@@ -1167,7 +1333,8 @@ onBeforeUnmount(() => {
                                     <span class="text-foreground font-semibold">Shown as diagnostics</span>
                                 </div>
                                 <div class="text-xs text-muted-foreground/80">
-                                    10 questions x 10 marks each = 100 total marks. Readiness uses clarity/depth averages.
+                                    10 questions x 10 marks each = 100 total marks. Readiness uses clarity/depth
+                                    averages.
                                 </div>
                             </CardContent>
                         </Card>
@@ -1210,7 +1377,8 @@ onBeforeUnmount(() => {
                                 <History class="h-3.5 w-3.5 text-zinc-400" />
                                 <span class="text-sm font-mono text-zinc-300">14:22</span>
                             </div>
-                            <div class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
+                            <div
+                                class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
                                 <Target class="h-3.5 w-3.5 text-zinc-400" />
                                 <span class="text-xs text-zinc-300">Questions {{ questionLimitLabel }}</span>
                             </div>
@@ -1242,7 +1410,8 @@ onBeforeUnmount(() => {
                                                     <span
                                                         class="font-bold text-zinc-200 text-sm md:text-base truncate">{{
                                                             persona.name }}</span>
-                                                    <Badge v-if="isFetchingQuestion && (!thinkingPersonaId || thinkingPersonaId === persona.id)"
+                                                    <Badge
+                                                        v-if="isFetchingQuestion && (!thinkingPersonaId || thinkingPersonaId === persona.id)"
                                                         class="bg-amber-500/10 text-amber-500 border-none text-[8px] h-4 shrink-0">
                                                         THINKING</Badge>
                                                 </div>
@@ -1283,10 +1452,11 @@ onBeforeUnmount(() => {
                                     <div class="space-y-2">
                                         <div class="flex items-center justify-between text-[10px] md:text-xs">
                                             <span class="text-zinc-400">Confidence</span>
-                                            <span class="text-zinc-200">{{ performanceMetrics?.confidence_score ?? 0 }}%</span>
+                                            <span class="text-zinc-200">{{ performanceMetrics?.confidence_score ?? 0
+                                            }}%</span>
                                         </div>
-                                        <Progress :model-value="performanceMetrics?.confidence_score ?? 0" class="h-1 bg-zinc-800"
-                                            indicator-class="bg-rose-500" />
+                                        <Progress :model-value="performanceMetrics?.confidence_score ?? 0"
+                                            class="h-1 bg-zinc-800" indicator-class="bg-rose-500" />
                                     </div>
                                 </div>
                             </Card>

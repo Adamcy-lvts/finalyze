@@ -1,15 +1,15 @@
 <?php
 
+use App\Http\Controllers\AIAutocompleteController;
 use App\Http\Controllers\Api\CitationController;
 use App\Http\Controllers\Api\PaperCollectionController;
 use App\Http\Controllers\ChapterAnalysisController;
 use App\Http\Controllers\DataCollectionController;
 use App\Http\Controllers\DefenseController;
 use App\Http\Controllers\DefenseDeckController;
+use App\Http\Controllers\ManualEditorController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectGuidanceController;
-use App\Http\Controllers\AIAutocompleteController;
-use App\Http\Controllers\ManualEditorController;
 use Illuminate\Support\Facades\Route;
 
 // Simple ping endpoint for connection quality check (no auth required)
@@ -180,8 +180,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
             ->name('api.defense.presentation-guide');
         Route::post('{project_id}/defense/deck', [DefenseDeckController::class, 'create'])
             ->name('api.defense.deck.create');
+        Route::post('{project_id}/defense/deck/sync', [DefenseDeckController::class, 'sync'])
+            ->name('api.defense.deck.sync');
         Route::get('{project_id}/defense/deck', [DefenseDeckController::class, 'latest'])
             ->name('api.defense.deck.latest');
+        Route::patch('{project_id}/defense/deck/{deck}', [DefenseDeckController::class, 'update'])
+            ->name('api.defense.deck.update');
+        Route::post('{project_id}/defense/deck/{deck}/export', [DefenseDeckController::class, 'export'])
+            ->name('api.defense.deck.export');
         Route::get('{project_id}/defense/deck/{deck}/download', [DefenseDeckController::class, 'download'])
             ->name('api.defense.deck.download');
         Route::get('{project_id}/defense/estimate-cost', [DefenseController::class, 'estimateCost'])

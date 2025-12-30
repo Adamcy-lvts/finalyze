@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\DefenseSlideDeck;
 use App\Services\AIContentGenerator;
+use App\Services\Defense\DefenseContentExtractor;
 use App\Services\Defense\DefenseCreditService;
 use App\Services\Defense\DefenseSlideDeckService;
 use Illuminate\Bus\Queueable;
@@ -17,11 +18,18 @@ class GenerateDefenseDeckOutline implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The number of seconds the job can run before timing out.
+     * Two-pass generation requires multiple AI calls per chapter.
+     */
+    public int $timeout = 300;
+
     public function __construct(private int $deckId) {}
 
     public function handle(
         AIContentGenerator $aiGenerator,
         DefenseSlideDeckService $deckService,
+        DefenseContentExtractor $contentExtractor,
         DefenseCreditService $creditService
     ): void {
         $deck = DefenseSlideDeck::with('project', 'user')->find($this->deckId);
@@ -34,24 +42,54 @@ class GenerateDefenseDeckOutline implements ShouldQueue
                 'status' => 'failed',
                 'error_message' => 'Insufficient credit balance for defense deck generation.',
             ]);
+
             return;
         }
 
         $deck->update([
-            'status' => 'outlining',
+            'status' => 'extracting',
+            'extraction_status' => 'extracting',
         ]);
 
         try {
-            $prompt = $deckService->buildSlidePrompt($deck->project);
+            $prompt = null;
+            $extractedData = null;
+            $usedExtraction = false;
+
+            try {
+                $extractedData = $contentExtractor->extractFromProject($deck->project);
+                $deck->update([
+                    'extraction_data' => $extractedData,
+                    'extraction_status' => 'extracted',
+                ]);
+                $prompt = $deckService->buildSlidePromptFromExtraction($deck->project, $extractedData);
+                $usedExtraction = true;
+            } catch (\Throwable $e) {
+                Log::warning('Defense deck extraction failed, falling back to legacy prompt', [
+                    'deck_id' => $deck->id,
+                    'project_id' => $deck->project_id,
+                    'error' => $e->getMessage(),
+                ]);
+                $deck->update([
+                    'extraction_status' => 'failed',
+                ]);
+                $prompt = $deckService->buildSlidePrompt($deck->project);
+            }
+
+            $deck->update([
+                'status' => 'generating',
+            ]);
+
             $raw = $aiGenerator->generate($prompt, [
                 'feature' => 'defense_slide_outline',
                 'model' => 'gpt-4o',
-                'temperature' => 0.25,
+                'temperature' => 0.4,
+                'max_tokens' => 16000,
                 'user_id' => $deck->user_id,
             ]);
 
             $payload = $deckService->extractSlidesPayload($raw);
-            $slides = $payload ? $deckService->normalizeSlides($payload, 20) : [];
+            $slides = $payload ? $deckService->normalizeSlides($payload, 30) : [];
 
             if (empty($slides)) {
                 throw new \RuntimeException('Failed to parse slide outline JSON.');
@@ -62,7 +100,9 @@ class GenerateDefenseDeckOutline implements ShouldQueue
                 'status' => 'outlined',
                 'ai_models' => array_merge($deck->ai_models ?? [], [
                     'outline' => 'gpt-4o',
-                ]),
+                ], $usedExtraction ? [
+                    'extraction' => 'gpt-4o-mini',
+                ] : []),
             ]);
 
             $creditService->deductForTextExchange(
@@ -72,7 +112,6 @@ class GenerateDefenseDeckOutline implements ShouldQueue
                 'Defense slide outline'
             );
 
-            RenderDefenseDeckPptx::dispatch($deck->id);
         } catch (\Throwable $e) {
             Log::error('Defense deck outline generation failed', [
                 'deck_id' => $deck->id,
@@ -82,6 +121,7 @@ class GenerateDefenseDeckOutline implements ShouldQueue
             $deck->update([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
+                'extraction_status' => $deck->extraction_status === 'extracting' ? 'failed' : $deck->extraction_status,
             ]);
         }
     }

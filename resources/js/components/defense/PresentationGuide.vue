@@ -75,24 +75,41 @@ watch(isSwiping, (newVal, oldVal) => {
             </div>
         </div>
 
-        <div class="min-h-0 flex-1"
-            :class="layout === 'split' ? 'grid grid-cols-1 lg:grid-cols-12 gap-6' : 'flex flex-col'">
-            <!-- Left: Navigation (Slide List) - ONLY IN SPLIT MODE -->
+        <div class="min-h-0 flex-1 flex" :class="layout === 'split' ? 'flex-row gap-6' : 'flex-col'">
+            <!-- Left: Sidebar Navigation (Visual Thumbnails) -->
             <div v-if="layout === 'split'"
-                class="hidden lg:block lg:col-span-4 space-y-1 overflow-y-auto pr-2 custom-scrollbar h-full max-h-[400px] lg:max-h-none">
-                <button v-for="(slide, i) in slides" :key="i" @click="updateIndex(i)"
-                    class="w-full flex items-center justify-between p-3 rounded-lg text-left transition-all group border border-transparent shrink-0"
-                    :class="activeIndex === i ? 'bg-indigo-500/10 border-indigo-500/20 text-white' : 'hover:bg-muted/50 text-muted-foreground'">
-                    <div class="flex items-center gap-3 overflow-hidden">
-                        <span class="text-xs font-mono font-bold w-4 shrink-0"
+                class="hidden lg:flex w-44 lg:w-52 border border-white/5 bg-zinc-900/20 flex-col overflow-hidden rounded-2xl shrink-0">
+                <div class="p-4 border-b border-white/5 shrink-0 flex items-center justify-between">
+                    <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Guide Deck</span>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
+                    <button v-for="(slide, i) in slides" :key="i" @click="updateIndex(i)"
+                        class="w-full text-left transition-all group outline-none"
+                        :class="[activeIndex === i ? 'scale-[1.02]' : 'hover:scale-[1.01]']">
+
+                        <div class="flex items-center gap-2 mb-1 px-1 font-mono text-[9px] font-bold"
                             :class="activeIndex === i ? 'text-indigo-400' : 'text-zinc-600'">
                             {{ (i + 1).toString().padStart(2, '0') }}
-                        </span>
-                        <span class="text-xs font-medium truncate">{{ slide.title }}</span>
-                    </div>
-                    <ChevronRight class="h-3 w-3 transition-transform shrink-0"
-                        :class="activeIndex === i ? 'text-indigo-400' : 'opacity-0'" />
-                </button>
+                            <span class="text-[9px] font-medium text-zinc-500 truncate group-hover:text-zinc-300">
+                                {{ slide.title }}
+                            </span>
+                        </div>
+
+                        <div class="aspect-video w-full rounded-lg border overflow-hidden transition-all bg-zinc-950 shadow-sm"
+                            :class="[activeIndex === i ? 'border-indigo-500 ring-1 ring-indigo-500/20' : 'border-white/10 group-hover:border-white/20']">
+                            <!-- Minimal Visual Representation -->
+                            <div
+                                class="h-full w-full p-2 flex flex-col gap-1 overflow-hidden pointer-events-none opacity-40">
+                                <div class="h-1 w-3/4 bg-zinc-700 rounded-full"></div>
+                                <div class="mt-1 space-y-0.5">
+                                    <div class="h-0.5 w-full bg-zinc-800 rounded-full"></div>
+                                    <div class="h-0.5 w-full bg-zinc-800 rounded-full"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+                </div>
             </div>
 
             <!-- Compact Navigation Header - ONLY IN COMPACT MODE -->
@@ -119,7 +136,7 @@ watch(isSwiping, (newVal, oldVal) => {
             </div>
 
             <!-- Right: Active Slide Content -->
-            <div class="flex flex-col h-full min-h-0" :class="layout === 'split' ? 'lg:col-span-8' : 'w-full'">
+            <div class="flex flex-col h-full min-h-0 flex-1">
                 <div
                     class="relative bg-zinc-900/50 border border-white/5 rounded-2xl p-5 flex flex-col h-full overflow-hidden">
                     <!-- Slide Header (SPLIT MODE ONLY) -->
@@ -129,8 +146,10 @@ watch(isSwiping, (newVal, oldVal) => {
                             <span
                                 class="text-[10px] uppercase tracking-wider text-indigo-400 font-bold mb-1 block">Slide
                                 {{ activeIndex + 1 }}</span>
-                            <h4 class="text-base md:text-lg font-bold font-display text-white line-clamp-2 md:line-clamp-none">{{
-                                slides[activeIndex].title }}</h4>
+                            <h4
+                                class="text-base md:text-lg font-bold font-display text-white line-clamp-2 md:line-clamp-none">
+                                {{
+                                    slides[activeIndex].title }}</h4>
                         </div>
                         <Badge variant="outline"
                             class="bg-zinc-950/50 border-zinc-800 text-zinc-400 text-[10px] gap-1.5 font-mono shrink-0 ml-2">

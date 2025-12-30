@@ -341,7 +341,7 @@ const convertTextToHTML = (text: string): string => {
     const mermaidHtml = `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
     const placeholderIndex = mermaidPlaceholders.length
     mermaidPlaceholders.push(mermaidHtml)
-    return `<!--MERMAID_PLACEHOLDER_${placeholderIndex}-->`
+    return `__MERMAID_PLACEHOLDER_${placeholderIndex}__`
   })
 
   // Also handle malformed mermaid blocks (two backticks)
@@ -355,7 +355,7 @@ const convertTextToHTML = (text: string): string => {
     const mermaidHtml = `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
     const placeholderIndex = mermaidPlaceholders.length
     mermaidPlaceholders.push(mermaidHtml)
-    return `<!--MERMAID_PLACEHOLDER_${placeholderIndex}-->`
+    return `__MERMAID_PLACEHOLDER_${placeholderIndex}__`
   })
 
   // Handle inline mermaid text wrapped in single backticks (less common)
@@ -369,7 +369,7 @@ const convertTextToHTML = (text: string): string => {
     const mermaidHtml = `<div data-mermaid data-mermaid-code="${escapedCode}" data-view-mode="diagram"><pre><code class="language-mermaid">${trimmedCode}</code></pre></div>`
     const placeholderIndex = mermaidPlaceholders.length
     mermaidPlaceholders.push(mermaidHtml)
-    return `<!--MERMAID_PLACEHOLDER_${placeholderIndex}-->`
+    return `__MERMAID_PLACEHOLDER_${placeholderIndex}__`
   })
 
   // Process code blocks (but not mermaid which is already handled)
@@ -406,8 +406,8 @@ const convertTextToHTML = (text: string): string => {
     // If it's already an HTML block element (div, table, pre, etc.), return as is
     // This preserves Mermaid diagrams, tables, and code blocks
     if (trimmed.startsWith('<div') || trimmed.startsWith('<table') || trimmed.startsWith('<pre') ||
-        trimmed.startsWith('<ul') || trimmed.startsWith('<ol') || trimmed.startsWith('<blockquote') ||
-        trimmed.startsWith('<!--MERMAID_PLACEHOLDER_')) {
+      trimmed.startsWith('<ul') || trimmed.startsWith('<ol') || trimmed.startsWith('<blockquote') ||
+      trimmed.startsWith('__MERMAID_PLACEHOLDER_')) {
       return trimmed
     }
 
@@ -437,7 +437,7 @@ const convertTextToHTML = (text: string): string => {
 
   // Restore Mermaid placeholders with actual HTML
   mermaidPlaceholders.forEach((mermaidHtml, index) => {
-    result = result.replace(`<!--MERMAID_PLACEHOLDER_${index}-->`, mermaidHtml)
+    result = result.replace(`__MERMAID_PLACEHOLDER_${index}__`, mermaidHtml)
   })
 
   return result
@@ -1285,221 +1285,220 @@ defineExpose({
 })
 </script>
 
-	<template>
-	  <div class="relative flex flex-col w-full h-full group bg-background">
-	    <!-- Floating Toolbar - Responsive & Scrollable -->
-			    <Teleport v-if="showToolbar && !readonly" :to="teleportTo" :disabled="teleportDisabled">
-		      <div :class="toolbarWrapperClass">
+<template>
+  <div class="relative flex flex-col w-full h-full group bg-background">
+    <!-- Floating Toolbar - Responsive & Scrollable -->
+    <Teleport v-if="showToolbar && !readonly" :to="teleportTo" :disabled="teleportDisabled">
+      <div :class="toolbarWrapperClass">
 
-	        <!-- History Controls -->
-	        <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
-	          <Button variant="ghost" size="icon"
-	            class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-	            @click="undo" :disabled="!editor?.can().undo()">
-	            <Undo class="h-4 w-4" />
-	          </Button>
-	          <Button variant="ghost" size="icon"
-	            class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
-	            @click="redo" :disabled="!editor?.can().redo()">
-	            <Redo class="h-4 w-4" />
-	          </Button>
-	        </div>
+        <!-- History Controls -->
+        <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+            @click="undo" :disabled="!editor?.can().undo()">
+            <Undo class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg hover:bg-muted/80 text-zinc-700 dark:text-zinc-300 hover:text-foreground"
+            @click="redo" :disabled="!editor?.can().redo()">
+            <Redo class="h-4 w-4" />
+          </Button>
+        </div>
 
-      <!-- Text Style -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
-        <!-- Heading Levels -->
-        <!-- Heading Levels -->
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm"
-              class="h-8 gap-1 px-2 font-medium text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80">
-              <span class="text-xs text-zinc-700 dark:text-zinc-100">
-                {{ editor?.isActive('heading', { level: 1 }) ? 'H1' :
-                  editor?.isActive('heading', { level: 2 }) ? 'H2' :
-                    editor?.isActive('heading', { level: 3 }) ? 'H3' : 'Paragraph' }}
-              </span>
-              <Type class="h-3.5 w-3.5 opacity-70" />
+        <!-- Text Style -->
+        <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
+          <!-- Heading Levels -->
+          <!-- Heading Levels -->
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm"
+                class="h-8 gap-1 px-2 font-medium text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80">
+                <span class="text-xs text-zinc-700 dark:text-zinc-100">
+                  {{ editor?.isActive('heading', { level: 1 }) ? 'H1' :
+                    editor?.isActive('heading', { level: 2 }) ? 'H2' :
+                      editor?.isActive('heading', { level: 3 }) ? 'H3' : 'Paragraph' }}
+                </span>
+                <Type class="h-3.5 w-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem @click="setParagraph" :class="{ 'bg-accent': editor?.isActive('paragraph') }">
+                <span class="text-sm">Paragraph</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem @click="toggleHeading1"
+                :class="{ 'bg-accent': editor?.isActive('heading', { level: 1 }) }">
+                <span class="text-lg font-bold">Heading 1</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="toggleHeading2"
+                :class="{ 'bg-accent': editor?.isActive('heading', { level: 2 }) }">
+                <span class="text-base font-bold">Heading 2</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="toggleHeading3"
+                :class="{ 'bg-accent': editor?.isActive('heading', { level: 3 }) }">
+                <span class="text-sm font-bold">Heading 3</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <!-- Font Size Controls -->
+          <div class="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon"
+              class="h-8 w-6 rounded-l-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+              @click="decreaseFontSize">
+              <Minus class="h-3 w-3" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem @click="setParagraph" :class="{ 'bg-accent': editor?.isActive('paragraph') }">
-              <span class="text-sm">Paragraph</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem @click="toggleHeading1"
-              :class="{ 'bg-accent': editor?.isActive('heading', { level: 1 }) }">
-              <span class="text-lg font-bold">Heading 1</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="toggleHeading2"
-              :class="{ 'bg-accent': editor?.isActive('heading', { level: 2 }) }">
-              <span class="text-base font-bold">Heading 2</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem @click="toggleHeading3"
-              :class="{ 'bg-accent': editor?.isActive('heading', { level: 3 }) }">
-              <span class="text-sm font-bold">Heading 3</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <!-- Font Size Controls -->
-        <div class="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon"
-            class="h-8 w-6 rounded-l-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-            @click="decreaseFontSize">
-            <Minus class="h-3 w-3" />
-          </Button>
-          <div
-            class="flex h-8 w-9 items-center justify-center border-y border-border/20 bg-muted/20 text-xs font-medium text-foreground">
-            {{ fontSize.replace('pt', '') }}
+            <div
+              class="flex h-8 w-9 items-center justify-center border-y border-border/20 bg-muted/20 text-xs font-medium text-foreground">
+              {{ fontSize.replace('pt', '') }}
+            </div>
+            <Button variant="ghost" size="icon"
+              class="h-8 w-6 rounded-r-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+              @click="increaseFontSize">
+              <Plus class="h-3 w-3" />
+            </Button>
           </div>
+        </div>
+
+        <!-- Basic Formatting -->
+        <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
           <Button variant="ghost" size="icon"
-            class="h-8 w-6 rounded-r-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-            @click="increaseFontSize">
-            <Plus class="h-3 w-3" />
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('bold') }" @click="toggleBold">
+            <Bold class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('italic') }" @click="toggleItalic">
+            <Italic class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('underline') }" @click="toggleUnderline">
+            <UnderlineIcon class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('strike') }" @click="toggleStrike">
+            <Strikethrough class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('code') }" @click="toggleCode">
+            <Code class="h-4 w-4" />
           </Button>
         </div>
-      </div>
 
-      <!-- Basic Formatting -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('bold') }" @click="toggleBold">
-          <Bold class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('italic') }" @click="toggleItalic">
-          <Italic class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('underline') }" @click="toggleUnderline">
-          <UnderlineIcon class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('strike') }" @click="toggleStrike">
-          <Strikethrough class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('code') }" @click="toggleCode">
-          <Code class="h-4 w-4" />
-        </Button>
-      </div>
-
-      <!-- Lists & Alignment -->
-      <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('bulletList') }" @click="toggleBulletList">
-          <List class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('orderedList') }" @click="toggleOrderedList">
-          <ListOrdered class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('blockquote') }" @click="toggleBlockquote">
-          <Quote class="h-4 w-4" />
-        </Button>
-
-        <!-- Text Align Group -->
-        <div class="flex items-center gap-0.5 border-l border-border/20 ml-0.5 pl-0.5">
+        <!-- Lists & Alignment -->
+        <div class="flex items-center gap-0.5 border-r border-border/40 pr-1.5 mr-1.5 flex-shrink-0">
           <Button variant="ghost" size="icon"
             class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'left' }) }"
-            @click="setTextAlign('left')">
-            <AlignLeft class="h-4 w-4" />
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('bulletList') }" @click="toggleBulletList">
+            <List class="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon"
             class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'center' }) }"
-            @click="setTextAlign('center')">
-            <AlignCenter class="h-4 w-4" />
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('orderedList') }" @click="toggleOrderedList">
+            <ListOrdered class="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon"
             class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'right' }) }"
-            @click="setTextAlign('right')">
-            <AlignRight class="h-4 w-4" />
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('blockquote') }" @click="toggleBlockquote">
+            <Quote class="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon"
-            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-            :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'justify' }) }"
-            @click="setTextAlign('justify')">
-            <AlignJustify class="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
 
-      <!-- Insert & Extras -->
-      <div class="flex items-center gap-0.5 flex-shrink-0">
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          title="Insert Mermaid diagram (Ctrl/Cmd+Alt+M)"
-          @click="insertMermaidDiagram">
-          <span class="text-[11px] font-semibold">M</span>
-        </Button>
-
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('link') }" @click="openLinkDialog">
-          <LinkIcon class="h-4 w-4" />
-        </Button>
-
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          title="Insert image"
-          @click="openImageDialog">
-          <ImageIcon class="h-4 w-4" />
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          <!-- Text Align Group -->
+          <div class="flex items-center gap-0.5 border-l border-border/20 ml-0.5 pl-0.5">
             <Button variant="ghost" size="icon"
               class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-              :class="{ 'bg-primary/10 text-primary': editor?.isActive('table') }">
-              <TableIcon class="h-4 w-4" />
+              :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'left' }) }"
+              @click="setTextAlign('left')">
+              <AlignLeft class="h-4 w-4" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem @click="insertTable">Insert Table (3x3)</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem @click="addColumnBefore" :disabled="!isInTable()">Add Column Before</DropdownMenuItem>
-            <DropdownMenuItem @click="addColumnAfter" :disabled="!isInTable()">Add Column After</DropdownMenuItem>
-            <DropdownMenuItem @click="deleteColumn" :disabled="!isInTable()">Delete Column</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem @click="addRowBefore" :disabled="!isInTable()">Add Row Before</DropdownMenuItem>
-            <DropdownMenuItem @click="addRowAfter" :disabled="!isInTable()">Add Row After</DropdownMenuItem>
-            <DropdownMenuItem @click="deleteRow" :disabled="!isInTable()">Delete Row</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem @click="deleteTable" :disabled="!isInTable()" class="text-destructive">Delete Table
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <Button variant="ghost" size="icon"
+              class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+              :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'center' }) }"
+              @click="setTextAlign('center')">
+              <AlignCenter class="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon"
+              class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+              :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'right' }) }"
+              @click="setTextAlign('right')">
+              <AlignRight class="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon"
+              class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+              :class="{ 'bg-primary/10 text-primary': editor?.isActive({ textAlign: 'justify' }) }"
+              @click="setTextAlign('justify')">
+              <AlignJustify class="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.isActive('highlight') }" @click="toggleHighlight">
-          <Highlighter class="h-4 w-4" />
-        </Button>
+        <!-- Insert & Extras -->
+        <div class="flex items-center gap-0.5 flex-shrink-0">
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            title="Insert Mermaid diagram (Ctrl/Cmd+Alt+M)" @click="insertMermaidDiagram">
+            <span class="text-[11px] font-semibold">M</span>
+          </Button>
 
-        <Button variant="ghost" size="icon"
-          class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
-          :class="{ 'bg-primary/10 text-primary': editor?.getAttributes('textStyle').color }" @click="openColorDialog">
-          <Palette class="h-4 w-4" />
-        </Button>
-		      </div>
-	      </div>
-		    </Teleport>
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('link') }" @click="openLinkDialog">
+            <LinkIcon class="h-4 w-4" />
+          </Button>
 
-	    <!-- Editor Content -->
-	    <div class="relative flex-1 min-h-0">
-	      <EditorContent :editor="editor" class="h-full w-full outline-none" />
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            title="Insert image" @click="openImageDialog">
+            <ImageIcon class="h-4 w-4" />
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon"
+                class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+                :class="{ 'bg-primary/10 text-primary': editor?.isActive('table') }">
+                <TableIcon class="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem @click="insertTable">Insert Table (3x3)</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem @click="addColumnBefore" :disabled="!isInTable()">Add Column Before</DropdownMenuItem>
+              <DropdownMenuItem @click="addColumnAfter" :disabled="!isInTable()">Add Column After</DropdownMenuItem>
+              <DropdownMenuItem @click="deleteColumn" :disabled="!isInTable()">Delete Column</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem @click="addRowBefore" :disabled="!isInTable()">Add Row Before</DropdownMenuItem>
+              <DropdownMenuItem @click="addRowAfter" :disabled="!isInTable()">Add Row After</DropdownMenuItem>
+              <DropdownMenuItem @click="deleteRow" :disabled="!isInTable()">Delete Row</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem @click="deleteTable" :disabled="!isInTable()" class="text-destructive">Delete Table
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.isActive('highlight') }" @click="toggleHighlight">
+            <Highlighter class="h-4 w-4" />
+          </Button>
+
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            :class="{ 'bg-primary/10 text-primary': editor?.getAttributes('textStyle').color }"
+            @click="openColorDialog">
+            <Palette class="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Editor Content -->
+    <div class="relative flex-1 min-h-0">
+      <EditorContent :editor="editor" class="h-full w-full outline-none" />
 
       <!-- AI Generation Overlay -->
       <div v-if="isGenerating"
@@ -1584,19 +1583,8 @@ defineExpose({
           <div class="grid gap-2">
             <Label>Upload from computer</Label>
             <div class="flex items-center gap-2">
-              <input
-                ref="imageFileInput"
-                type="file"
-                accept="image/*"
-                class="hidden"
-                @change="handleImageFileSelect"
-              />
-              <Button
-                variant="outline"
-                class="w-full"
-                :disabled="imageUploading"
-                @click="imageFileInput?.click()"
-              >
+              <input ref="imageFileInput" type="file" accept="image/*" class="hidden" @change="handleImageFileSelect" />
+              <Button variant="outline" class="w-full" :disabled="imageUploading" @click="imageFileInput?.click()">
                 <Upload class="w-4 h-4 mr-2" />
                 {{ imageUploading ? 'Uploading...' : 'Choose File' }}
               </Button>
@@ -1618,12 +1606,8 @@ defineExpose({
           <div class="grid gap-2">
             <Label for="image-url">Image URL</Label>
             <div class="flex gap-2">
-              <Input
-                id="image-url"
-                v-model="imageUrl"
-                placeholder="https://example.com/image.jpg"
-                @keydown.enter="insertImageFromUrl"
-              />
+              <Input id="image-url" v-model="imageUrl" placeholder="https://example.com/image.jpg"
+                @keydown.enter="insertImageFromUrl" />
               <Button @click="insertImageFromUrl" :disabled="!imageUrl">
                 Insert
               </Button>
