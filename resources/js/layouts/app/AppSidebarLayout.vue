@@ -4,6 +4,9 @@ import AppShell from '@/components/AppShell.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
 import { Toaster } from '@/components/ui/sonner';
+import OfflineIndicator from '@/components/OfflineIndicator.vue';
+import PWAUpdatePrompt from '@/components/PWAUpdatePrompt.vue';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt.vue';
 import type { BreadcrumbItemType } from '@/types';
 
 interface Props {
@@ -20,6 +23,7 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
+    <OfflineIndicator />
     <AppShell variant="sidebar" :class="$props.class">
         <AppSidebar />
         <AppContent variant="sidebar" class="overflow-x-hidden">
@@ -28,10 +32,8 @@ withDefaults(defineProps<Props>(), {
         </AppContent>
     </AppShell>
     <!-- Sonner Toast Container -->
-    <Toaster
-        position="top-right"
-        :expand="false"
-        :rich-colors="true"
-        :close-button="true"
-    />
+    <Toaster position="top-right" :expand="false" :rich-colors="true" :close-button="true" />
+    <!-- PWA Prompts -->
+    <PWAUpdatePrompt />
+    <PWAInstallPrompt />
 </template>
