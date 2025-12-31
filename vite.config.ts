@@ -21,6 +21,10 @@ export default defineConfig({
             },
         }),
         VitePWA({
+            outDir: 'public',
+            filename: 'sw.js',
+            manifestFilename: 'manifest.webmanifest',
+            scope: '/',
             registerType: 'prompt',
             injectRegister: 'auto',
             includeAssets: [

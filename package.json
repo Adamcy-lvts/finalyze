@@ -3,11 +3,13 @@
     "type": "module",
     "scripts": {
         "build": "NODE_OPTIONS=--max-old-space-size=4096 vite build",
-        "build:ssr": "NODE_OPTIONS=--max-old-space-size=4096 vite build && NODE_OPTIONS=--max-old-space-size=4096 vite build --ssr",
+        "build:ssr": "NODE_OPTIONS=--max-old-space-size=4096 vite build && NODE_OPTIONS=--max-old-space-size=4096 vite build --ssr && node scripts/copy-pwa-manifest.mjs",
+        "copy:pwa-manifest": "node scripts/copy-pwa-manifest.mjs",
         "dev": "vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
-        "lint": "eslint . --fix"
+        "lint": "eslint . --fix",
+        "postbuild": "node scripts/copy-pwa-manifest.mjs"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",

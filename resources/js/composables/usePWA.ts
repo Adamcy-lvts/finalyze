@@ -1,28 +1,56 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRegisterSW } from 'virtual:pwa-register/vue';
 
 interface BeforeInstallPromptEvent extends Event {
     prompt(): Promise<void>;
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+const needRefresh = ref(false);
+const offlineReady = ref(false);
+let swRegistration: ServiceWorkerRegistration | null = null;
+let swRegistrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
+let updateListenersAttached = false;
+
+const registerServiceWorker = async () => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+        return null;
+    }
+
+    if (swRegistration) {
+        return swRegistration;
+    }
+
+    if (!swRegistrationPromise) {
+        swRegistrationPromise = navigator.serviceWorker
+            .register('/sw.js', { scope: '/' })
+            .then((registration) => {
+                swRegistration = registration;
+                return registration;
+            })
+            .catch((error) => {
+                console.error('SW registration error:', error);
+                return null;
+            });
+    }
+
+    return swRegistrationPromise;
+};
+
 export function usePWA() {
-    const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({
-        onRegistered(registration) {
-            if (registration) {
-                // Check for updates every hour
-                setInterval(
-                    () => {
-                        registration.update();
-                    },
-                    60 * 60 * 1000,
-                );
-            }
-        },
-        onRegisterError(error) {
-            console.error('SW registration error:', error);
-        },
-    });
+    const updateServiceWorker = async (reloadPage = true) => {
+        if (!swRegistration) {
+            return;
+        }
+
+        const waitingWorker = swRegistration.waiting;
+        if (waitingWorker) {
+            waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+        }
+
+        if (reloadPage) {
+            window.location.reload();
+        }
+    };
 
     // Install prompt handling
     const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
@@ -108,6 +136,38 @@ export function usePWA() {
         }
 
         if (typeof window !== 'undefined') {
+            registerServiceWorker().then((registration) => {
+                if (!registration || updateListenersAttached) {
+                    return;
+                }
+
+                updateListenersAttached = true;
+
+                // Check for updates every hour
+                setInterval(() => {
+                    registration.update();
+                }, 60 * 60 * 1000);
+
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    if (!newWorker) {
+                        return;
+                    }
+
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state !== 'installed') {
+                            return;
+                        }
+
+                        if (navigator.serviceWorker.controller) {
+                            needRefresh.value = true;
+                        } else {
+                            offlineReady.value = true;
+                        }
+                    });
+                });
+            });
+
             // Check for prompt that was captured before Vue mounted
             checkCapturedPrompt();
 

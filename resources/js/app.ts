@@ -19,6 +19,7 @@ declare global {
         Echo: Echo;
         GA_MEASUREMENT_ID?: string;
         gtag?: (command: string, ...args: any[]) => void;
+        deferredPWAPrompt?: BeforeInstallPromptEvent | null;
     }
 }
 
@@ -63,6 +64,18 @@ axios.defaults.headers.common['Accept'] = 'application/json';
 axios.defaults.withCredentials = true;
 axios.defaults.xsrfCookieName = 'XSRF-TOKEN';
 axios.defaults.xsrfHeaderName = 'X-XSRF-TOKEN';
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeinstallprompt', (event: Event) => {
+        event.preventDefault();
+        window.deferredPWAPrompt = event as BeforeInstallPromptEvent;
+        window.dispatchEvent(new Event('pwa-install-available'));
+    });
+
+    window.addEventListener('appinstalled', () => {
+        window.deferredPWAPrompt = null;
+    });
+}
 
 function updateCsrfToken(token?: string) {
     if (!token) return;

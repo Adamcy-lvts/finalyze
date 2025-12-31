@@ -6,6 +6,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 import AppLogo from '@/components/AppLogo.vue';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1908,6 +1909,7 @@ onUnmounted(() => {
                 </div>
             </footer>
         </main>
+        <PWAInstallPrompt />
     </div>
 </template>
 

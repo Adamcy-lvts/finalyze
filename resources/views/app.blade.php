@@ -59,7 +59,7 @@
         <meta name="application-name" content="Finalyze">
 
         {{-- PWA Manifest --}}
-        <link rel="manifest" href="/build/manifest.webmanifest">
+        <link rel="manifest" href="/manifest.webmanifest">
 
         {{-- Favicons and Icons --}}
         <link rel="icon" href="/favicon.ico" sizes="any">
@@ -102,18 +102,7 @@
                 window.dispatchEvent(new CustomEvent('pwa-install-available'));
             });
 
-            // Register service worker
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                    navigator.serviceWorker.register('/build/sw.js', { scope: '/' })
-                        .then(function(registration) {
-                            console.log('SW registered: ', registration);
-                        })
-                        .catch(function(error) {
-                            console.log('SW registration failed: ', error);
-                        });
-                });
-            }
+            // Service worker registration is handled by the Vite PWA runtime
         </script>
     </body>
 </html>
