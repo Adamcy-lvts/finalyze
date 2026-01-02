@@ -1894,8 +1894,8 @@ watch(globalIsDark, () => {
 
 <style>
 .driver-popover-welcome {
-    max-width: 500px !important;
-    width: 500px !important;
+    max-width: min(500px, calc(100vw - 32px)) !important;
+    width: min(500px, calc(100vw - 32px)) !important;
 }
 
 .driver-popover-welcome .driver-popover-title {
@@ -1905,6 +1905,35 @@ watch(globalIsDark, () => {
 .driver-popover-welcome .driver-popover-description {
     font-size: 1rem !important;
     line-height: 1.6 !important;
+}
+
+/* Mobile responsive adjustments for driver.js tour */
+@media (max-width: 640px) {
+    .driver-popover-welcome {
+        max-width: calc(100vw - 24px) !important;
+        width: calc(100vw - 24px) !important;
+    }
+
+    .driver-popover-welcome .driver-popover-title {
+        font-size: 1.125rem !important;
+    }
+
+    .driver-popover-welcome .driver-popover-description {
+        font-size: 0.875rem !important;
+    }
+
+    /* Ensure all driver.js popovers are responsive on mobile */
+    .driver-popover {
+        max-width: calc(100vw - 24px) !important;
+    }
+
+    .driver-popover-title {
+        font-size: 1rem !important;
+    }
+
+    .driver-popover-description {
+        font-size: 0.875rem !important;
+    }
 }
 </style>
 
