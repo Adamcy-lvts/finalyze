@@ -1451,7 +1451,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-BYNBw7Tq.js",
+    "file": "assets/app-4YsLhLB3.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -2614,7 +2614,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-24ILSOB5.js",
+    "file": "assets/BulkGeneration-nVgPtMP-.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
@@ -2969,7 +2969,7 @@
     ]
   },
   "resources/js/pages/projects/ManualEditor.vue": {
-    "file": "assets/ManualEditor-DgfgJJB7.js",
+    "file": "assets/ManualEditor-BKOHD5po.js",
     "name": "ManualEditor",
     "src": "resources/js/pages/projects/ManualEditor.vue",
     "isDynamicEntry": true,
@@ -3027,7 +3027,7 @@
       "_TooltipTrigger.vue_vue_type_script_setup_true_lang-DqMmi_0R.js"
     ],
     "css": [
-      "assets/ManualEditor-DQ8DbGaq.css"
+      "assets/ManualEditor-BvXAZkrT.css"
     ]
   },
   "resources/js/pages/projects/ManualEditorDebug.vue": {
