@@ -274,7 +274,7 @@ watch(currentStep, (newStep) => {
             const currentDegree = normalize(stepData.degree);
             const currentAbbr = normalize(stepData.degreeAbbreviation);
             if (
-                ! lastAppliedDegreeSuggestion.value &&
+                !lastAppliedDegreeSuggestion.value &&
                 currentDegree === degreeDefaults.degree &&
                 currentAbbr === degreeDefaults.degreeAbbreviation
             ) {
@@ -303,9 +303,9 @@ watch(currentStep, (newStep) => {
 
             const mergedStepData = shouldApplySuggestion
                 ? {
-                      ...stepData,
-                      ...degreeDefaults,
-                  }
+                    ...stepData,
+                    ...degreeDefaults,
+                }
                 : stepData;
 
             if (JSON.stringify(mergedStepData) !== JSON.stringify(stepData)) {
@@ -764,529 +764,539 @@ function onSubmit(values: any) {
 <template>
     <AppLayout title="Create New Project">
         <div class="min-h-screen bg-gradient-to-b from-background via-background/95 to-muted/20">
-            <div class="mx-auto max-w-4xl space-y-6 p-6 pb-20 lg:p-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div
+                class="mx-auto max-w-4xl space-y-6 p-6 pb-20 lg:p-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div>
-                    <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">Create Your Project</h1>
+                    <h1
+                        class="text-3xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                        Create Your Project</h1>
                     <p class="text-muted-foreground mt-2 text-lg">Set up your final year project in just a few steps</p>
                     <div v-if="currentStep > 1"
                         class="mt-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4 text-sm text-blue-600 backdrop-blur-sm flex items-start gap-3 shadow-sm">
                         <span class="text-lg">💡</span>
                         <div>
                             <strong>Tip:</strong> You can click on any previous step to go back and make changes. Your
-                        progress is automatically saved!
+                            progress is automatically saved!
                         </div>
                     </div>
                 </div>
 
-            <Card>
-                <CardContent class="pt-6">
-                    <Form :key="formKey" v-slot="{ meta, values, validate }" as="" keep-values
-                        :validation-schema="toTypedSchema(currentSchema)" :initial-values="initialFormValues">
-                        <!-- Auto-save values when they change -->
-                        <template v-if="!isInitializing">{{ autoSaveFormValues(values) }}</template>
-                        <Stepper v-model="currentStep" class="w-full">
-                            <form @submit="
-                                (e) => {
-                                    e.preventDefault();
-                                    validate();
+                <Card>
+                    <CardContent class="pt-6">
+                        <Form :key="formKey" v-slot="{ meta, values, validate }" as="" keep-values
+                            :validation-schema="toTypedSchema(currentSchema)" :initial-values="initialFormValues">
+                            <!-- Auto-save values when they change -->
+                            <template v-if="!isInitializing">{{ autoSaveFormValues(values) }}</template>
+                            <Stepper v-model="currentStep" class="w-full">
+                                <form @submit="
+                                    (e) => {
+                                        e.preventDefault();
+                                        validate();
 
-                                    if (currentStep === steps.length && meta.valid) {
-                                        onSubmit(values);
+                                        if (currentStep === steps.length && meta.valid) {
+                                            onSubmit(values);
+                                        }
                                     }
-                                }
-                            " class="w-full">
-                                <!-- Stepper Header with Fixed Line Positioning -->
-                                <div class="flex w-full flex-col items-start justify-start gap-4 md:flex-row md:gap-0">
-                                    <!-- Stepper Items -->
-                                    <template v-for="(step, index) in steps" :key="step.step">
-                                        <StepperItem v-slot="{ state }"
-                                            class="relative flex flex-shrink-0 flex-row items-center gap-4 md:flex-col md:gap-0"
-                                            :step="step.step">
-                                            <StepperTrigger as-child>
-                                                <Button
-                                                    :variant="state === 'completed' || state === 'active' ? 'default' : 'outline'"
-                                                    size="icon" class="relative z-10 shrink-0 rounded-full" :class="[
-                                                        state === 'active' && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
-                                                        !isStepAccessible(step.step, currentStep, meta.valid) && 'cursor-not-allowed opacity-50',
-                                                    ]"
-                                                    :disabled="!isStepAccessible(step.step, currentStep, meta.valid)"
-                                                    @click="goToStep(step.step, values)" type="button">
-                                                    <Check v-if="state === 'completed'" class="size-5" />
-                                                    <component :is="step.icon" v-else class="size-5" />
-                                                </Button>
-                                            </StepperTrigger>
+                                " class="w-full">
+                                    <!-- Stepper Header with Fixed Line Positioning -->
+                                    <div
+                                        class="flex w-full flex-col items-start justify-start gap-4 md:flex-row md:gap-0">
+                                        <!-- Stepper Items -->
+                                        <template v-for="(step, index) in steps" :key="step.step">
+                                            <StepperItem v-slot="{ state }"
+                                                class="relative flex flex-shrink-0 flex-row items-center gap-4 md:flex-col md:gap-0"
+                                                :step="step.step">
+                                                <StepperTrigger as-child>
+                                                    <Button
+                                                        :variant="state === 'completed' || state === 'active' ? 'default' : 'outline'"
+                                                        size="icon" class="relative z-10 shrink-0 rounded-full" :class="[
+                                                            state === 'active' && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
+                                                            !isStepAccessible(step.step, currentStep, meta.valid) && 'cursor-not-allowed opacity-50',
+                                                        ]" :disabled="!isStepAccessible(step.step, currentStep, meta.valid)"
+                                                        @click="goToStep(step.step, values)" type="button">
+                                                        <Check v-if="state === 'completed'" class="size-5" />
+                                                        <component :is="step.icon" v-else class="size-5" />
+                                                    </Button>
+                                                </StepperTrigger>
 
-                                            <div
-                                                class="flex flex-col items-start text-left md:mt-5 md:items-center md:text-center">
-                                                <StepperTitle :class="[
-                                                    state === 'active' && 'text-primary',
-                                                    isStepAccessible(step.step, currentStep, meta.valid) &&
-                                                    step.step !== currentStep &&
-                                                    'cursor-pointer text-blue-600 hover:text-blue-800',
-                                                ]" class="text-sm font-semibold transition lg:text-base"
-                                                    @click="isStepAccessible(step.step, currentStep, meta.valid) ? goToStep(step.step, values) : null">
-                                                    {{ step.title }}
-                                                </StepperTitle>
-                                                <StepperDescription :class="[
-                                                    state === 'active' && 'text-primary',
-                                                    isStepAccessible(step.step, currentStep, meta.valid) &&
-                                                    step.step !== currentStep &&
-                                                    'text-blue-500',
-                                                ]" class="text-xs text-muted-foreground transition md:text-sm">
-                                                    {{ step.description }}
-                                                    <span
-                                                        v-if="isStepAccessible(step.step, currentStep, meta.valid) && step.step < currentStep"
-                                                        class="mt-1 block text-xs text-blue-600">
-                                                        (click to edit)
-                                                    </span>
-                                                </StepperDescription>
-                                            </div>
-                                        </StepperItem>
+                                                <div
+                                                    class="flex flex-col items-start text-left md:mt-5 md:items-center md:text-center">
+                                                    <StepperTitle :class="[
+                                                        state === 'active' && 'text-primary',
+                                                        isStepAccessible(step.step, currentStep, meta.valid) &&
+                                                        step.step !== currentStep &&
+                                                        'cursor-pointer text-blue-600 hover:text-blue-800',
+                                                    ]" class="text-sm font-semibold transition lg:text-base"
+                                                        @click="isStepAccessible(step.step, currentStep, meta.valid) ? goToStep(step.step, values) : null">
+                                                        {{ step.title }}
+                                                    </StepperTitle>
+                                                    <StepperDescription :class="[
+                                                        state === 'active' && 'text-primary',
+                                                        isStepAccessible(step.step, currentStep, meta.valid) &&
+                                                        step.step !== currentStep &&
+                                                        'text-blue-500',
+                                                    ]" class="text-xs text-muted-foreground transition md:text-sm">
+                                                        {{ step.description }}
+                                                        <span
+                                                            v-if="isStepAccessible(step.step, currentStep, meta.valid) && step.step < currentStep"
+                                                            class="mt-1 block text-xs text-blue-600">
+                                                            (click to edit)
+                                                        </span>
+                                                    </StepperDescription>
+                                                </div>
+                                            </StepperItem>
 
-                                        <!-- Connector line between steps (Desktop only) -->
-                                        <div v-if="index < steps.length - 1" :class="[
-                                            'mt-5 hidden h-0.5 w-full max-w-[200px] transition-all duration-300 md:block',
-                                            currentStep > step.step ? 'bg-primary' : 'bg-muted',
-                                        ]" />
-                                    </template>
-                                </div>
+                                            <!-- Connector line between steps (Desktop only) -->
+                                            <div v-if="index < steps.length - 1" :class="[
+                                                'mt-5 hidden h-0.5 w-full max-w-[200px] transition-all duration-300 md:block',
+                                                currentStep > step.step ? 'bg-primary' : 'bg-muted',
+                                            ]" />
+                                        </template>
+                                    </div>
 
-                                <!-- Form Content -->
-                                <div class="mt-8 space-y-6">
-                                    <!-- Step 1: Academic Level & Project Type -->
-                                    <div v-if="currentStep === 1"
-                                        class="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                        <FormField v-slot="{ componentField }" name="projectType">
-                                            <FormItem>
-                                                <FormLabel>What is your academic level?</FormLabel>
-                                                <FormControl>
-                                                    <RadioGroup :model-value="componentField.modelValue"
-                                                        @update:model-value="
-                                                            (value: string) => {
-                                                                componentField['onUpdate:modelValue']?.(value);
-                                                                selectedProjectType = value;
-                                                            }
-                                                        ">
-                                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                                            <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
-                                                                <RadioGroupItem value="undergraduate" />
-                                                                <div class="space-y-1">
-                                                                    <p class="text-sm font-medium">Undergraduate</p>
-                                                                    <p class="text-xs text-muted-foreground">BSc/BTech
-                                                                        final year project</p>
-                                                                </div>
-                                                            </label>
-                                                            <label
-                                                                class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
-                                                                <RadioGroupItem value="postgraduate" />
-                                                                <div class="space-y-1">
-                                                                    <p class="text-sm font-medium">Postgraduate</p>
-                                                                    <p class="text-xs text-muted-foreground">MSc/PhD
-                                                                        thesis</p>
-                                                                </div>
-                                                            </label>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
-
-                                        <!-- Project Category -->
-                                        <FormField v-slot="{ componentField }" name="projectCategoryId">
-                                            <FormItem>
-                                                <FormLabel>What type of project are you creating?</FormLabel>
-                                                <FormControl>
-                                                    <RadioGroup :model-value="componentField.modelValue?.toString()"
-                                                        @update:model-value="
-                                                            (value: string) => componentField['onUpdate:modelValue']?.(parseInt(value))
-                                                        ">
-                                                        <div class="space-y-3">
-                                                            <template
-                                                                v-for="category in getAvailableCategories(selectedProjectType)"
-                                                                :key="category.id">
+                                    <!-- Form Content -->
+                                    <div class="mt-8 space-y-6">
+                                        <!-- Step 1: Academic Level & Project Type -->
+                                        <div v-if="currentStep === 1"
+                                            class="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                                            <FormField v-slot="{ componentField }" name="projectType">
+                                                <FormItem>
+                                                    <FormLabel>What is your academic level?</FormLabel>
+                                                    <FormControl>
+                                                        <RadioGroup :model-value="componentField.modelValue"
+                                                            @update:model-value="
+                                                                (value: string) => {
+                                                                    componentField['onUpdate:modelValue']?.(value);
+                                                                    selectedProjectType = value;
+                                                                }
+                                                            ">
+                                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                                                 <label
-                                                                    class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 transition-all duration-200 hover:border-primary hover:bg-accent/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
-                                                                    <RadioGroupItem :value="category.id.toString()"
-                                                                        class="mt-1" />
-                                                                    <div class="flex-1 space-y-2">
-                                                                        <div>
-                                                                            <p class="font-medium">{{ category.name }}
-                                                                            </p>
-                                                                            <p class="text-sm text-muted-foreground">{{
-                                                                                category.description }}</p>
-                                                                        </div>
-                                                                        <div
-                                                                            class="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                                                                            <div class="flex items-center gap-1">
-                                                                                <BookOpen class="h-3 w-3" />
-                                                                                {{ category.default_chapter_count }}
-                                                                                chapters
-                                                                            </div>
-                                                                            <div class="flex items-center gap-1">
-                                                                                <FileText class="h-3 w-3" />
-                                                                                ~{{ (category.target_word_count /
-                                                                                    1000).toFixed(0) }}k words
-                                                                            </div>
-                                                                            <div class="flex items-center gap-1">
-                                                                                <GraduationCap class="h-3 w-3" />
-                                                                                {{ category.target_duration }}
-                                                                            </div>
-                                                                        </div>
+                                                                    class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
+                                                                    <RadioGroupItem value="undergraduate" />
+                                                                    <div class="space-y-1">
+                                                                        <p class="text-sm font-medium">Undergraduate</p>
+                                                                        <p class="text-xs text-muted-foreground">
+                                                                            BSc/BTech
+                                                                            final year project</p>
                                                                     </div>
                                                                 </label>
-                                                            </template>
-                                                            <div v-if="!selectedProjectType"
-                                                                class="py-8 text-center text-muted-foreground">
-                                                                Please select an academic level first
+                                                                <label
+                                                                    class="flex cursor-pointer items-center space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
+                                                                    <RadioGroupItem value="postgraduate" />
+                                                                    <div class="space-y-1">
+                                                                        <p class="text-sm font-medium">Postgraduate</p>
+                                                                        <p class="text-xs text-muted-foreground">MSc/PhD
+                                                                            thesis</p>
+                                                                    </div>
+                                                                </label>
                                                             </div>
-                                                            <div v-else-if="getAvailableCategories(selectedProjectType).length === 0"
-                                                                class="py-8 text-center text-muted-foreground">
-                                                                No project categories available for this academic level
-                                                            </div>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
-                                    </div>
+                                                        </RadioGroup>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
 
-                                    <!-- Step 2: University Details -->
-                                    <div v-if="currentStep === 2"
-                                        class="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
-                                        <FormField v-slot="{ componentField }" name="universityId">
-                                            <FormItem class="flex flex-col">
-                                                <FormLabel>University</FormLabel>
-                                                <Popover v-model:open="universityPopoverOpen">
-                                                    <PopoverTrigger as-child>
-                                                        <FormControl>
-                                                            <Button variant="outline" role="combobox" :class="cn(
-                                                                'w-full justify-between',
-                                                                !componentField.modelValue && 'text-muted-foreground',
-                                                            )
-                                                                ">
-                                                                {{
-                                                                    componentField.modelValue
-                                                                        ? universities.find(
-                                                                            (university) => university.id ===
-                                                                                componentField.modelValue,
-                                                                        )?.name
-                                                                        : 'Select your university...'
-                                                                }}
-                                                                <ChevronsUpDown
-                                                                    class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                            </Button>
-                                                        </FormControl>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent class="w-full p-0" align="start">
-                                                        <Command>
-                                                            <CommandInput placeholder="Search university..." />
-                                                            <CommandEmpty>No university found.</CommandEmpty>
-                                                            <CommandList>
-                                                                <CommandGroup>
-                                                                    <CommandItem v-for="university in universities"
-                                                                        :key="university.id"
-                                                                        :value="university.name" @select="
-                                                                            () => {
-                                                                                componentField['onUpdate:modelValue']?.(university.id);
-                                                                                universityPopoverOpen = false;
-                                                                            }
+                                            <!-- Project Category -->
+                                            <FormField v-slot="{ componentField }" name="projectCategoryId">
+                                                <FormItem>
+                                                    <FormLabel>What type of project are you creating?</FormLabel>
+                                                    <FormControl>
+                                                        <RadioGroup :model-value="componentField.modelValue?.toString()"
+                                                            @update:model-value="
+                                                                (value: string) => componentField['onUpdate:modelValue']?.(parseInt(value))
+                                                            ">
+                                                            <div class="space-y-3">
+                                                                <template
+                                                                    v-for="category in getAvailableCategories(selectedProjectType)"
+                                                                    :key="category.id">
+                                                                    <label
+                                                                        class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 transition-all duration-200 hover:border-primary hover:bg-accent/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
+                                                                        <RadioGroupItem :value="category.id.toString()"
+                                                                            class="mt-1" />
+                                                                        <div class="flex-1 space-y-2">
+                                                                            <div>
+                                                                                <p class="font-medium">{{ category.name
+                                                                                    }}
+                                                                                </p>
+                                                                                <p
+                                                                                    class="text-sm text-muted-foreground">
+                                                                                    {{
+                                                                                        category.description }}</p>
+                                                                            </div>
+                                                                            <div
+                                                                                class="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                                                                                <div class="flex items-center gap-1">
+                                                                                    <BookOpen class="h-3 w-3" />
+                                                                                    {{ category.default_chapter_count }}
+                                                                                    chapters
+                                                                                </div>
+                                                                                <div class="flex items-center gap-1">
+                                                                                    <FileText class="h-3 w-3" />
+                                                                                    ~{{ (category.target_word_count /
+                                                                                        1000).toFixed(0) }}k words
+                                                                                </div>
+                                                                                <div class="flex items-center gap-1">
+                                                                                    <GraduationCap class="h-3 w-3" />
+                                                                                    {{ category.target_duration }}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </label>
+                                                                </template>
+                                                                <div v-if="!selectedProjectType"
+                                                                    class="py-8 text-center text-muted-foreground">
+                                                                    Please select an academic level first
+                                                                </div>
+                                                                <div v-else-if="getAvailableCategories(selectedProjectType).length === 0"
+                                                                    class="py-8 text-center text-muted-foreground">
+                                                                    No project categories available for this academic
+                                                                    level
+                                                                </div>
+                                                            </div>
+                                                        </RadioGroup>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+                                        </div>
+
+                                        <!-- Step 2: University Details -->
+                                        <div v-if="currentStep === 2"
+                                            class="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+                                            <FormField v-slot="{ componentField }" name="universityId">
+                                                <FormItem class="flex flex-col">
+                                                    <FormLabel>University</FormLabel>
+                                                    <Popover v-model:open="universityPopoverOpen">
+                                                        <PopoverTrigger as-child>
+                                                            <FormControl>
+                                                                <Button variant="outline" role="combobox" :class="cn(
+                                                                    'w-full justify-between',
+                                                                    !componentField.modelValue && 'text-muted-foreground',
+                                                                )
+                                                                    ">
+                                                                    {{
+                                                                        componentField.modelValue
+                                                                            ? universities.find(
+                                                                                (university) => university.id ===
+                                                                                    componentField.modelValue,
+                                                                            )?.name
+                                                                            : 'Select your university...'
+                                                                    }}
+                                                                    <ChevronsUpDown
+                                                                        class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                </Button>
+                                                            </FormControl>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent class="w-full p-0" align="start">
+                                                            <Command>
+                                                                <CommandInput placeholder="Search university..." />
+                                                                <CommandEmpty>No university found.</CommandEmpty>
+                                                                <CommandList>
+                                                                    <CommandGroup>
+                                                                        <CommandItem v-for="university in universities"
+                                                                            :key="university.id"
+                                                                            :value="university.name" @select="
+                                                                                () => {
+                                                                                    componentField['onUpdate:modelValue']?.(university.id);
+                                                                                    universityPopoverOpen = false;
+                                                                                }
+                                                                            ">
+                                                                            {{ university.name }}
+                                                                            <Check :class="cn(
+                                                                                'ml-auto h-4 w-4',
+                                                                                university.id === componentField.modelValue
+                                                                                    ? 'opacity-100'
+                                                                                    : 'opacity-0',
+                                                                            )
+                                                                                " />
+                                                                        </CommandItem>
+                                                                    </CommandGroup>
+                                                                </CommandList>
+                                                            </Command>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+
+                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <FormField v-slot="{ componentField }" name="facultyId">
+                                                    <FormItem class="flex flex-col">
+                                                        <FormLabel>Faculty</FormLabel>
+                                                        <Popover v-model:open="facultyPopoverOpen">
+                                                            <PopoverTrigger as-child>
+                                                                <FormControl>
+                                                                    <Button variant="outline" role="combobox" :class="cn(
+                                                                        'w-full justify-between',
+                                                                        !componentField.modelValue && 'text-muted-foreground',
+                                                                    )
                                                                         ">
-                                                                        {{ university.name }}
-                                                                        <Check :class="cn(
-                                                                            'ml-auto h-4 w-4',
-                                                                            university.id === componentField.modelValue
-                                                                                ? 'opacity-100'
-                                                                                : 'opacity-0',
-                                                                        )
-                                                                            " />
-                                                                    </CommandItem>
-                                                                </CommandGroup>
-                                                            </CommandList>
-                                                        </Command>
-                                                    </PopoverContent>
-                                                </Popover>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
+                                                                        {{
+                                                                            componentField.modelValue
+                                                                                ? 'Faculty of ' + faculties.find((faculty) =>
+                                                                                    faculty.id ===
+                                                                                    componentField.modelValue)
+                                                                                    ?.name
+                                                                                : 'Select faculty...'
+                                                                        }}
+                                                                        <ChevronsUpDown
+                                                                            class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                    </Button>
+                                                                </FormControl>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent class="w-[300px] p-0">
+                                                                <Command>
+                                                                    <CommandInput placeholder="Search faculty..." />
+                                                                    <CommandEmpty>No faculty found.</CommandEmpty>
+                                                                    <CommandList>
+                                                                        <CommandGroup>
+                                                                            <CommandItem v-for="faculty in faculties"
+                                                                                :key="faculty.id" :value="faculty.id"
+                                                                                @select="
+                                                                                    () => {
+                                                                                        componentField['onUpdate:modelValue']?.(faculty.id);
+                                                                                        selectedFacultyId = faculty.id;
+                                                                                        facultyPopoverOpen = false;
+                                                                                    }
+                                                                                ">
+                                                                                <Check :class="cn(
+                                                                                    'mr-2 h-4 w-4',
+                                                                                    componentField.modelValue === faculty.id
+                                                                                        ? 'opacity-100'
+                                                                                        : 'opacity-0',
+                                                                                )
+                                                                                    " />
+                                                                                Faculty of {{ faculty.name }}
+                                                                            </CommandItem>
+                                                                        </CommandGroup>
+                                                                    </CommandList>
+                                                                </Command>
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
 
-                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            <FormField v-slot="{ componentField }" name="facultyId">
-                                                <FormItem class="flex flex-col">
-                                                    <FormLabel>Faculty</FormLabel>
-                                                    <Popover v-model:open="facultyPopoverOpen">
-                                                        <PopoverTrigger as-child>
-                                                            <FormControl>
-                                                                <Button variant="outline" role="combobox" :class="cn(
-                                                                    'w-full justify-between',
-                                                                    !componentField.modelValue && 'text-muted-foreground',
-                                                                )
-                                                                    ">
-                                                                    {{
-                                                                        componentField.modelValue
-                                                                            ? 'Faculty of ' + faculties.find((faculty) => faculty.id ===
-                                                                                componentField.modelValue)
-                                                                                ?.name
-                                                                            : 'Select faculty...'
-                                                                    }}
-                                                                    <ChevronsUpDown
-                                                                        class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                                </Button>
-                                                            </FormControl>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent class="w-[300px] p-0">
-                                                            <Command>
-                                                                <CommandInput placeholder="Search faculty..." />
-                                                                <CommandEmpty>No faculty found.</CommandEmpty>
-                                                                <CommandList>
-                                                                    <CommandGroup>
-                                                                        <CommandItem v-for="faculty in faculties"
-                                                                            :key="faculty.id" :value="faculty.id"
-                                                                            @select="
-                                                                                () => {
-                                                                                    componentField['onUpdate:modelValue']?.(faculty.id);
-                                                                                    selectedFacultyId = faculty.id;
-                                                                                    facultyPopoverOpen = false;
-                                                                                }
-                                                                            ">
-                                                                            <Check :class="cn(
-                                                                                'mr-2 h-4 w-4',
-                                                                                componentField.modelValue === faculty.id
-                                                                                    ? 'opacity-100'
-                                                                                    : 'opacity-0',
-                                                                            )
-                                                                                " />
-                                                                            Faculty of {{ faculty.name }}
-                                                                        </CommandItem>
-                                                                    </CommandGroup>
-                                                                </CommandList>
-                                                            </Command>
-                                                        </PopoverContent>
-                                                    </Popover>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            </FormField>
+                                                <FormField v-slot="{ componentField }" name="departmentId">
+                                                    <FormItem class="flex flex-col">
+                                                        <FormLabel>Department</FormLabel>
+                                                        <Popover v-model:open="departmentPopoverOpen">
+                                                            <PopoverTrigger as-child>
+                                                                <FormControl>
+                                                                    <Button variant="outline" role="combobox" :class="cn(
+                                                                        'w-full justify-between',
+                                                                        !componentField.modelValue && 'text-muted-foreground',
+                                                                    )
+                                                                        ">
+                                                                        {{
+                                                                            componentField.modelValue
+                                                                                ? departments.find((dept) => dept.id ===
+                                                                                    componentField.modelValue)
+                                                                                    ?.name
+                                                                                : 'Select department...'
+                                                                        }}
+                                                                        <ChevronsUpDown
+                                                                            class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                    </Button>
+                                                                </FormControl>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent class="w-[350px] p-0">
+                                                                <Command>
+                                                                    <CommandInput placeholder="Search department..." />
+                                                                    <CommandEmpty>No department found.</CommandEmpty>
+                                                                    <CommandList>
+                                                                        <CommandGroup>
+                                                                            <CommandItem v-for="dept in departments"
+                                                                                :key="dept.id" :value="dept.id" @select="
+                                                                                    () => {
+                                                                                        componentField['onUpdate:modelValue']?.(dept.id);
+                                                                                        departmentPopoverOpen = false;
+                                                                                    }
+                                                                                ">
+                                                                                <Check :class="cn(
+                                                                                    'mr-2 h-4 w-4',
+                                                                                    componentField.modelValue === dept.id
+                                                                                        ? 'opacity-100'
+                                                                                        : 'opacity-0',
+                                                                                )
+                                                                                    " />
+                                                                                {{ dept.name }}
+                                                                            </CommandItem>
+                                                                        </CommandGroup>
+                                                                    </CommandList>
+                                                                </Command>
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+                                            </div>
 
-                                            <FormField v-slot="{ componentField }" name="departmentId">
-                                                <FormItem class="flex flex-col">
-                                                    <FormLabel>Department</FormLabel>
-                                                    <Popover v-model:open="departmentPopoverOpen">
-                                                        <PopoverTrigger as-child>
-                                                            <FormControl>
-                                                                <Button variant="outline" role="combobox" :class="cn(
-                                                                    'w-full justify-between',
-                                                                    !componentField.modelValue && 'text-muted-foreground',
-                                                                )
-                                                                    ">
-                                                                    {{
-                                                                        componentField.modelValue
-                                                                            ? departments.find((dept) => dept.id ===
-                                                                                componentField.modelValue)
-                                                                                ?.name
-                                                                            : 'Select department...'
-                                                                    }}
-                                                                    <ChevronsUpDown
-                                                                        class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                                </Button>
-                                                            </FormControl>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent class="w-[350px] p-0">
-                                                            <Command>
-                                                                <CommandInput placeholder="Search department..." />
-                                                                <CommandEmpty>No department found.</CommandEmpty>
-                                                                <CommandList>
-                                                                    <CommandGroup>
-                                                                        <CommandItem v-for="dept in departments"
-                                                                            :key="dept.id" :value="dept.id"
-                                                                            @select="
-                                                                                () => {
-                                                                                    componentField['onUpdate:modelValue']?.(dept.id);
-                                                                                    departmentPopoverOpen = false;
-                                                                                }
-                                                                            ">
-                                                                            <Check :class="cn(
-                                                                                'mr-2 h-4 w-4',
-                                                                                componentField.modelValue === dept.id
-                                                                                    ? 'opacity-100'
-                                                                                    : 'opacity-0',
-                                                                            )
-                                                                                " />
-                                                                            {{ dept.name }}
-                                                                        </CommandItem>
-                                                                    </CommandGroup>
-                                                                </CommandList>
-                                                            </Command>
-                                                        </PopoverContent>
-                                                    </Popover>
+                                            <FormField v-slot="{ componentField }" name="course">
+                                                <FormItem>
+                                                    <FormLabel>Course of Study</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="text" placeholder="e.g., Computer Science"
+                                                            v-bind="componentField" />
+                                                    </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             </FormField>
                                         </div>
 
-                                        <FormField v-slot="{ componentField }" name="course">
-                                            <FormItem>
-                                                <FormLabel>Course of Study</FormLabel>
-                                                <FormControl>
-                                                    <Input type="text" placeholder="e.g., Computer Science"
-                                                        v-bind="componentField" />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
+                                        <!-- Step 3: Research & Working Details -->
+                                        <div v-if="currentStep === 3"
+                                            class="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                                            <FormField v-slot="{ componentField }" name="fieldOfStudy">
+                                                <FormItem>
+                                                    <FormLabel>Field/Area of Research (Optional)</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="text"
+                                                            placeholder="e.g., Artificial Intelligence, Web Development (leave blank if unsure)"
+                                                            v-bind="componentField" />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Your specific area of focus for this project. Leave blank if you
+                                                        need AI guidance in
+                                                        choosing a
+                                                        research area.
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+
+                                            <FormField v-slot="{ componentField }" name="supervisorName">
+                                                <FormItem>
+                                                    <FormLabel>Supervisor Name (Optional)</FormLabel>
+                                                    <FormControl>
+                                                        <Input type="text" placeholder="e.g., Dr. John Doe"
+                                                            v-bind="componentField" />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+
+                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <FormField v-slot="{ componentField }" name="matricNumber">
+                                                    <FormItem>
+                                                        <FormLabel>Matric Number (Optional)</FormLabel>
+                                                        <FormControl>
+                                                            <Input type="text" placeholder="e.g., 2019/1234"
+                                                                v-bind="componentField" />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+
+                                                <FormField v-slot="{ componentField }" name="academicSession">
+                                                    <FormItem>
+                                                        <FormLabel>Academic Session</FormLabel>
+                                                        <FormControl>
+                                                            <Input type="text" placeholder="e.g., 2024/2025"
+                                                                v-bind="componentField" />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+                                            </div>
+
+                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <FormField v-slot="{ componentField }" name="degree">
+                                                    <FormItem>
+                                                        <FormLabel>Degree</FormLabel>
+                                                        <FormControl>
+                                                            <Input type="text" placeholder="e.g., Bachelor of Science"
+                                                                v-bind="componentField" />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+
+                                                <FormField v-slot="{ componentField }" name="degreeAbbreviation">
+                                                    <FormItem>
+                                                        <FormLabel>Degree Abbreviation</FormLabel>
+                                                        <FormControl>
+                                                            <Input type="text" placeholder="e.g., B.Sc., M.Sc."
+                                                                v-bind="componentField" />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+                                            </div>
+
+                                            <!-- Working Mode -->
+                                            <FormField v-slot="{ componentField }" name="workingMode">
+                                                <FormItem>
+                                                    <FormLabel>How would you like to work on your project?</FormLabel>
+                                                    <FormControl>
+                                                        <RadioGroup v-bind="componentField">
+                                                            <div class="space-y-3">
+                                                                <label
+                                                                    class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
+                                                                    <RadioGroupItem value="auto" class="mt-1" />
+                                                                    <div class="space-y-1">
+                                                                        <p class="font-medium">Auto Mode</p>
+                                                                        <p class="text-sm text-muted-foreground">
+                                                                            AI generates complete chapters. You review
+                                                                            and
+                                                                            approve each section.
+                                                                            Perfect
+                                                                            for quick completion.
+                                                                        </p>
+                                                                    </div>
+                                                                </label>
+                                                                <label
+                                                                    class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
+                                                                    <RadioGroupItem value="manual" class="mt-1" />
+                                                                    <div class="space-y-1">
+                                                                        <p class="font-medium">Manual Mode</p>
+                                                                        <p class="text-sm text-muted-foreground">
+                                                                            Co-write with AI assistance. Get suggestions
+                                                                            as
+                                                                            you type, maintain full
+                                                                            control.
+                                                                        </p>
+                                                                    </div>
+                                                                </label>
+                                                            </div>
+                                                        </RadioGroup>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            </FormField>
+                                        </div>
                                     </div>
 
-                                    <!-- Step 3: Research & Working Details -->
-                                    <div v-if="currentStep === 3"
-                                        class="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                        <FormField v-slot="{ componentField }" name="fieldOfStudy">
-                                            <FormItem>
-                                                <FormLabel>Field/Area of Research (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input type="text"
-                                                        placeholder="e.g., Artificial Intelligence, Web Development (leave blank if unsure)"
-                                                        v-bind="componentField" />
-                                                </FormControl>
-                                                <FormDescription>
-                                                    Your specific area of focus for this project. Leave blank if you
-                                                    need AI guidance in
-                                                    choosing a
-                                                    research area.
-                                                </FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
-
-                                        <FormField v-slot="{ componentField }" name="supervisorName">
-                                            <FormItem>
-                                                <FormLabel>Supervisor Name (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input type="text" placeholder="e.g., Dr. John Doe"
-                                                        v-bind="componentField" />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
-
-                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            <FormField v-slot="{ componentField }" name="matricNumber">
-                                                <FormItem>
-                                                    <FormLabel>Matric Number (Optional)</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="text" placeholder="e.g., 2019/1234"
-                                                            v-bind="componentField" />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            </FormField>
-
-                                            <FormField v-slot="{ componentField }" name="academicSession">
-                                                <FormItem>
-                                                    <FormLabel>Academic Session</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="text" placeholder="e.g., 2024/2025"
-                                                            v-bind="componentField" />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            </FormField>
-                                        </div>
-
-                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            <FormField v-slot="{ componentField }" name="degree">
-                                                <FormItem>
-                                                    <FormLabel>Degree</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="text" placeholder="e.g., Bachelor of Science"
-                                                            v-bind="componentField" />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            </FormField>
-
-                                            <FormField v-slot="{ componentField }" name="degreeAbbreviation">
-                                                <FormItem>
-                                                    <FormLabel>Degree Abbreviation</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="text" placeholder="e.g., B.Sc., M.Sc."
-                                                            v-bind="componentField" />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            </FormField>
-                                        </div>
-
-                                        <!-- Working Mode -->
-                                        <FormField v-slot="{ componentField }" name="workingMode">
-                                            <FormItem>
-                                                <FormLabel>How would you like to work on your project?</FormLabel>
-                                                <FormControl>
-                                                    <RadioGroup v-bind="componentField">
-                                                        <div class="space-y-3">
-                                                            <label
-                                                                class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
-                                                                <RadioGroupItem value="auto" class="mt-1" />
-                                                                <div class="space-y-1">
-                                                                    <p class="font-medium">Auto Mode</p>
-                                                                    <p class="text-sm text-muted-foreground">
-                                                                        AI generates complete chapters. You review and
-                                                                        approve each section.
-                                                                        Perfect
-                                                                        for quick completion.
-                                                                    </p>
-                                                                </div>
-                                                            </label>
-                                                            <label
-                                                                class="flex cursor-pointer items-start space-y-0 space-x-3 rounded-md border p-4 hover:bg-accent">
-                                                                <RadioGroupItem value="manual" class="mt-1" />
-                                                                <div class="space-y-1">
-                                                                    <p class="font-medium">Manual Mode</p>
-                                                                    <p class="text-sm text-muted-foreground">
-                                                                        Co-write with AI assistance. Get suggestions as
-                                                                        you type, maintain full
-                                                                        control.
-                                                                    </p>
-                                                                </div>
-                                                            </label>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        </FormField>
-                                    </div>
-                                </div>
-
-                                <!-- Navigation Buttons -->
-                                <div class="mt-8 flex justify-between">
-                                    <Button :disabled="currentStep <= 1" variant="outline"
-                                        @click="goToStep(currentStep - 1, values)" type="button">
-                                        Back
-                                    </Button>
-
-                                    <div class="flex gap-3">
-                                        <Button v-if="currentStep !== steps.length" :disabled="!meta.valid"
-                                            @click="goToStep(currentStep + 1, values)" type="button">
-                                            Next
+                                    <!-- Navigation Buttons -->
+                                    <div class="mt-8 flex justify-between">
+                                        <Button :disabled="currentStep <= 1" variant="outline"
+                                            @click="goToStep(currentStep - 1, values)" type="button">
+                                            Back
                                         </Button>
 
-                                        <Button v-if="currentStep === steps.length" type="submit"
-                                            :disabled="!meta.valid"> Complete Setup
-                                        </Button>
-                                    </div>
-                                </div>
-                            </form>
-                        </Stepper>
-                    </Form>
-                </CardContent>
-            </Card>
-        </div>
+                                        <div class="flex gap-3">
+                                            <Button v-if="currentStep !== steps.length" :disabled="!meta.valid"
+                                                @click="goToStep(currentStep + 1, values)" type="button">
+                                                Next
+                                            </Button>
 
-        <!-- Debug Panel (Development Only) -->
-        <WizardDebugPanel v-if="isDevelopment" :current-step="currentStep" :project-id="currentProjectId"
-            :form-values="currentFormValues" :saved-values="lastSavedValues" :is-initializing="isInitializing"
-            @force-save="() => saveProgress(currentStep, currentFormValues)" @reset-form="() => { }" />
+                                            <Button v-if="currentStep === steps.length" type="submit"
+                                                :disabled="!meta.valid"> Complete Setup
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </Stepper>
+                        </Form>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <!-- Debug Panel (Development Only) -->
+            <WizardDebugPanel v-if="isDevelopment" :current-step="currentStep" :project-id="currentProjectId"
+                :form-values="currentFormValues" :saved-values="lastSavedValues" :is-initializing="isInitializing"
+                @force-save="() => saveProgress(currentStep, currentFormValues)" @reset-form="() => { }" />
         </div>
     </AppLayout>
 </template>

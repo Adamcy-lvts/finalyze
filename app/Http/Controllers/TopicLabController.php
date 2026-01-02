@@ -92,7 +92,7 @@ class TopicLabController extends Controller
                 $initialTopic = [
                     'id' => $firstUserMsg->context_data['topic_id'] ?? 0,
                     'title' => $firstUserMsg->context_data['topic_title'],
-                    'description' => '',
+                    'description' => $firstUserMsg->context_data['topic_description'] ?? '',
                     'difficulty' => 'Intermediate',
                 ];
 
@@ -214,7 +214,11 @@ class TopicLabController extends Controller
                 'message_type' => 'user',
                 'task_type' => 'topic_refinement',
                 'content' => $lastUserMessage['content'],
-                'context_data' => ['topic_id' => $topic['id'] ?? null, 'topic_title' => $topic['title'] ?? ''],
+                'context_data' => [
+                    'topic_id' => $topic['id'] ?? null,
+                    'topic_title' => $topic['title'] ?? '',
+                    'topic_description' => $topic['description'] ?? '',
+                ],
             ];
 
             \App\Models\ChatConversation::create($messageData);

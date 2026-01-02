@@ -22,7 +22,7 @@ class TopicTransformer
         return [
             'id' => is_null($index) ? $topic->id : $index + 1,
             'title' => $topic->title,
-            'description' => $topic->description ?? 'Research topic suggestion',
+            'description' => ! empty(trim($topic->description ?? '')) ? $topic->description : 'Research topic suggestion',
             'difficulty' => $topic->difficulty ?? 'Intermediate',
             'timeline' => $topic->timeline ?? '6-9 months',
             'resource_level' => $topic->resource_level ?? 'Medium',

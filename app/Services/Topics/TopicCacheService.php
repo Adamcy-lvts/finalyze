@@ -83,11 +83,16 @@ class TopicCacheService
                 return;
             }
 
+            $placeholderText = 'Research topic in '.($project->field_of_study ?? $project->course);
+            $placeholderClean = $this->textService->cleanTopicDescription(
+                $this->textService->convertMarkdownToHtml($placeholderText)
+            );
+
             foreach ($topics as $topic) {
                 $topicData = match (true) {
                     is_string($topic) => [
                         'title' => $topic,
-                        'description' => 'Research topic in '.($project->field_of_study ?? $project->course),
+                        'description' => $placeholderText,
                         'difficulty' => 'moderate',
                         'timeline' => '6-9 months',
                         'resource_level' => 'medium',
@@ -122,10 +127,14 @@ class TopicCacheService
                     ->where('geographic_focus', $geographicFocus)
                     ->first();
 
-                if (! $existingTopic) {
-                    $description = $topicData['description'] ?? 'Research topic in '.($project->field_of_study ?? $project->course);
-                    $descriptionHtml = $this->textService->convertMarkdownToHtml($description);
+                // Build description with proper empty check (not just null check)
+                $rawDescription = $topicData['description'] ?? null;
+                $description = ! empty(trim($rawDescription ?? ''))
+                    ? $rawDescription
+                    : $placeholderText;
+                $descriptionHtml = $this->textService->convertMarkdownToHtml($description);
 
+                if (! $existingTopic) {
                     ProjectTopic::create([
                         'user_id' => $project->user_id,
                         'project_id' => $project->id,
@@ -147,6 +156,30 @@ class TopicCacheService
                         'selection_count' => 0,
                         'last_selected_at' => null,
                     ]);
+                } else {
+                    $existingDescriptionClean = $this->textService->cleanTopicDescription($existingTopic->description);
+                    $newDescriptionClean = $this->textService->cleanTopicDescription($descriptionHtml);
+                    $existingIsPlaceholder = $existingDescriptionClean !== ''
+                        && strcasecmp($existingDescriptionClean, $placeholderClean) === 0;
+                    $newIsPlaceholder = $newDescriptionClean !== ''
+                        && strcasecmp($newDescriptionClean, $placeholderClean) === 0;
+
+                    $shouldUpdateDescription = (empty($existingDescriptionClean) || $existingIsPlaceholder)
+                        && ! empty($newDescriptionClean)
+                        && (! $newIsPlaceholder || empty($existingDescriptionClean));
+
+                    if ($shouldUpdateDescription) {
+                        // Update placeholder/empty records with richer data when available.
+                        $existingTopic->update([
+                            'description' => $descriptionHtml,
+                            'difficulty' => $difficulty,
+                            'timeline' => $timeline,
+                            'resource_level' => $resourceLevel,
+                            'feasibility_score' => $feasibilityScore,
+                            'keywords' => $keywords,
+                            'research_type' => $researchType,
+                        ]);
+                    }
                 }
             }
 

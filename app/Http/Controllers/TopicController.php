@@ -463,8 +463,7 @@ class TopicController extends Controller
                         ]);
                     });
 
-                    // Cache the generated topics
-                    $this->topicCacheService->storeTopicsInDatabase($topics, $project, $geographicFocus);
+                    // Cache request tracking after enrichment has persisted topics.
                     $this->topicCacheService->trackTopicRequest($project, $geographicFocus);
 
                     if ($wordCount > 0) {

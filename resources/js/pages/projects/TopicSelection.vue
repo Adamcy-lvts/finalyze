@@ -146,7 +146,12 @@ onMounted(() => {
         generatedTopics.value = props.savedTopics;
         console.log('📦 SAVED TOPICS - Loaded from database', {
             count: props.savedTopics.length,
-            topics: props.savedTopics.map(t => t.title)
+            topics: props.savedTopics.map(t => t.title),
+            sample_descriptions: props.savedTopics.slice(0, 3).map(t => ({
+                title: t.title?.substring(0, 50),
+                description: t.description?.substring(0, 100),
+                has_description: !!t.description
+            }))
         });
 
         // Switch to generated tab if no current topic is set
@@ -468,7 +473,7 @@ const generateTopicsWithFallback = async () => {
 const selectGeneratedTopic = (topic: Topic) => {
     selectedTopic.value = topic.title;
     selectedDescription.value = topic.description;
-    
+
     // Strip HTML for inputs that expect plain text (or close to it)
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = topic.title;
@@ -476,7 +481,7 @@ const selectGeneratedTopic = (topic: Topic) => {
 
     customTopic.value = plainTitle; // Use plain text for the short topic field
     customDescription.value = topic.description; // Keep HTML for the rich text editor
-    
+
     customTitle.value = generateTitleFromTopic(plainTitle);
     activeTab.value = 'existing';
 };
@@ -767,15 +772,22 @@ const goBackToWizard = async () => {
 .hide-scrollbar::-webkit-scrollbar {
     display: none;
 }
+
 .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
 
 @keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
 }
+
 .animate-progress-indeterminate {
     animation: shimmer 2s infinite linear;
 }
@@ -787,22 +799,27 @@ const goBackToWizard = async () => {
             <!-- Ambient Background Effects -->
             <div class="fixed inset-0 pointer-events-none z-0">
                 <div class="absolute top-0 right-0 w-3/4 h-3/4 bg-primary/5 rounded-full blur-[120px] opacity-50"></div>
-                <div class="absolute bottom-0 left-0 w-1/2 h-1/2 bg-blue-500/5 rounded-full blur-[100px] opacity-50"></div>
+                <div class="absolute bottom-0 left-0 w-1/2 h-1/2 bg-blue-500/5 rounded-full blur-[100px] opacity-50">
+                </div>
             </div>
 
             <!-- Compact Header -->
-            <header class="sticky top-0 z-40 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+            <header
+                class="sticky top-0 z-40 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
                 <div class="container mx-auto flex h-16 items-center justify-between py-4">
                     <div class="flex items-center gap-4">
-                        <Button @click="goBackToWizard" variant="ghost" size="icon" class="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80">
+                        <Button @click="goBackToWizard" variant="ghost" size="icon"
+                            class="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80">
                             <ArrowLeft class="h-4 w-4" />
                         </Button>
                         <div class="flex flex-col">
                             <h1 class="text-sm font-semibold leading-none flex items-center gap-2">
                                 Topic Selection
-                                <span class="hidden sm:inline-flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse" v-if="isGenerating"></span>
+                                <span class="hidden sm:inline-flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse"
+                                    v-if="isGenerating"></span>
                             </h1>
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Step 2 of 4</p>
+                            <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Step 2 of
+                                4</p>
                         </div>
                     </div>
 
@@ -819,32 +836,39 @@ const goBackToWizard = async () => {
                 <!-- Header Section -->
                 <div class="space-y-4 text-center pb-2">
                     <div class="flex justify-center mb-6">
-                        <div class="relative flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-tr from-yellow-500/20 to-orange-500/20 border border-white/10 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+                        <div
+                            class="relative flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-tr from-yellow-500/20 to-orange-500/20 border border-white/10 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
                             <div class="absolute inset-0 rounded-full bg-yellow-500/10 blur-xl"></div>
-                            <Lightbulb class="h-8 w-8 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)] relative z-10" />
+                            <Lightbulb
+                                class="h-8 w-8 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)] relative z-10" />
                         </div>
                     </div>
                     <div class="space-y-2">
-                    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-br from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent">
-                        Choose Your Project Topic
-                    </h2>
-                    <p class="mx-auto max-w-[600px] text-muted-foreground text-lg leading-relaxed">
-                        Define your specific area of interest or let AI help you discover unique project topics.
-                    </p>
+                        <h2
+                            class="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-br from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent">
+                            Choose Your Project Topic
+                        </h2>
+                        <p class="mx-auto max-w-[600px] text-muted-foreground text-lg leading-relaxed">
+                            Define your specific area of interest or let AI help you discover unique project topics.
+                        </p>
                     </div>
                 </div>
 
                 <!-- Mobile Context Grid (Only visible on small screens) -->
-                <div class="lg:hidden grid grid-cols-2 gap-3 pb-4" v-if="project.field_of_study || project.university || project.course">
-                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50 col-span-2" v-if="project.field_of_study">
+                <div class="lg:hidden grid grid-cols-2 gap-3 pb-4"
+                    v-if="project.field_of_study || project.university || project.course">
+                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50 col-span-2"
+                        v-if="project.field_of_study">
                         <span class="text-[10px] uppercase text-muted-foreground font-medium">Field</span>
                         <span class="text-sm font-medium truncate">{{ project.field_of_study }}</span>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50" v-if="project.university">
+                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50"
+                        v-if="project.university">
                         <span class="text-[10px] uppercase text-muted-foreground font-medium">Institution</span>
                         <span class="text-sm font-medium truncate">{{ project.university }}</span>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50" v-if="project.course">
+                    <div class="flex flex-col gap-1 p-3 rounded-lg bg-muted/30 border border-border/50"
+                        v-if="project.course">
                         <span class="text-[10px] uppercase text-muted-foreground font-medium">Course / Dept</span>
                         <span class="text-sm font-medium truncate">{{ project.course }}</span>
                     </div>
@@ -854,10 +878,12 @@ const goBackToWizard = async () => {
                     <!-- Custom Centered Tabs List -->
                     <div class="flex justify-center">
                         <TooltipProvider>
-                            <TabsList class="grid grid-cols-3 w-full h-auto items-center justify-center rounded-2xl bg-muted/50 p-1.5 text-muted-foreground backdrop-blur-sm border border-border/50 shadow-inner sm:flex sm:w-auto">
+                            <TabsList
+                                class="grid grid-cols-3 w-full h-auto items-center justify-center rounded-2xl bg-muted/50 p-1.5 text-muted-foreground backdrop-blur-sm border border-border/50 shadow-inner sm:flex sm:w-auto">
                                 <Tooltip>
                                     <TooltipTrigger as-child>
-                                        <TabsTrigger value="existing" class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
+                                        <TabsTrigger value="existing"
+                                            class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
                                             <FileText class="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-0" />
                                             <span class="truncate sm:hidden">Add Existing</span>
                                             <span class="hidden sm:inline">Add Existing Topic</span>
@@ -870,7 +896,8 @@ const goBackToWizard = async () => {
 
                                 <Tooltip>
                                     <TooltipTrigger as-child>
-                                        <TabsTrigger value="generated" class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
+                                        <TabsTrigger value="generated"
+                                            class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
                                             <Lightbulb class="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-0" />
                                             <span class="truncate sm:hidden">AI Suggestions</span>
                                             <span class="hidden sm:inline">AI Suggested Topics</span>
@@ -883,7 +910,8 @@ const goBackToWizard = async () => {
 
                                 <Tooltip>
                                     <TooltipTrigger as-child>
-                                        <TabsTrigger value="import" class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
+                                        <TabsTrigger value="import"
+                                            class="rounded-xl px-2 py-2.5 text-[10px] sm:text-sm sm:px-6 transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-full w-full sm:w-auto">
                                             <Upload class="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-0" />
                                             <span class="truncate sm:hidden">Import</span>
                                             <span class="hidden sm:inline">Import Project</span>
@@ -898,7 +926,8 @@ const goBackToWizard = async () => {
                     </div>
 
                     <!-- Manual Entry Tab -->
-                    <TabsContent value="existing" class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <TabsContent value="existing"
+                        class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                             <!-- Left: Core Info -->
                             <div class="lg:col-span-12 xl:col-span-5 space-y-6">
@@ -911,21 +940,23 @@ const goBackToWizard = async () => {
                                     </CardHeader>
                                     <CardContent class="space-y-6">
                                         <div class="space-y-2">
-                                            <Label for="custom-title" class="text-xs font-medium uppercase text-muted-foreground">Title</Label>
+                                            <Label for="custom-title"
+                                                class="text-xs font-medium uppercase text-muted-foreground">Title</Label>
                                             <Input id="custom-title" v-model="customTitle"
                                                 placeholder="e.g., The Impact of..."
                                                 class="h-12 bg-secondary/50 border-border/50 focus:bg-background focus:ring-primary/20 transition-all font-medium" />
                                         </div>
                                         <div class="space-y-2">
-                                            <Label for="custom-topic" class="text-xs font-medium uppercase text-muted-foreground">Research Question / Topic</Label>
+                                            <Label for="custom-topic"
+                                                class="text-xs font-medium uppercase text-muted-foreground">Research
+                                                Question / Topic</Label>
                                             <Textarea id="custom-topic" v-model="customTopic"
-                                                placeholder="What is the main problem you are investigating?"
-                                                rows="5"
+                                                placeholder="What is the main problem you are investigating?" rows="5"
                                                 class="resize-none bg-secondary/50 border-border/50 focus:bg-background focus:ring-primary/20 transition-all" />
                                         </div>
                                     </CardContent>
                                     <div class="px-6 pb-6 pt-0">
-                                         <Button @click="submitTopic" size="lg"
+                                        <Button @click="submitTopic" size="lg"
                                             :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
                                             class="w-full h-12 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
                                             <Loader2 v-if="isSelecting" class="mr-2 h-5 w-5 animate-spin" />
@@ -938,18 +969,19 @@ const goBackToWizard = async () => {
                                 </Card>
 
                                 <div class="hidden xl:block">
-                                    <div 
-                                        @click="activeTab = 'generated'"
-                                        class="rounded-xl bg-orange-500/5 border border-orange-500/10 p-4 cursor-pointer hover:bg-orange-500/10 transition-colors group"
-                                    >
+                                    <div @click="activeTab = 'generated'"
+                                        class="rounded-xl bg-orange-500/5 border border-orange-500/10 p-4 cursor-pointer hover:bg-orange-500/10 transition-colors group">
                                         <div class="flex items-start gap-3">
-                                            <div class="p-2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-500 mt-0.5 group-hover:scale-110 transition-transform">
+                                            <div
+                                                class="p-2 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-500 mt-0.5 group-hover:scale-110 transition-transform">
                                                 <Lightbulb class="h-4 w-4" />
                                             </div>
                                             <div class="space-y-1">
-                                                <h4 class="text-sm font-semibold text-orange-700 dark:text-orange-400">Need Inspiration?</h4>
+                                                <h4 class="text-sm font-semibold text-orange-700 dark:text-orange-400">
+                                                    Need Inspiration?</h4>
                                                 <p class="text-xs text-muted-foreground leading-relaxed">
-                                                    If you're stuck, switch to the <strong>AI Suggestions</strong> tab to generate research topics tailored to your profile.
+                                                    If you're stuck, switch to the <strong>AI Suggestions</strong> tab
+                                                    to generate research topics tailored to your profile.
                                                 </p>
                                             </div>
                                         </div>
@@ -959,7 +991,8 @@ const goBackToWizard = async () => {
 
                             <!-- Right: Description -->
                             <div class="lg:col-span-12 xl:col-span-7 space-y-6">
-                                <Card class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm flex flex-col h-full lg:min-h-[500px]">
+                                <Card
+                                    class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm flex flex-col h-full lg:min-h-[500px]">
                                     <div class="absolute top-0 right-0 p-6 pointer-events-none opacity-20">
                                         <MessageSquare class="w-32 h-32 text-primary" />
                                     </div>
@@ -970,26 +1003,20 @@ const goBackToWizard = async () => {
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent class="flex-1 min-h-[300px] flex flex-col">
-                                        <div class="flex-1 border rounded-xl overflow-hidden bg-secondary/30 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                                            <RichTextEditor 
-                                                v-model="customDescription"
+                                        <div
+                                            class="flex-1 border rounded-xl overflow-hidden bg-secondary/30 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                                            <RichTextEditor v-model="customDescription"
                                                 placeholder="Start typing your research description here..."
-                                                min-height="300px"
-                                                :show-toolbar="true"
-                                            />
+                                                min-height="300px" :show-toolbar="true" />
                                         </div>
                                     </CardContent>
                                     <div class="px-6 pb-6 flex items-center justify-between gap-4">
                                         <p class="text-[10px] text-muted-foreground">
                                             * This description will be used to guide the AI in future steps.
                                         </p>
-                                        <Button
-                                            @click="refineCurrentTopicInLab"
+                                        <Button @click="refineCurrentTopicInLab"
                                             :disabled="(!customTopic.trim() && !customDescription.trim()) || isSelecting"
-                                            variant="ghost"
-                                            size="sm"
-                                            class="text-muted-foreground hover:text-primary"
-                                        >
+                                            variant="ghost" size="sm" class="text-muted-foreground hover:text-primary">
                                             <RefreshCw class="mr-2 h-3.5 w-3.5" />
                                             Refine in Lab
                                         </Button>
@@ -1000,15 +1027,19 @@ const goBackToWizard = async () => {
                     </TabsContent>
 
                     <!-- AI Generated Tab -->
-                    <TabsContent value="generated" class="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <TabsContent value="generated"
+                        class="space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <!-- Control Bar -->
                         <Card class="border-border/50 bg-card/50 backdrop-blur-sm sticky top-20 z-30 shadow-sm">
                             <div class="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                                <div class="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
-                                    <div class="flex items-center h-9 px-3 rounded-lg bg-background border border-border/50 text-xs font-medium whitespace-nowrap">
+                                <div
+                                    class="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
+                                    <div
+                                        class="flex items-center h-9 px-3 rounded-lg bg-background border border-border/50 text-xs font-medium whitespace-nowrap">
                                         <span class="text-muted-foreground mr-2">Focus:</span>
                                         <Select v-model="geographicFocus">
-                                            <SelectTrigger class="h-auto p-0 border-none bg-transparent hover:bg-transparent focus:ring-0 focus:ring-offset-0 gap-1 text-xs font-semibold">
+                                            <SelectTrigger
+                                                class="h-auto p-0 border-none bg-transparent hover:bg-transparent focus:ring-0 focus:ring-offset-0 gap-1 text-xs font-semibold">
                                                 <SelectValue placeholder="Select Focus" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1019,11 +1050,14 @@ const goBackToWizard = async () => {
                                         </Select>
                                     </div>
 
-                                    <div v-if="generatedTopics.length > 0" class="h-6 w-[1px] bg-border mx-1 hidden md:block"></div>
+                                    <div v-if="generatedTopics.length > 0"
+                                        class="h-6 w-[1px] bg-border mx-1 hidden md:block"></div>
 
-                                    <div v-if="generatedTopics.length > 0" class="flex items-center h-9 px-3 rounded-lg bg-background border border-border/50 text-xs font-medium whitespace-nowrap">
+                                    <div v-if="generatedTopics.length > 0"
+                                        class="flex items-center h-9 px-3 rounded-lg bg-background border border-border/50 text-xs font-medium whitespace-nowrap">
                                         <span class="text-muted-foreground mr-2">Timeline:</span>
-                                        <select v-model="timelineFilter" class="bg-transparent border-none text-foreground font-semibold focus:ring-0 p-0 cursor-pointer text-xs">
+                                        <select v-model="timelineFilter"
+                                            class="bg-transparent border-none text-foreground font-semibold focus:ring-0 p-0 cursor-pointer text-xs">
                                             <option value="all">Any</option>
                                             <option value="6-9 months">6-9 mo</option>
                                             <option value="9-12 months">9-12 mo</option>
@@ -1032,16 +1066,16 @@ const goBackToWizard = async () => {
                                     </div>
                                 </div>
 
-                                <Button @click="generateTopics" :disabled="isGenerating"
-                                    size="sm"
+                                <Button @click="generateTopics" :disabled="isGenerating" size="sm"
                                     :class="generatedTopics.length === 0 ? 'w-full md:w-auto shadow-lg shadow-primary/20' : ''">
                                     <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
                                     <RefreshCw v-else-if="generatedTopics.length > 0" class="mr-2 h-4 w-4" />
                                     <Lightbulb v-else class="mr-2 h-4 w-4" />
-                                    {{ isGenerating ? 'Thinking...' : generatedTopics.length > 0 ? 'Regenerate' : 'Generate Ideas' }}
+                                    {{ isGenerating ? 'Thinking...' : generatedTopics.length > 0 ? 'Regenerate' :
+                                        'Generate Ideas' }}
                                 </Button>
                             </div>
-                            
+
                             <!-- Progress Bar -->
                             <div v-if="isGenerating" class="h-0.5 w-full bg-muted overflow-hidden">
                                 <div class="h-full bg-primary animate-progress-indeterminate"></div>
@@ -1051,51 +1085,65 @@ const goBackToWizard = async () => {
                         <!-- Results Area -->
                         <div class="min-h-[400px]">
                             <!-- Loading State -->
-                            <div v-if="isGenerating" class="flex flex-col items-center justify-center py-20 animate-in fade-in">
+                            <div v-if="isGenerating"
+                                class="flex flex-col items-center justify-center py-20 animate-in fade-in">
                                 <div class="bg-primary/10 p-6 rounded-full mb-6 relative">
                                     <Loader2 class="h-10 w-10 text-primary animate-spin" />
-                                    <div class="absolute inset-0 rounded-full animate-ping bg-primary/20 opacity-75"></div>
+                                    <div class="absolute inset-0 rounded-full animate-ping bg-primary/20 opacity-75">
+                                    </div>
                                 </div>
-                                <h3 class="text-xl font-semibold mb-2">{{ generationProgress || 'Analyzing your profile...' }}</h3>
+                                <h3 class="text-xl font-semibold mb-2">{{ generationProgress || `Analyzing your
+                                    profile... ` }}</h3>
                                 <p class="text-muted-foreground text-sm max-w-xs text-center">
-                                    Our AI is scanning {{ project.field_of_study }} databases for relevant emerging topics.
+                                    Our AI is scanning {{ project.field_of_study }} databases for relevant emerging
+                                    topics.
                                 </p>
                             </div>
 
                             <!-- Empty State -->
-                            <div v-else-if="generatedTopics.length === 0" class="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in-95">
-                                <div class="h-32 w-32 rounded-3xl bg-gradient-to-tr from-muted/50 to-muted/10 border border-border/50 flex items-center justify-center mb-6 shadow-xl shadow-black/5 rotate-3 hover:rotate-0 transition-transform duration-500">
+                            <div v-else-if="generatedTopics.length === 0"
+                                class="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in-95">
+                                <div
+                                    class="h-32 w-32 rounded-3xl bg-gradient-to-tr from-muted/50 to-muted/10 border border-border/50 flex items-center justify-center mb-6 shadow-xl shadow-black/5 rotate-3 hover:rotate-0 transition-transform duration-500">
                                     <Lightbulb class="h-12 w-12 text-muted-foreground/40" />
                                 </div>
                                 <h3 class="text-lg font-semibold mb-2">No Topics Generated Yet</h3>
                                 <p class="text-muted-foreground text-sm max-w-md mx-auto mb-8">
-                                    Click "Generate Ideas" to get personalized research topics based on your level, university, and field of study.
+                                    Click "Generate Ideas" to get personalized research topics based on your level,
+                                    university, and field of study.
                                 </p>
-                                <Button @click="generateTopics" size="lg" class="rounded-full px-8 shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-105 transition-all">
+                                <Button @click="generateTopics" size="lg"
+                                    class="rounded-full px-8 shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-105 transition-all">
                                     Generate First Batch
                                 </Button>
                             </div>
 
                             <!-- Topics Grid -->
                             <div v-else class="grid grid-cols-1 gap-6">
-                                <div v-for="topic in filteredTopics" :key="topic.id" 
+                                <div v-for="topic in filteredTopics" :key="topic.id"
                                     class="group relative flex flex-col md:flex-row gap-0 md:gap-6 rounded-2xl border border-border/50 bg-card hover:bg-card/80 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 hover:border-primary/20 overflow-hidden"
                                     :class="selectedTopic === topic.title ? 'ring-1 ring-primary border-primary bg-primary/5' : ''">
-                                    
+
                                     <!-- Left: Metrics & Actions (Desktop Sidebar / Mobile Top) -->
-                                    <div class="w-full md:w-64 shrink-0 bg-muted/20 md:border-r border-border/50 p-5 flex flex-col gap-4">
+                                    <div
+                                        class="w-full md:w-64 shrink-0 bg-muted/20 md:border-r border-border/50 p-5 flex flex-col gap-4">
                                         <div class="flex items-center justify-between md:justify-start gap-2">
-                                            <Badge :variant="getDifficultyVariant(topic.difficulty)" class="rounded-md px-2 py-0.5 text-[10px] uppercase font-bold">
+                                            <Badge :variant="getDifficultyVariant(topic.difficulty)"
+                                                class="rounded-md px-2 py-0.5 text-[10px] uppercase font-bold">
                                                 {{ topic.difficulty }}
                                             </Badge>
-                                            <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{{ topic.timeline }}</span>
+                                            <span
+                                                class="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{{
+                                                    topic.timeline }}</span>
                                         </div>
 
                                         <div class="space-y-1">
-                                            <div class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Feasibility</div>
+                                            <div
+                                                class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                                                Feasibility</div>
                                             <div class="flex items-center gap-2">
                                                 <div class="h-1.5 flex-1 bg-muted rounded-full overflow-hidden">
-                                                    <div class="h-full rounded-full transition-all" 
+                                                    <div class="h-full rounded-full transition-all"
                                                         :class="topic.feasibility_score >= 80 ? 'bg-green-500' : topic.feasibility_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'"
                                                         :style="`width: ${topic.feasibility_score}%`">
                                                     </div>
@@ -1105,15 +1153,17 @@ const goBackToWizard = async () => {
                                         </div>
 
                                         <div class="mt-auto pt-4 md:pt-0 grid grid-cols-2 md:grid-cols-1 gap-2">
-                                             <Button @click="selectGeneratedTopic(topic)" size="sm"
+                                            <Button @click="selectGeneratedTopic(topic)" size="sm"
                                                 :variant="selectedTopic === topic.title ? 'default' : 'outline'"
                                                 class="w-full h-9 transition-all"
                                                 :class="selectedTopic === topic.title ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'hover:bg-primary hover:text-primary-foreground'">
                                                 {{ selectedTopic === topic.title ? 'Selected' : 'Select' }}
-                                                <CheckCircle v-if="selectedTopic === topic.title" class="ml-2 h-3.5 w-3.5" />
+                                                <CheckCircle v-if="selectedTopic === topic.title"
+                                                    class="ml-2 h-3.5 w-3.5" />
                                                 <ArrowRight v-else class="ml-2 h-3.5 w-3.5" />
                                             </Button>
-                                            <Button @click="openTopicInLab(topic)" size="sm" variant="ghost" class="w-full h-9 text-xs text-muted-foreground hover:text-foreground">
+                                            <Button @click="openTopicInLab(topic)" size="sm" variant="ghost"
+                                                class="w-full h-9 text-xs text-muted-foreground hover:text-foreground">
                                                 Refine
                                             </Button>
                                         </div>
@@ -1121,9 +1171,11 @@ const goBackToWizard = async () => {
 
                                     <!-- Right: Content -->
                                     <div class="flex-1 p-5 md:pl-0 pt-0 md:pt-5 space-y-3">
-                                        <SafeHtmlText :content="topic.title" as="h3" class="text-lg font-bold leading-snug text-foreground group-hover:text-primary transition-colors" />
-                                        
-                                        <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground/80 leading-relaxed line-clamp-3 group-hover:line-clamp-none transition-all duration-300">
+                                        <SafeHtmlText :content="topic.title" as="h3"
+                                            class="text-lg font-bold leading-snug text-foreground group-hover:text-primary transition-colors" />
+
+                                        <div
+                                            class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground/80 leading-relaxed line-clamp-3 group-hover:line-clamp-none transition-all duration-300">
                                             <SafeHtmlText :content="topic.description" as="div" />
                                         </div>
 
@@ -1139,17 +1191,21 @@ const goBackToWizard = async () => {
                         </div>
                     </TabsContent>
                     <!-- Import Project Tab (Coming Soon) -->
-                    <TabsContent value="import" class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <Card class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm min-h-[400px] flex items-center justify-center">
+                    <TabsContent value="import"
+                        class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <Card
+                            class="border-border/50 shadow-lg shadow-primary/5 bg-card/80 backdrop-blur-sm min-h-[400px] flex items-center justify-center">
                             <div class="text-center space-y-4 max-w-md p-8">
-                                <div class="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <div
+                                    class="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
                                     <Upload class="h-8 w-8 text-primary" />
                                 </div>
                                 <h3 class="text-2xl font-bold">Import Existing Project</h3>
                                 <p class="text-muted-foreground leading-relaxed">
-                                    We're working on a feature that will allow you to import your existing research proposals and documents directly into Finalyze.
+                                    We're working on a feature that will allow you to import an existing completed project to create a new Finalyze project from it.
                                 </p>
-                                <Badge variant="secondary" class="mt-4 text-sm px-4 py-1.5 font-medium">Coming Soon</Badge>
+                                <Badge variant="secondary" class="mt-4 text-sm px-4 py-1.5 font-medium">Coming Soon
+                                </Badge>
                             </div>
                         </Card>
                     </TabsContent>
@@ -1157,13 +1213,8 @@ const goBackToWizard = async () => {
             </main>
         </div>
 
-        <PurchaseModal
-            :open="showPurchaseModal"
-            :current-balance="balance"
-            :required-words="requiredWordsForModal"
+        <PurchaseModal :open="showPurchaseModal" :current-balance="balance" :required-words="requiredWordsForModal"
             :action="actionDescriptionForModal || 'generate research topics'"
-            @update:open="(v) => (showPurchaseModal = v)"
-            @close="closePurchaseModal"
-        />
+            @update:open="(v) => (showPurchaseModal = v)" @close="closePurchaseModal" />
     </AppLayout>
 </template>

@@ -128,10 +128,6 @@ class TopicGenerationService
 
             $wordCount = str_word_count(strip_tags($generatedContent));
 
-            $dbStartTime = microtime(true);
-            $this->cacheService->storeTopicsInDatabase($newTopics, $project, $geographicFocus);
-            $dbDuration = (microtime(true) - $dbStartTime) * 1000;
-
             $totalDuration = (microtime(true) - $startTime) * 1000;
 
             Log::info('AI Topic Generation - Complete Cycle', [
@@ -139,7 +135,6 @@ class TopicGenerationService
                 'total_time_ms' => round($totalDuration, 2),
                 'ai_time_ms' => round($aiDuration, 2),
                 'parsing_time_ms' => round($parseDuration, 2),
-                'db_storage_time_ms' => round($dbDuration, 2),
                 'topics_generated' => count($newTopics),
                 'ai_percentage' => round(($aiDuration / $totalDuration) * 100, 1).'%',
                 'timestamp' => now()->toDateTimeString(),

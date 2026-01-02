@@ -1451,7 +1451,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-4YsLhLB3.js",
+    "file": "assets/app-BYxE2TTz.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -2614,7 +2614,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-nVgPtMP-.js",
+    "file": "assets/BulkGeneration-Brr6pvcK.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
@@ -2762,7 +2762,7 @@
     ]
   },
   "resources/js/pages/projects/Create.vue": {
-    "file": "assets/Create-opajM3-t.js",
+    "file": "assets/Create-D3De8k5o.js",
     "name": "Create",
     "src": "resources/js/pages/projects/Create.vue",
     "isDynamicEntry": true,
@@ -3153,7 +3153,7 @@
     ]
   },
   "resources/js/pages/projects/TopicSelection.vue": {
-    "file": "assets/TopicSelection-eX1jC95f.js",
+    "file": "assets/TopicSelection-DHp1GTqe.js",
     "name": "TopicSelection",
     "src": "resources/js/pages/projects/TopicSelection.vue",
     "isDynamicEntry": true,
@@ -3202,7 +3202,7 @@
       "_DialogTitle.vue_vue_type_script_setup_true_lang-DzEVjang.js"
     ],
     "css": [
-      "assets/TopicSelection-CjfZy20H.css"
+      "assets/TopicSelection-buc-ACkD.css"
     ]
   },
   "resources/js/pages/projects/TopicsIndex.vue": {
