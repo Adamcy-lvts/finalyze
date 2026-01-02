@@ -7,7 +7,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/js/app.ts'],
+            input: [
+                'resources/js/app.ts',
+                'resources/js/pages/projects/ChapterEditor.vue',
+            ],
             ssr: 'resources/js/ssr.ts',
             refresh: true,
         }),

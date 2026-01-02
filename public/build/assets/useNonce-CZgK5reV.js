@@ -1,1 +1,0 @@
-import{i as t}from"./Presence-CF0v4nrQ.js";import{r,m as a}from"./vendor-Bi-OfESq.js";function u(e,n=Number.NEGATIVE_INFINITY,o=Number.POSITIVE_INFINITY){return Math.min(o,Math.max(n,e))}function i(e){const n=t({nonce:r()});return a(()=>e?.value||n.nonce?.value)}export{u as c,i as u};
