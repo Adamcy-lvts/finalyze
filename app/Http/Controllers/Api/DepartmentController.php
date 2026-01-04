@@ -35,11 +35,13 @@ class DepartmentController extends Controller
 
     /**
      * Get departments by faculty
+     * Supports both legacy faculty_id and new pivot table relationships
      */
     public function byFaculty(Faculty $faculty): JsonResponse
     {
+        // Use the new scope that checks both legacy and pivot relationships
         $departments = Department::query()
-            ->where('faculty_id', $faculty->id)
+            ->byFaculty($faculty->id)
             ->active()
             ->orderBy('sort_order')
             ->orderBy('name')

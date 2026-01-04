@@ -130,6 +130,14 @@ class ProjectStateMiddleware
             return $next($request);
         }
 
+        // Skip middleware for stage navigation routes (go back to previous stages)
+        // These routes need to run their controllers to update project state
+        if ($request->is('projects/*/go-back-to-wizard') ||
+            $request->is('projects/*/go-back-to-topic-selection') ||
+            $request->is('projects/*/go-back-to-topic-approval')) {
+            return $next($request);
+        }
+
         // Skip theme test route (for debugging)
         if ($request->is('projects/*/theme-test') || $request->route()?->getName() === 'projects.theme-test') {
             return $next($request);

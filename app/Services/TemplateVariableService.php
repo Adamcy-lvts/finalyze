@@ -77,12 +77,12 @@ class TemplateVariableService
 
         $department = (string) ($settings['department'] ?? '');
         if (trim($department) === '') {
-            $department = (string) ($project->departmentRelation->name ?? ($project->department_name ?? ''));
+            $department = (string) ($project->getEffectiveDepartment() ?? '');
         }
 
         $faculty = (string) ($project->faculty ?? '');
         if (trim($faculty) === '') {
-            $faculty = (string) ($project->facultyRelation->name ?? ($project->faculty_name ?? ''));
+            $faculty = (string) ($project->getEffectiveFaculty() ?? '');
         }
 
         $universityShort = (string) ($project->university ?? '');

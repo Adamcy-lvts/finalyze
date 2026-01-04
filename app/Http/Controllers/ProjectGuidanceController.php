@@ -83,7 +83,7 @@ class ProjectGuidanceController extends Controller
             'guidance' => $guidanceTemplates,
             'terminology' => $terminology,
             'timeline' => $timeline,
-            'facultyName' => $project->facultyRelation?->name,
+            'facultyName' => $project->getEffectiveFaculty(),
             'hasAnyGuidance' => $hasAnyGuidance,
             'guidanceStatus' => $hasAnyGuidance ? 'loaded' : 'missing',
         ]);
@@ -124,7 +124,7 @@ class ProjectGuidanceController extends Controller
         return response()->json([
             'guidelines' => $guidanceTemplates,
             'terminology' => $terminology,
-            'faculty' => $project->facultyRelation?->name,
+            'faculty' => $project->getEffectiveFaculty(),
         ]);
     }
 

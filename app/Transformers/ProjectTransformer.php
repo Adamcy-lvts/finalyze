@@ -18,9 +18,9 @@ class ProjectTransformer
             'status' => $project->status,
             'field_of_study' => $project->field_of_study,
             'course' => $project->course,
-            'university' => $project->universityRelation?->name,
-            'faculty' => $project->facultyRelation?->name,
-            'department' => $project->departmentRelation?->name,
+            'university' => $project->universityRelation?->name ?? $project->university,
+            'faculty' => $project->getEffectiveFaculty(),
+            'department' => $project->getEffectiveDepartment(),
         ];
     }
 }

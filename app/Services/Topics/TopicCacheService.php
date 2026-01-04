@@ -285,8 +285,8 @@ class TopicCacheService
     {
         $geographicFocus = $geographicFocus ?: 'balanced';
         $university = $project->universityRelation?->name ?? $project->university;
-        $faculty = $project->facultyRelation?->name ?? $project->faculty;
-        $department = $project->departmentRelation?->name ?? $project->settings['department'] ?? null;
+        $faculty = $project->getEffectiveFaculty();
+        $department = $project->getEffectiveDepartment() ?? $project->settings['department'] ?? null;
 
         return [
             'field_of_study' => $project->field_of_study,

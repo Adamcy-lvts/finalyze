@@ -45,7 +45,10 @@
             $degree = $project->degree ?: ($isPostgraduate ? $defaultPostgradDegree : $derivedDegree);
             $degreeAbbrev = $project->degree_abbreviation ?: ($isPostgraduate ? $defaultPostgradAbbrev : $derivedDegreeAbbrev);
             $course = $project->course ?: $project->field_of_study;
-            $departmentLabel = data_get($project->settings, 'department') ?: ($project->course ?: $project->field_of_study);
+            $departmentLabel = $project->getEffectiveDepartment() ?: data_get($project->settings, 'department') ?: $course;
+            $facultyName = $project->getEffectiveFaculty() ?: $project->faculty;
+            $universityName = $project->full_university_name
+                ?: ($project->universityRelation?->name ?? $project->university);
         @endphp
 
         <div class="dissertation-text">
@@ -62,9 +65,9 @@
 
         <div class="institution-details">
             AT THE DEPARTMENT OF<br>
-            {{ strtoupper($project->course ?? 'COMPUTER SCIENCE') }}<br>
-            FACULTY OF {{ strtoupper($project->faculty ?? 'SCIENCE') }}<br><br>
-            {{ strtoupper($project->universityRelation->name) }}
+            {{ strtoupper($departmentLabel ?? 'DEPARTMENT') }}<br>
+            FACULTY OF {{ strtoupper($facultyName ?? 'FACULTY') }}<br><br>
+            {{ strtoupper($universityName ?? 'UNIVERSITY') }}
         </div>
 
         <div class="date">{{ strtoupper(now()->format('F, Y')) }}</div>

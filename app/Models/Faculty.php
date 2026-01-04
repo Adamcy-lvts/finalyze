@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Faculty extends Model
@@ -33,11 +34,42 @@ class Faculty extends Model
     }
 
     /**
-     * Get all departments in this faculty
+     * Get all departments in this faculty (legacy HasMany relationship)
      */
     public function departments(): HasMany
     {
         return $this->hasMany(Department::class);
+    }
+
+    /**
+     * Get all departments belonging to this faculty (many-to-many)
+     * This includes departments that belong to multiple faculties
+     */
+    public function allDepartments(): BelongsToMany
+    {
+        return $this->belongsToMany(Department::class, 'department_faculty')
+            ->withPivot('is_primary')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get departments for this faculty (combines both legacy and pivot relationships)
+     */
+    public function getDepartmentsForSelection()
+    {
+        // Get department IDs from pivot table
+        $pivotDepartmentIds = $this->allDepartments()->pluck('departments.id');
+
+        // Get department IDs from legacy relationship
+        $legacyDepartmentIds = $this->departments()->pluck('id');
+
+        // Merge and get unique departments
+        $allIds = $pivotDepartmentIds->merge($legacyDepartmentIds)->unique();
+
+        return Department::whereIn('id', $allIds)
+            ->active()
+            ->orderBy('name')
+            ->get();
     }
 
     /**

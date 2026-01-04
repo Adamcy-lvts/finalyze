@@ -712,32 +712,34 @@ const submitTopic = async () => {
  * GO BACK TO PROJECT WIZARD
  * Allows users to modify their project setup
  */
-const goBackToWizard = async () => {
-    try {
-        // Use Inertia router for better CSRF handling
-        router.post(
-            route('projects.go-back-to-wizard', props.project.slug),
-            {},
-            {
-                onSuccess: () => {
-                    toast('Success', {
-                        description: 'Returned to project setup',
-                    });
-                    // Navigate to project creation page after successful state update
-                    router.visit(route('projects.create'));
-                },
-                onError: () => {
-                    toast('Error', {
-                        description: 'Failed to go back to setup. Please try again.',
-                    });
-                },
+const isGoingBack = ref(false);
+
+const goBackToWizard = () => {
+    if (isGoingBack.value) return;
+    isGoingBack.value = true;
+
+    // Use Inertia router with proper options for redirect handling
+    router.post(
+        route('projects.go-back-to-wizard', props.project.slug),
+        {},
+        {
+            preserveState: false,
+            preserveScroll: false,
+            replace: true,
+            onError: () => {
+                isGoingBack.value = false;
+                toast('Error', {
+                    description: 'Failed to go back to setup. Please try again.',
+                });
             },
-        );
-    } catch (error) {
-        toast('Error', {
-            description: 'Failed to go back to setup. Please try again.',
-        });
-    }
+            onFinish: () => {
+                // Reset if navigation didn't happen (shouldn't normally occur)
+                setTimeout(() => {
+                    isGoingBack.value = false;
+                }, 1000);
+            },
+        },
+    );
 };
 
 // Cleanup on unmount - no longer needed for fetch streaming

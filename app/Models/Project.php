@@ -52,7 +52,9 @@ class Project extends Model
         'project_category_id',
         'university_id',
         'faculty_id',
-        'department_id', // New foreign keys
+        'custom_faculty', // For user-entered faculty when not in database
+        'department_id',
+        'custom_department', // For user-entered department when not in database
         'title',
         'slug',
         'topic',
@@ -588,7 +590,9 @@ class Project extends Model
             'projectCategoryId' => $finalData['project_category_id'] ?? ($setupData['projectCategoryId'] ?? null),
             'universityId' => $finalData['university_id'] ?? ($setupData['universityId'] ?? null),
             'facultyId' => $finalData['faculty_id'] ?? ($setupData['facultyId'] ?? null),
+            'customFaculty' => $finalData['custom_faculty'] ?? ($setupData['customFaculty'] ?? null),
             'departmentId' => $finalData['department_id'] ?? ($setupData['departmentId'] ?? null),
+            'customDepartment' => $finalData['custom_department'] ?? ($setupData['customDepartment'] ?? null),
             'course' => $finalData['course'] ?? ($setupData['course'] ?? null),
             'fieldOfStudy' => $finalData['field_of_study'] ?? ($setupData['fieldOfStudy'] ?? null),
             'academicSession' => $finalData['academic_session'] ?? ($setupData['academicSession'] ?? null),
@@ -604,12 +608,11 @@ class Project extends Model
         $allData = array_merge($setupData, $mappedData);
 
         // Validate that all required data is present
+        // Faculty and department can be either from database OR custom input
         $requiredFields = [
             'projectType',
             'projectCategoryId',
             'universityId',
-            'facultyId',
-            'departmentId',
             'course',
             'academicSession',
             'degreeAbbreviation',
@@ -622,6 +625,16 @@ class Project extends Model
             }
         }
 
+        // Validate faculty: either facultyId or customFaculty required
+        if (empty($allData['facultyId']) && empty($allData['customFaculty'])) {
+            throw new \Exception('Missing required field: faculty (select from list or enter custom)');
+        }
+
+        // Validate department: either departmentId or customDepartment required
+        if (empty($allData['departmentId']) && empty($allData['customDepartment'])) {
+            throw new \Exception('Missing required field: department (select from list or enter custom)');
+        }
+
         $this->update([
             'status' => 'setup',
             'topic_status' => 'topic_selection',
@@ -631,8 +644,10 @@ class Project extends Model
             'degree_abbreviation' => $allData['degreeAbbreviation'] ?? null,
             'project_category_id' => $allData['projectCategoryId'],
             'university_id' => $allData['universityId'],
-            'faculty_id' => $allData['facultyId'],
-            'department_id' => $allData['departmentId'],
+            'faculty_id' => $allData['facultyId'] ?? null,
+            'custom_faculty' => $allData['customFaculty'] ?? null,
+            'department_id' => $allData['departmentId'] ?? null,
+            'custom_department' => $allData['customDepartment'] ?? null,
             'course' => $allData['course'],
             'field_of_study' => $allData['fieldOfStudy'],
             'supervisor_name' => $allData['supervisorName'] ?? null,
@@ -668,7 +683,9 @@ class Project extends Model
      */
     public function isStepDataComplete(int $step): bool
     {
-        if (! $this->setup_data) {
+        $flatData = $this->getFlatSetupData();
+
+        if (empty($flatData)) {
             return false;
         }
 
@@ -683,19 +700,7 @@ class Project extends Model
         }
 
         foreach ($requiredFields[$step] as $field) {
-            // Special handling for university field when it's "other"
-            if (
-                $field === 'university' && isset($this->setup_data['university']) &&
-                $this->setup_data['university'] === 'other'
-            ) {
-                if (empty($this->setup_data['otherUniversity'])) {
-                    return false;
-                }
-
-                continue;
-            }
-
-            if (empty($this->setup_data[$field])) {
+            if (empty($flatData[$field])) {
                 return false;
             }
         }
@@ -755,37 +760,81 @@ class Project extends Model
      */
     public function goBackToWizard(): void
     {
-        // Reset to setup mode while preserving completed data as setup_data
+        $step1 = [
+            'projectType' => $this->type,
+            'projectCategoryId' => $this->project_category_id,
+        ];
+        $step2 = [
+            'universityId' => $this->university_id,
+            'facultyId' => $this->faculty_id,
+            'departmentId' => $this->department_id,
+            'course' => $this->course,
+        ];
+        $step3 = [
+            'fieldOfStudy' => $this->field_of_study,
+            'supervisorName' => $this->supervisor_name,
+            'matricNumber' => $this->settings['matric_number'] ?? null,
+            'academicSession' => $this->settings['academic_session'] ?? null,
+            'degree' => $this->degree,
+            'degreeAbbreviation' => $this->degree_abbreviation,
+            'workingMode' => $this->mode,
+            'aiAssistanceLevel' => $this->settings['ai_assistance_level'] ?? 'moderate',
+        ];
+
+        $steps = [
+            '1' => [
+                'data' => $step1,
+                'completed' => $this->isStepComplete(1, $step1),
+                'timestamp' => now()->toISOString(),
+            ],
+            '2' => [
+                'data' => $step2,
+                'completed' => $this->isStepComplete(2, $step2),
+                'timestamp' => now()->toISOString(),
+            ],
+            '3' => [
+                'data' => $step3,
+                'completed' => $this->isStepComplete(3, $step3),
+                'timestamp' => now()->toISOString(),
+            ],
+        ];
+
+        $furthestCompleted = 0;
+        foreach ($steps as $stepIndex => $stepData) {
+            if (! empty($stepData['completed'])) {
+                $furthestCompleted = max($furthestCompleted, (int) $stepIndex);
+            }
+        }
+
+        // Deactivate other SETUP projects for this user (not completed projects!)
+        static::where('user_id', $this->user_id)
+            ->where('status', 'setup')
+            ->where('id', '!=', $this->id)
+            ->update(['is_active' => false]);
+
+        // Reset to setup mode while preserving completed data in step-based format
         $this->update([
             'status' => 'setup',
             'setup_step' => 3, // Go to last step of wizard
+            'is_active' => true, // Mark as active so store() finds it
             'setup_data' => [
-                'projectType' => $this->type,
-                'projectCategoryId' => $this->project_category_id,
-                'university' => $this->university,
-                'faculty' => $this->faculty,
-                'course' => $this->course,
-                'fieldOfStudy' => $this->field_of_study,
-                'degree' => $this->degree,
-                'degreeAbbreviation' => $this->degree_abbreviation,
-                'supervisorName' => $this->supervisor_name,
-                'workingMode' => $this->mode,
-                'department' => $this->settings['department'] ?? null,
-                'matricNumber' => $this->settings['matric_number'] ?? null,
-                'academicSession' => $this->settings['academic_session'] ?? null,
-                'aiAssistanceLevel' => $this->settings['ai_assistance_level'] ?? 'moderate',
+                'format_version' => '2.0',
+                'steps' => $steps,
+                'current_step' => 3,
+                'furthest_completed_step' => $furthestCompleted,
             ],
         ]);
     }
 
     public function goBackToTopicSelection(): void
     {
-        // Reset topic but keep project setup data
+        // Reset topic data completely but keep project setup data
         $this->update([
             'status' => 'setup',
             'topic_status' => 'topic_selection',
             'topic' => null,
             'title' => null,
+            'description' => null, // Clear description to prevent stale data
         ]);
     }
 
@@ -807,11 +856,72 @@ class Project extends Model
      */
     public function getStepBasedSetupData(): array
     {
-        return $this->setup_data ?? [
+        $setupData = $this->setup_data;
+
+        if (! $setupData) {
+            return [
+                'format_version' => '2.0',
+                'steps' => [],
+                'current_step' => 1,
+                'furthest_completed_step' => 0,
+            ];
+        }
+
+        if (isset($setupData['format_version']) || isset($setupData['steps'])) {
+            return $setupData;
+        }
+
+        $step1 = array_filter([
+            'projectType' => $setupData['projectType'] ?? $setupData['type'] ?? null,
+            'projectCategoryId' => $setupData['projectCategoryId'] ?? $setupData['project_category_id'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+        $step2 = array_filter([
+            'universityId' => $setupData['universityId'] ?? $setupData['university_id'] ?? null,
+            'facultyId' => $setupData['facultyId'] ?? $setupData['faculty_id'] ?? null,
+            'departmentId' => $setupData['departmentId'] ?? $setupData['department_id'] ?? null,
+            'course' => $setupData['course'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+        $step3 = array_filter([
+            'fieldOfStudy' => $setupData['fieldOfStudy'] ?? $setupData['field_of_study'] ?? null,
+            'supervisorName' => $setupData['supervisorName'] ?? $setupData['supervisor_name'] ?? null,
+            'matricNumber' => $setupData['matricNumber'] ?? $setupData['matric_number'] ?? null,
+            'academicSession' => $setupData['academicSession'] ?? $setupData['academic_session'] ?? null,
+            'degree' => $setupData['degree'] ?? null,
+            'degreeAbbreviation' => $setupData['degreeAbbreviation'] ?? $setupData['degree_abbreviation'] ?? null,
+            'workingMode' => $setupData['workingMode'] ?? $setupData['mode'] ?? null,
+            'aiAssistanceLevel' => $setupData['aiAssistanceLevel'] ?? $setupData['ai_assistance_level'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        $steps = [
+            '1' => [
+                'data' => $step1,
+                'completed' => $this->isStepComplete(1, $step1),
+                'timestamp' => null,
+            ],
+            '2' => [
+                'data' => $step2,
+                'completed' => $this->isStepComplete(2, $step2),
+                'timestamp' => null,
+            ],
+            '3' => [
+                'data' => $step3,
+                'completed' => $this->isStepComplete(3, $step3),
+                'timestamp' => null,
+            ],
+        ];
+
+        $furthestCompleted = 0;
+        foreach ($steps as $stepIndex => $stepData) {
+            if (! empty($stepData['completed'])) {
+                $furthestCompleted = max($furthestCompleted, (int) $stepIndex);
+            }
+        }
+
+        return [
             'format_version' => '2.0',
-            'steps' => [],
-            'current_step' => 1,
-            'furthest_completed_step' => 0,
+            'steps' => $steps,
+            'current_step' => $this->setup_step ?? 1,
+            'furthest_completed_step' => $furthestCompleted,
         ];
     }
 
@@ -906,6 +1016,11 @@ class Project extends Model
 
     public function getFacultyNameAttribute()
     {
+        // Prioritize custom faculty if set
+        if (! empty($this->custom_faculty)) {
+            return $this->custom_faculty;
+        }
+
         if (! $this->relationLoaded('facultyRelation')) {
             return null; // DO NOT load it automatically
         }
@@ -915,11 +1030,32 @@ class Project extends Model
 
     public function getDepartmentNameAttribute()
     {
+        // Prioritize custom department if set
+        if (! empty($this->custom_department)) {
+            return $this->custom_department;
+        }
+
         if (! $this->relationLoaded('departmentRelation')) {
             return null;
         }
 
         return $this->departmentRelation->name ?? null;
+    }
+
+    /**
+     * Get effective faculty (custom or from relation)
+     */
+    public function getEffectiveFaculty(): ?string
+    {
+        return $this->custom_faculty ?? $this->facultyRelation?->name ?? $this->faculty;
+    }
+
+    /**
+     * Get effective department (custom or from relation)
+     */
+    public function getEffectiveDepartment(): ?string
+    {
+        return $this->custom_department ?? $this->departmentRelation?->name ?? $this->course;
     }
 
     public function getFullUniversityNameAttribute()

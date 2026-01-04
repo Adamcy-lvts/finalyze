@@ -70,20 +70,37 @@ class ProjectController extends Controller
     /**
      * Enhanced Create Method with Better Resume Logic
      */
-    public function create()
+    public function create(Request $request)
     {
-        // Priority 1: Check for explicit resume project in session
-        $resumeProjectId = session('resume_project');
         $resumeProject = null;
 
-        if ($resumeProjectId) {
-            $resumeProject = Project::where('id', $resumeProjectId)
+        // Priority 0: Check for explicit resume project ID in query parameter (most reliable for Inertia redirects)
+        $queryResumeId = $request->query('resume');
+        if ($queryResumeId) {
+            $resumeProject = Project::where('id', $queryResumeId)
                 ->where('user_id', auth()->id())
                 ->where('status', 'setup')
                 ->first();
 
-            // Clear the session after retrieving
-            session()->forget('resume_project');
+            if ($resumeProject) {
+                // Clear session data if it exists
+                session()->forget('resume_project');
+            }
+        }
+
+        // Priority 1: Check for explicit resume project in session (fallback)
+        if (! $resumeProject) {
+            $resumeProjectId = session('resume_project');
+
+            if ($resumeProjectId) {
+                $resumeProject = Project::where('id', $resumeProjectId)
+                    ->where('user_id', auth()->id())
+                    ->where('status', 'setup')
+                    ->first();
+
+                // Clear the session after retrieving
+                session()->forget('resume_project');
+            }
         }
 
         // Priority 2: Look for the most recent active setup project
@@ -159,16 +176,28 @@ class ProjectController extends Controller
         // Get the selected project category
         $category = ProjectCategory::findOrFail($validated['project_category_id']);
 
-        // Check if we have an existing setup project to finalize
+        // Priority 1: Use explicit project_id if provided (for resuming specific project)
+        $existingProject = null;
+        if (! empty($validated['project_id'])) {
+            $existingProject = auth()->user()->projects()
+                ->where('id', $validated['project_id'])
+                ->where('status', 'setup')
+                ->first();
+        }
+
+        // Priority 2: Check if we have an existing active setup project
+        if (! $existingProject) {
+            $existingProject = auth()->user()->projects()
+                ->where('status', 'setup')
+                ->where('is_active', true)
+                ->latest('updated_at')
+                ->first();
+        }
+
+        // For logging
         $allSetupProjects = auth()->user()->projects()
             ->where('status', 'setup')
             ->get();
-
-        $existingProject = auth()->user()->projects()
-            ->where('status', 'setup')
-            ->where('is_active', true)
-            ->latest('updated_at')
-            ->first();
 
         Log::info('PROJECT COMPLETION - Setup Analysis', [
             'user_id' => auth()->id(),
@@ -216,8 +245,10 @@ class ProjectController extends Controller
                 'degree' => $validated['degree'] ?? null,
                 'degree_abbreviation' => $validated['degree_abbreviation'] ?? null,
                 'university_id' => $validated['university_id'],
-                'faculty_id' => $validated['faculty_id'],
-                'department_id' => $validated['department_id'],
+                'faculty_id' => $validated['faculty_id'] ?? null,
+                'custom_faculty' => $validated['custom_faculty'] ?? null,
+                'department_id' => $validated['department_id'] ?? null,
+                'custom_department' => $validated['custom_department'] ?? null,
                 'course' => $validated['course'],
                 'field_of_study' => $validated['field_of_study'],
                 'supervisor_name' => $validated['supervisor_name'],
@@ -660,9 +691,10 @@ class ProjectController extends Controller
         $project->goBackToWizard();
 
         // Set session flag to bypass state middleware
+        // Use both session AND query parameter for reliability across Inertia redirects
         session(['explicit_navigation' => true, 'resume_project' => $project->id]);
 
-        return redirect()->route('projects.create')
+        return redirect()->route('projects.create', ['resume' => $project->id])
             ->with('success', 'Returned to project setup');
     }
 

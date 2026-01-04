@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/vue3';
 import { toTypedSchema } from '@vee-validate/zod';
 import { BookOpen, Check, ChevronsUpDown, FileText, GraduationCap, School } from 'lucide-vue-next';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, defineComponent, nextTick, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
 import * as z from 'zod';
@@ -69,12 +69,21 @@ const formSchemas = [
     }),
 
     // Step 2: University Details
+    // Faculty and department can be either selected from list OR custom entered
     z.object({
         universityId: z.number({ required_error: 'Please select your university' }),
-        facultyId: z.number({ required_error: 'Please select your faculty' }),
-        departmentId: z.number({ required_error: 'Please select your department' }),
+        facultyId: z.number().nullable().optional(),
+        customFaculty: z.string().optional(),
+        departmentId: z.number().nullable().optional(),
+        customDepartment: z.string().optional(),
         course: z.string().min(2, 'Course of study is required'),
-    }),
+    }).refine(
+        (data) => data.facultyId || data.customFaculty,
+        { message: 'Please select a faculty or enter a custom faculty name', path: ['facultyId'] }
+    ).refine(
+        (data) => data.departmentId || data.customDepartment,
+        { message: 'Please select a department or enter a custom department name', path: ['departmentId'] }
+    ),
 
     // Step 3: Research & Supervisor Details
     z.object({
@@ -199,6 +208,10 @@ const universityPopoverOpen = ref(false);
 const facultyPopoverOpen = ref(false);
 const departmentPopoverOpen = ref(false);
 
+// Custom faculty/department mode (when user selects "Other")
+const useCustomFaculty = ref(false);
+const useCustomDepartment = ref(false);
+
 /**
  * GET CURRENT STEP DATA FROM WIZARD
  */
@@ -229,14 +242,21 @@ const setCurrentStepData = (step: number, data: Record<string, any>) => {
  * CHECK IF STEP DATA IS COMPLETE
  */
 const isStepComplete = (step: number, data: Record<string, any>): boolean => {
-    const requiredFields = {
-        1: ['projectType', 'projectCategoryId'],
-        2: ['universityId', 'facultyId', 'departmentId', 'course'],
-        3: ['academicSession', 'degreeAbbreviation', 'workingMode'], // fieldOfStudy is now optional
-    };
+    if (step === 1) {
+        return Boolean(data.projectType && data.projectCategoryId);
+    }
 
-    const required = requiredFields[step as keyof typeof requiredFields] || [];
-    return required.every((field) => data[field] && data[field] !== '');
+    if (step === 2) {
+        const hasFaculty = Boolean(data.facultyId || data.customFaculty);
+        const hasDepartment = Boolean(data.departmentId || data.customDepartment);
+        return Boolean(data.universityId && data.course && hasFaculty && hasDepartment);
+    }
+
+    if (step === 3) {
+        return Boolean(data.academicSession && data.degreeAbbreviation && data.workingMode);
+    }
+
+    return false;
 };
 
 /**
@@ -423,8 +443,14 @@ const fetchDepartmentsByFaculty = async (facultyId: number) => {
     isLoadingDepartments.value = true;
     try {
         const response = await fetch(`/api/faculties/${facultyId}/departments`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.json();
-        departments.value = data.departments;
+        departments.value = Array.isArray(data.departments) ? data.departments : [];
+        if (departments.value.length === 0) {
+            console.warn('No departments returned for faculty:', facultyId);
+        }
     } catch (error) {
         console.error('Failed to fetch departments:', error);
         toast('Error loading departments');
@@ -647,7 +673,7 @@ watch(
 const getCurrentStepFields = (values: Record<string, any>, step: number): Record<string, any> => {
     const stepFieldsMap = {
         1: ['projectType', 'projectCategoryId'], // Step 1: Academic Level & Project Type
-        2: ['universityId', 'facultyId', 'departmentId', 'course'], // Step 2: University Details
+        2: ['universityId', 'facultyId', 'customFaculty', 'departmentId', 'customDepartment', 'course'], // Step 2: University Details
         3: [
             'fieldOfStudy',
             'supervisorName',
@@ -675,7 +701,7 @@ const getCurrentStepFields = (values: Record<string, any>, step: number): Record
 const autoSaveFormValues = (values: Record<string, any>) => {
     // Don't save during initialization
     if (isInitializing.value) {
-        return '';
+        return;
     }
 
     // Get only fields relevant to current step
@@ -701,9 +727,29 @@ const autoSaveFormValues = (values: Record<string, any>) => {
             debouncedSave(currentStep.value, stepData);
         }
     }
-
-    return ''; // Return empty string for template
 };
+
+const FormWatcher = defineComponent({
+    name: 'FormWatcher',
+    props: {
+        values: {
+            type: Object,
+            required: true,
+        },
+    },
+    setup(props) {
+        watch(
+            () => props.values,
+            (values) => {
+                currentFormValues.value = values as Record<string, any>;
+                autoSaveFormValues(values as Record<string, any>);
+            },
+            { deep: true, immediate: true },
+        );
+
+        return () => null;
+    },
+});
 
 function onSubmit(values: any) {
     console.log('🚀 Submitting final step with current values:', values);
@@ -717,7 +763,9 @@ function onSubmit(values: any) {
     console.log('📋 All steps data for submission:', allStepsData);
 
     // Validate we have all required data
-    if (!allStepsData.projectType || !allStepsData.universityId || !allStepsData.facultyId || !allStepsData.departmentId) {
+    const hasFaculty = allStepsData.facultyId || allStepsData.customFaculty;
+    const hasDepartment = allStepsData.departmentId || allStepsData.customDepartment;
+    if (!allStepsData.projectType || !allStepsData.universityId || !hasFaculty || !hasDepartment) {
         toast('Incomplete Data', {
             description: 'Please complete all previous steps before submitting.',
         });
@@ -725,12 +773,16 @@ function onSubmit(values: any) {
     }
 
     // Prepare project data for final submission
-    const projectData = {
+    const projectData: Record<string, any> = {
         project_category_id: allStepsData.projectCategoryId,
         type: allStepsData.projectType,
         university_id: allStepsData.universityId,
-        faculty_id: allStepsData.facultyId,
-        department_id: allStepsData.departmentId,
+        // Faculty: either ID or custom string
+        faculty_id: allStepsData.facultyId || null,
+        custom_faculty: allStepsData.customFaculty || null,
+        // Department: either ID or custom string
+        department_id: allStepsData.departmentId || null,
+        custom_department: allStepsData.customDepartment || null,
         course: allStepsData.course,
         field_of_study: allStepsData.fieldOfStudy,
         supervisor_name: allStepsData.supervisorName,
@@ -741,6 +793,11 @@ function onSubmit(values: any) {
         mode: allStepsData.workingMode,
         ai_assistance_level: allStepsData.aiAssistanceLevel,
     };
+
+    // Include project ID if we're updating an existing project (prevents duplicate creation)
+    if (currentProjectId.value) {
+        projectData.project_id = currentProjectId.value;
+    }
 
     console.log('🎯 Final project data for submission:', projectData);
 
@@ -786,7 +843,7 @@ function onSubmit(values: any) {
                         <Form :key="formKey" v-slot="{ meta, values, validate }" as="" keep-values
                             :validation-schema="toTypedSchema(currentSchema)" :initial-values="initialFormValues">
                             <!-- Auto-save values when they change -->
-                            <template v-if="!isInitializing">{{ autoSaveFormValues(values) }}</template>
+                            <FormWatcher v-if="!isInitializing" :values="values" />
                             <Stepper v-model="currentStep" class="w-full">
                                 <form @submit="
                                     (e) => {
@@ -1021,7 +1078,8 @@ function onSubmit(values: any) {
                                             </FormField>
 
                                             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                                <FormField v-slot="{ componentField }" name="facultyId">
+                                                <!-- Faculty: Either select from list OR enter custom -->
+                                                <FormField v-if="!useCustomFaculty" v-slot="{ componentField }" name="facultyId">
                                                     <FormItem class="flex flex-col">
                                                         <FormLabel>Faculty</FormLabel>
                                                         <Popover v-model:open="facultyPopoverOpen">
@@ -1030,18 +1088,14 @@ function onSubmit(values: any) {
                                                                     <Button variant="outline" role="combobox" :class="cn(
                                                                         'w-full justify-between',
                                                                         !componentField.modelValue && 'text-muted-foreground',
-                                                                    )
-                                                                        ">
+                                                                    )">
                                                                         {{
                                                                             componentField.modelValue
                                                                                 ? 'Faculty of ' + faculties.find((faculty) =>
-                                                                                    faculty.id ===
-                                                                                    componentField.modelValue)
-                                                                                    ?.name
+                                                                                    faculty.id === componentField.modelValue)?.name
                                                                                 : 'Select faculty...'
                                                                         }}
-                                                                        <ChevronsUpDown
-                                                                            class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                        <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                                     </Button>
                                                                 </FormControl>
                                                             </PopoverTrigger>
@@ -1052,22 +1106,27 @@ function onSubmit(values: any) {
                                                                     <CommandList>
                                                                         <CommandGroup>
                                                                             <CommandItem v-for="faculty in faculties"
-                                                                                :key="faculty.id" :value="faculty.id"
-                                                                                @select="
-                                                                                    () => {
-                                                                                        componentField['onUpdate:modelValue']?.(faculty.id);
-                                                                                        selectedFacultyId = faculty.id;
-                                                                                        facultyPopoverOpen = false;
-                                                                                    }
-                                                                                ">
+                                                                                :key="faculty.id" :value="faculty.name"
+                                                                                @select="() => {
+                                                                                    componentField['onUpdate:modelValue']?.(faculty.id);
+                                                                                    selectedFacultyId = faculty.id;
+                                                                                    facultyPopoverOpen = false;
+                                                                                }">
                                                                                 <Check :class="cn(
                                                                                     'mr-2 h-4 w-4',
-                                                                                    componentField.modelValue === faculty.id
-                                                                                        ? 'opacity-100'
-                                                                                        : 'opacity-0',
-                                                                                )
-                                                                                    " />
+                                                                                    componentField.modelValue === faculty.id ? 'opacity-100' : 'opacity-0',
+                                                                                )" />
                                                                                 Faculty of {{ faculty.name }}
+                                                                            </CommandItem>
+                                                                            <!-- Other option -->
+                                                                            <CommandItem value="other" @select="() => {
+                                                                                componentField['onUpdate:modelValue']?.(null);
+                                                                                useCustomFaculty = true;
+                                                                                useCustomDepartment = true;
+                                                                                facultyPopoverOpen = false;
+                                                                            }">
+                                                                                <Check class="mr-2 h-4 w-4 opacity-0" />
+                                                                                Other (enter custom faculty)
                                                                             </CommandItem>
                                                                         </CommandGroup>
                                                                     </CommandList>
@@ -1078,7 +1137,26 @@ function onSubmit(values: any) {
                                                     </FormItem>
                                                 </FormField>
 
-                                                <FormField v-slot="{ componentField }" name="departmentId">
+                                                <!-- Show text input when using custom -->
+                                                <FormField v-else v-slot="{ componentField }" name="customFaculty">
+                                                    <FormItem class="flex flex-col">
+                                                        <FormLabel>Faculty</FormLabel>
+                                                        <div class="space-y-2">
+                                                            <FormControl>
+                                                                <Input v-bind="componentField" placeholder="Enter your faculty name..." />
+                                                            </FormControl>
+                                                            <Button type="button" variant="ghost" size="sm"
+                                                                @click="useCustomFaculty = false; useCustomDepartment = false"
+                                                                class="text-xs text-muted-foreground">
+                                                                ← Back to faculty list
+                                                            </Button>
+                                                        </div>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+
+                                                <!-- Department: Either select from list OR enter custom -->
+                                                <FormField v-if="!useCustomDepartment" v-slot="{ componentField }" name="departmentId">
                                                     <FormItem class="flex flex-col">
                                                         <FormLabel>Department</FormLabel>
                                                         <Popover v-model:open="departmentPopoverOpen">
@@ -1087,17 +1165,13 @@ function onSubmit(values: any) {
                                                                     <Button variant="outline" role="combobox" :class="cn(
                                                                         'w-full justify-between',
                                                                         !componentField.modelValue && 'text-muted-foreground',
-                                                                    )
-                                                                        ">
+                                                                    )">
                                                                         {{
                                                                             componentField.modelValue
-                                                                                ? departments.find((dept) => dept.id ===
-                                                                                    componentField.modelValue)
-                                                                                    ?.name
+                                                                                ? departments.find((dept) => dept.id === componentField.modelValue)?.name
                                                                                 : 'Select department...'
                                                                         }}
-                                                                        <ChevronsUpDown
-                                                                            class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                                        <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                                     </Button>
                                                                 </FormControl>
                                                             </PopoverTrigger>
@@ -1108,26 +1182,50 @@ function onSubmit(values: any) {
                                                                     <CommandList>
                                                                         <CommandGroup>
                                                                             <CommandItem v-for="dept in departments"
-                                                                                :key="dept.id" :value="dept.id" @select="
-                                                                                    () => {
-                                                                                        componentField['onUpdate:modelValue']?.(dept.id);
-                                                                                        departmentPopoverOpen = false;
-                                                                                    }
-                                                                                ">
+                                                                                :key="dept.id" :value="dept.name"
+                                                                                @select="() => {
+                                                                                    componentField['onUpdate:modelValue']?.(dept.id);
+                                                                                    departmentPopoverOpen = false;
+                                                                                }">
                                                                                 <Check :class="cn(
                                                                                     'mr-2 h-4 w-4',
-                                                                                    componentField.modelValue === dept.id
-                                                                                        ? 'opacity-100'
-                                                                                        : 'opacity-0',
-                                                                                )
-                                                                                    " />
+                                                                                    componentField.modelValue === dept.id ? 'opacity-100' : 'opacity-0',
+                                                                                )" />
                                                                                 {{ dept.name }}
+                                                                            </CommandItem>
+                                                                            <!-- Other option -->
+                                                                            <CommandItem value="other" @select="() => {
+                                                                                componentField['onUpdate:modelValue']?.(null);
+                                                                                useCustomDepartment = true;
+                                                                                departmentPopoverOpen = false;
+                                                                            }">
+                                                                                <Check class="mr-2 h-4 w-4 opacity-0" />
+                                                                                Other (enter custom department)
                                                                             </CommandItem>
                                                                         </CommandGroup>
                                                                     </CommandList>
                                                                 </Command>
                                                             </PopoverContent>
                                                         </Popover>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                </FormField>
+
+                                                <!-- Show text input when using custom -->
+                                                <FormField v-else v-slot="{ componentField }" name="customDepartment">
+                                                    <FormItem class="flex flex-col">
+                                                        <FormLabel>Department</FormLabel>
+                                                        <div class="space-y-2">
+                                                            <FormControl>
+                                                                <Input v-bind="componentField" placeholder="Enter your department name..." />
+                                                            </FormControl>
+                                                            <Button type="button" variant="ghost" size="sm"
+                                                                @click="useCustomDepartment = false"
+                                                                class="text-xs text-muted-foreground"
+                                                                :disabled="useCustomFaculty">
+                                                                {{ useCustomFaculty ? 'Select faculty first to browse departments' : '← Back to department list' }}
+                                                            </Button>
+                                                        </div>
                                                         <FormMessage />
                                                     </FormItem>
                                                 </FormField>

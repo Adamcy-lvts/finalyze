@@ -18,7 +18,7 @@ class FacultyStructureService
     public function getProjectStructure(Project $project): array
     {
         // Get faculty name from relationship (new) or string field (legacy)
-        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+        $facultyName = $project->getEffectiveFaculty();
 
         $cacheKey = "faculty_structure_{$facultyName}_{$project->type}";
 
@@ -61,7 +61,7 @@ class FacultyStructureService
         }
 
         // Get faculty name from relationship (new) or string field (legacy)
-        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+        $facultyName = $project->getEffectiveFaculty();
 
         // Try to get from FacultyChapter table first (Database Driven)
         $facultyStructure = $this->getFacultyStructure($facultyName);
@@ -152,7 +152,7 @@ class FacultyStructureService
     public function getGuidanceTemplates(Project $project): array
     {
         // Get faculty name from relationship (new) or string field (legacy)
-        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+        $facultyName = $project->getEffectiveFaculty();
 
         $facultyStructure = $this->getFacultyStructure($facultyName);
         $academicLevel = $this->determineAcademicLevel($project);
@@ -170,7 +170,7 @@ class FacultyStructureService
     public function getTerminology(Project $project): array
     {
         // Get faculty name from relationship (new) or string field (legacy)
-        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+        $facultyName = $project->getEffectiveFaculty();
 
         $facultyStructure = $this->getFacultyStructure($facultyName);
         $academicLevel = $this->determineAcademicLevel($project);
@@ -188,7 +188,7 @@ class FacultyStructureService
     public function getTimelineRecommendations(Project $project): array
     {
         // Get faculty name from relationship (new) or string field (legacy)
-        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+        $facultyName = $project->getEffectiveFaculty();
 
         $facultyStructure = $this->getFacultyStructure($facultyName);
         $academicLevel = $this->determineAcademicLevel($project);
@@ -208,7 +208,7 @@ class FacultyStructureService
         $chapterStructure = $this->getChapterStructure($project);
 
         // Get faculty name from relationship (new) or string field (legacy)
-        $facultyName = $project->facultyRelation?->name ?? $project->faculty;
+        $facultyName = $project->getEffectiveFaculty();
 
         foreach ($chapterStructure as $index => $chapterData) {
             $outline = ProjectOutline::create([

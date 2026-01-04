@@ -245,10 +245,16 @@
 
 <body>
     <!-- Header Section -->
+    @php
+        $universityName = $project->full_university_name
+            ?? ($project->universityRelation?->name ?? $project->university ?? 'University');
+        $facultyName = $project->getEffectiveFaculty() ?? $project->faculty ?? 'Faculty';
+        $departmentName = $project->getEffectiveDepartment() ?? $project->course ?? 'Department';
+    @endphp
     <div class="header">
-        <h1>{{ $project->full_university_name }}</h1>
-        <h2>Faculty of {{ ucwords($project->faculty ?? 'Science') }}</h2>
-        <h3>Department of {{ $project->course }}</h3>
+        <h1>{{ $universityName }}</h1>
+        <h2>Faculty of {{ ucwords($facultyName) }}</h2>
+        <h3>Department of {{ $departmentName }}</h3>
     </div>
 
     @php

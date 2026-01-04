@@ -45,9 +45,9 @@ Return ONLY a numbered list of 10 topics, one per line:
         [$focusAreasLine, $focusReminder] = $this->getGeographicFocusContextParts($geographicFocus);
 
         $categoryName = $project->category->name ?? 'Final Year Project';
-        $department = $project->departmentRelation?->name
+        $department = $project->getEffectiveDepartment()
             ?? $project->settings['department']
-            ?? ($project->facultyRelation?->name ?? $project->faculty ?? 'Department');
+            ?? ($project->getEffectiveFaculty() ?? 'Department');
         $university = $project->universityRelation?->name ?? $project->university;
         $academicLevel = $this->getAcademicLevelDescription($project->type);
         $fieldOfStudy = $project->field_of_study ?: 'Field of study not specified';

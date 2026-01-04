@@ -343,7 +343,7 @@ The description should help a student understand what this topic involves and wh
             $academicContext = [
                 'field_of_study' => $project->field_of_study,
                 'academic_level' => $project->type,
-                'faculty' => $project->facultyRelation?->name ?? '',
+                'faculty' => $project->getEffectiveFaculty() ?? '',
             ];
 
             $aiStartTime = microtime(true);

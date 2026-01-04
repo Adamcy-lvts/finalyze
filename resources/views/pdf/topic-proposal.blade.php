@@ -237,10 +237,16 @@
         <table style="width: 100%; margin-bottom: 30px; border-bottom: 2px solid #f3f4f6; padding-bottom: 15px; position: relative; z-index: 1;">
             <tr>
                 <td style="vertical-align: bottom;">
+                    @php
+                        $universityName = $project->full_university_name
+                            ?? ($project->universityRelation?->name ?? $project->university ?? 'University Name');
+                        $facultyName = $project->getEffectiveFaculty() ?? 'Faculty';
+                        $departmentName = $project->getEffectiveDepartment() ?? 'Department';
+                    @endphp
                     <div class="university-info">
-                        <h1>{{ $project->universityRelation->name ?? 'University Name' }}</h1>
-                        <h2>Faculty of {{ $project->facultyRelation->name ?? 'Faculty' }}</h2>
-                        <h3>Department of {{ $project->departmentRelation->name ?? 'Department' }}</h3>
+                        <h1>{{ $universityName }}</h1>
+                        <h2>Faculty of {{ $facultyName }}</h2>
+                        <h3>Department of {{ $departmentName }}</h3>
                     </div>
                 </td>
                 <td>

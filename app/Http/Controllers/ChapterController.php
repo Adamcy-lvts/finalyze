@@ -8,8 +8,8 @@ use App\Models\Chapter;
 use App\Models\ChatConversation;
 use App\Models\ChatFileUpload;
 use App\Models\Project;
-use App\Services\AIContentGenerator;
 use App\Services\AI\SystemPromptService;
+use App\Services\AIContentGenerator;
 use App\Services\ChapterReviewService;
 use App\Services\DocumentAnalysisService;
 use App\Services\FacultyStructureService;
@@ -1217,7 +1217,7 @@ Project Details:
 - Title: {$project->title}
 - Topic: {$project->topic}
 - Field of Study: {$project->field_of_study}
-- Faculty: {$project->facultyRelation?->name}
+- Faculty: {$project->getEffectiveFaculty()}
 - University: {$project->universityRelation?->name}
 - Course: {$project->course}
 - Academic Level: {$project->type}";
@@ -1237,7 +1237,7 @@ Project Details:
 
         $prompt .= "\n\nCHAPTER REQUIREMENT:\n";
         $prompt .= "- Target word count: {$targetWordCount} words\n\n";
-        $prompt .= "Write the complete chapter content now. Follow the system instructions.";
+        $prompt .= 'Write the complete chapter content now. Follow the system instructions.';
 
         return $prompt;
     }
@@ -2115,7 +2115,7 @@ ORIGINAL PROMPT CONTEXT:
 
         if (! $facultyStructure) {
             // Fallback to generic instructions if no faculty structure found
-            error_log("No faculty structure found for faculty: {$project->facultyRelation?->name}");
+            error_log("No faculty structure found for faculty: {$project->getEffectiveFaculty()}");
 
             return $this->getChapterSpecificInstructions($chapterNumber);
         }
@@ -2130,12 +2130,12 @@ ORIGINAL PROMPT CONTEXT:
 
         if (! $facultyChapter) {
             // Fallback to generic instructions if no chapter found
-            error_log("No chapters found for faculty: {$project->facultyRelation?->name}, chapter: {$chapterNumber}, academic_level: {$project->type}");
+            error_log("No chapters found for faculty: {$project->getEffectiveFaculty()}, chapter: {$chapterNumber}, academic_level: {$project->type}");
 
             return $this->getChapterSpecificInstructions($chapterNumber);
         }
 
-        error_log("Using database structure for faculty: {$project->facultyRelation?->name}, chapter: {$chapterNumber}, academic_level: {$project->type}");
+        error_log("Using database structure for faculty: {$project->getEffectiveFaculty()}, chapter: {$chapterNumber}, academic_level: {$project->type}");
 
         $instructions = "Write a comprehensive {$facultyChapter->chapter_title} chapter that includes:\n";
 
