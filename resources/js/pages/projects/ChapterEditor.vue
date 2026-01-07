@@ -9,13 +9,23 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 // SafeHtmlText DISABLED - causes dark mode issues
 // import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle } from 'lucide-vue-next';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle, RefreshCw } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -63,6 +73,7 @@ const page = usePage();
 
 const richTextEditor = ref<{ editor?: any } | null>(null);
 const richTextEditorFullscreen = ref<{ editor?: any } | null>(null);
+const showRegenerateDialog = ref(false);
 
 const isThemeSandbox = ref(false);
 const isThemeSandboxNoLayout = ref(false);
@@ -401,6 +412,7 @@ const {
     scrollToBottom,
     checkConnectionQuality,
     handleAIGeneration,
+    handleRegenerateChapter,
     getAISuggestions,
     checkCitations,
     insertCitation,
@@ -506,6 +518,12 @@ const handleRedo = () => {
         chapterContent.value = redoContent;
         triggerAutoSave();
     }
+};
+
+// Regenerate chapter confirmation
+const confirmRegenerateChapter = async () => {
+    showRegenerateDialog.value = false;
+    await handleRegenerateChapter(true);
 };
 
 // Navigation
@@ -1428,6 +1446,7 @@ watch(globalIsDark, () => {
                         <!-- Editor Container - Floating Paper Style -->
                         <div class="flex-1 overflow-hidden relative">
                             <div
+                                data-editor-scroll-container
                                 class="absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col items-center py-8 px-4 sm:px-8">
 
                                 <!-- The "Paper" -->
@@ -1551,6 +1570,14 @@ watch(globalIsDark, () => {
                                             class="h-8 w-8 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground bg-background/50 backdrop-blur-sm rounded-full"
                                             @click="goToBulkAnalysis">
                                             <Search class="w-4 h-4" />
+                                        </Button>
+
+                                        <Button variant="outline" size="icon"
+                                            class="h-8 w-8 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground bg-background/50 backdrop-blur-sm rounded-full"
+                                            :disabled="isGenerating"
+                                            @click="showRegenerateDialog = true"
+                                            title="Regenerate chapter">
+                                            <RefreshCw class="w-4 h-4" />
                                         </Button>
                                     </div>
 
@@ -1700,6 +1727,19 @@ watch(globalIsDark, () => {
                                             <Search class="w-4 h-4" />
                                             <span class="text-xs font-medium">Analyze</span>
                                         </Button>
+
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button id="regenerate-button" variant="outline" size="sm"
+                                                    class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground bg-background/50 backdrop-blur-sm rounded-full"
+                                                    :disabled="isGenerating"
+                                                    @click="showRegenerateDialog = true">
+                                                    <RefreshCw class="w-4 h-4" />
+                                                    <span class="text-xs font-medium">Regenerate</span>
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Regenerate chapter content</TooltipContent>
+                                        </Tooltip>
                                     </div>
 
                                     <div class="flex items-center gap-2 pl-2 border-l border-border/50">
@@ -1784,7 +1824,7 @@ watch(globalIsDark, () => {
                                 </div>
                             </Transition>
 
-                            <ScrollArea ref="editorScrollRef" class="h-full w-full">
+                            <ScrollArea ref="editorScrollRef" class="h-full w-full" data-editor-scroll-container>
                                 <div class=" mx-auto py-12 px-6 sm:px-10 min-h-full">
                                     <!-- WritingStatistics DISABLED in ChapterEditor -->
 
@@ -1845,6 +1885,26 @@ watch(globalIsDark, () => {
                     @generate-next-chapter="generateNextChapter" @start-streaming-generation="handleAIGeneration"
                     @get-ai-suggestions="getAISuggestions" @update:show-citation-helper="showCitationHelper = $event"
                     @check-citations="checkCitations" />
+
+                <!-- Regenerate Confirmation Dialog -->
+                <AlertDialog :open="showRegenerateDialog" @update:open="showRegenerateDialog = $event">
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Regenerate Chapter?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will replace all existing content with freshly generated content.
+                                Your current content will be saved to history, so you can undo if needed.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction @click="confirmRegenerateChapter" class="bg-primary hover:bg-primary/90">
+                                <RefreshCw class="w-4 h-4 mr-2" />
+                                Regenerate
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
 
                 <!-- Credit balance modal -->
                 <PurchaseModal :open="showPurchaseModal" :current-balance="balance"

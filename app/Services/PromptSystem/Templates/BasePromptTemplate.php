@@ -51,9 +51,16 @@ CONTENT QUALITY:
 STRICT CITATION POLICY:
 - Use in-text citations only (no References/Bibliography section inside a chapter)
 - If a "Verified Sources" block is provided in the user prompt, you may ONLY cite those sources
-- Use ONLY the format (FirstAuthorLastName, Year)
+- Use ONLY the format (FirstAuthorLastName, Year) - e.g., (Smith, 2020) or (Johnson, 2019)
 - Do NOT use "et al." and do NOT invent author names or years
 - If you cannot support a sentence with an allowed in-text citation, add: [Citation needed]
+
+CITATION FORMAT FOR REFERENCE TRACKING:
+- Every in-text citation MUST match this exact pattern: (AuthorLastName, Year)
+- For multiple authors, use: (Smith and Johnson, 2020) - never use "&"
+- Citations are automatically extracted for the References section
+- Consistent formatting ensures proper reference collection during export
+- Each citation used will appear in the final References section (sorted alphabetically)
 PROMPT;
     }
 
@@ -283,6 +290,11 @@ FORMATTING INSTRUCTIONS:
 - Format headings as: '{$chapterNumber}.1 Section Title'
 - Use proper academic table format with captions
 - Reference all tables and figures in the text
+
+CITATION REMINDERS:
+- Use consistent (AuthorLastName, Year) format for all citations
+- Distribute citations across sections (don't cluster all in one paragraph)
+- Each unique citation will be collected for the References section
 
 CRITICAL REMINDERS:
 - Generate comprehensive content to meet word count

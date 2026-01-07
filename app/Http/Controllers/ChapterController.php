@@ -5217,6 +5217,10 @@ ORIGINAL PROMPT CONTEXT:
             // Convert Tiptap JSON content to HTML for PDF
             $chapterContent = $this->convertTiptapToHtml($chapter->content);
 
+            // Get formatted chapter references for single chapter export
+            $chapterReferenceService = app(\App\Services\ChapterReferenceService::class);
+            $formattedReferences = $chapterReferenceService->formatChapterReferencesSection($chapter);
+
             // Create a unique filename
             $fileName = sprintf(
                 'chapter_%d_%s_%s.pdf',
@@ -5239,6 +5243,7 @@ ORIGINAL PROMPT CONTEXT:
                     'project' => $project,
                     'chapter' => $chapter,
                     'chapterContent' => $chapterContent,
+                    'formattedReferences' => $formattedReferences,
                     'isPdfMode' => true,
                 ])
                     ->format('A4')

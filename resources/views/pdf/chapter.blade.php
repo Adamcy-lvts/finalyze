@@ -327,6 +327,13 @@
         </div>
     </div>
 
+    <!-- References Section (for single chapter export) -->
+    @if(!empty($formattedReferences))
+    <div class="references-section" style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #000;">
+        {!! $formattedReferences !!}
+    </div>
+    @endif
+
     <!-- Statistics -->
     @if($chapter->word_count > 0)
     <div class="statistics">

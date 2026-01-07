@@ -479,13 +479,13 @@ const exportCurrentChapterPdf = async () => {
                     <div class="flex flex-col">
                         <span class="font-medium">Export as PDF</span>
                         <span class="text-xs text-muted-foreground">
-                            Professional academic format
+                            With chapter references at end
                         </span>
                     </div>
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
-                
+
                 <!-- Full Project Export -->
                 <DropdownMenuLabel>Full Project</DropdownMenuLabel>
 
@@ -494,7 +494,7 @@ const exportCurrentChapterPdf = async () => {
                     <div class="flex flex-col">
                         <span class="font-medium">Export as PDF</span>
                         <span class="text-xs text-muted-foreground">
-                            Professional academic format with cover page
+                            All references collected & sorted alphabetically
                         </span>
                     </div>
                 </DropdownMenuItem>

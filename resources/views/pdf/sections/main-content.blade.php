@@ -76,14 +76,21 @@
     {{-- REFERENCES --}}
     <div class="page-break"></div>
     <div class="section-content">
-        <div class="chapter-title">REFERENCES</div>
-        <div class="content">
-            @if($project->references)
+        @if(!empty($formattedReferences))
+            {{-- Use formatted references from ChapterReferenceService (sorted alphabetically) --}}
+            {!! $formattedReferences !!}
+        @elseif($project->references)
+            {{-- Fallback to project-level references --}}
+            <div class="chapter-title">REFERENCES</div>
+            <div class="content">
                 {!! nl2br(e($project->references)) !!}
-            @else
+            </div>
+        @else
+            <div class="chapter-title">REFERENCES</div>
+            <div class="content">
                 <p>References will be added here.</p>
-            @endif
-        </div>
+            </div>
+        @endif
     </div>
 
     {{-- APPENDICES --}}

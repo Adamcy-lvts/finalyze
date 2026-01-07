@@ -92,6 +92,7 @@ export function useChapterGeneration({
     const eventSource = ref<EventSource | null>(null);
 
     const editorScrollRef = ref();
+    const cachedScrollContainer = ref<HTMLElement | null>(null);
     const {
         attach: attachScroller,
         scrollToBottom: smoothScrollToBottom,
@@ -105,50 +106,116 @@ export function useChapterGeneration({
         bottomThreshold: 100,
     });
 
+    // Find the scroll container - called once at generation start
+    const findScrollContainer = (): HTMLElement | null => {
+        // Priority 1: Find element with data-editor-scroll-container and get its Radix viewport
+        const markedContainer = document.querySelector('[data-editor-scroll-container]') as HTMLElement;
+        if (markedContainer) {
+            // If it's a ScrollArea, the actual scrollable is the viewport inside
+            const viewport = markedContainer.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+            if (viewport) {
+                console.log('📜 Found Radix viewport inside marked container');
+                return viewport;
+            }
+            // If it has overflow-y-auto directly (fullscreen mode), use it
+            if (markedContainer.classList.contains('overflow-y-auto') ||
+                getComputedStyle(markedContainer).overflowY === 'auto' ||
+                getComputedStyle(markedContainer).overflowY === 'scroll') {
+                console.log('📜 Using marked container directly (has overflow)');
+                return markedContainer;
+            }
+        }
+
+        // Priority 2: Direct Radix scroll area viewport in main content area
+        const mainContent = document.querySelector('main');
+        if (mainContent) {
+            const viewport = mainContent.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+            if (viewport) {
+                console.log('📜 Found Radix viewport in main');
+                return viewport;
+            }
+        }
+
+        // Priority 3: Fullscreen mode specific selectors
+        if (isNativeFullscreen.value) {
+            const scrollAreaRef = editorScrollRef.value;
+            if (scrollAreaRef) {
+                const scrollAreaEl = scrollAreaRef.$el || scrollAreaRef;
+                const viewport = scrollAreaEl?.querySelector('[data-radix-scroll-area-viewport]') ||
+                    scrollAreaEl?.querySelector('[data-viewport]') ||
+                    scrollAreaEl?.querySelector('[role="region"]');
+                if (viewport) {
+                    console.log('📜 Found viewport in fullscreen ref');
+                    return viewport as HTMLElement;
+                }
+            }
+            // Fullscreen mode uses direct overflow div
+            const fullscreenScroll = document.querySelector('[data-editor-scroll-container].overflow-y-auto') as HTMLElement;
+            if (fullscreenScroll) {
+                console.log('📜 Found fullscreen scroll container');
+                return fullscreenScroll;
+            }
+        }
+
+        // Priority 4: Common scrollable container patterns
+        const containerSelectors = [
+            '.custom-scrollbar.overflow-y-auto',
+            'main .overflow-y-auto',
+        ];
+
+        for (const selector of containerSelectors) {
+            const element = document.querySelector(selector) as HTMLElement;
+            if (element && element.scrollHeight > element.clientHeight) {
+                console.log('📜 Found container via selector:', selector);
+                return element;
+            }
+        }
+
+        // Priority 5: Fallback - search within main content
+        if (mainContent) {
+            const scrollables = mainContent.querySelectorAll('div');
+            for (const div of scrollables) {
+                if (div.scrollHeight > div.clientHeight && div.classList.contains('overflow-y-auto')) {
+                    console.log('📜 Found fallback scrollable div');
+                    return div as HTMLElement;
+                }
+            }
+        }
+
+        return null;
+    };
+
+    // Initialize scroller - call once when generation starts
+    const initializeAutoScroll = () => {
+        nextTick(() => {
+            cachedScrollContainer.value = findScrollContainer();
+            if (cachedScrollContainer.value) {
+                attachScroller(cachedScrollContainer.value);
+                console.log('📜 Auto-scroll initialized on container:', cachedScrollContainer.value.className || cachedScrollContainer.value.tagName);
+            } else {
+                console.warn('📜 No scroll container found for auto-scroll');
+            }
+        });
+    };
+
+    // Scroll to bottom - call on each content update (simple direct approach like TopicsLab.vue)
     const scrollToBottom = () => {
-        if (!isGenerating.value) return;
+        // Only scroll during active generation or streaming
+        if (!isGenerating.value && !isStreamingMode.value) return;
 
         nextTick(() => {
-            let scrollContainer: HTMLElement | null = null;
+            // Find container if not cached or if previous container is no longer in DOM
+            if (!cachedScrollContainer.value || !cachedScrollContainer.value.isConnected) {
+                cachedScrollContainer.value = findScrollContainer();
+            }
 
-            if (isNativeFullscreen.value) {
-                const scrollAreaRef = editorScrollRef.value;
-                if (scrollAreaRef) {
-                    const scrollAreaEl = scrollAreaRef.$el || scrollAreaRef;
-                    scrollContainer = scrollAreaEl?.querySelector('[data-radix-scroll-area-viewport]') ||
-                        scrollAreaEl?.querySelector('[data-viewport]') ||
-                        scrollAreaEl?.querySelector('[role="region"]');
+            // Use requestAnimationFrame to ensure TipTap has finished rendering
+            requestAnimationFrame(() => {
+                if (cachedScrollContainer.value && cachedScrollContainer.value.isConnected) {
+                    // Direct scroll - immediate for real-time follow
+                    cachedScrollContainer.value.scrollTop = cachedScrollContainer.value.scrollHeight;
                 }
-            } else {
-                scrollContainer = document.querySelector('.overflow-y-auto.custom-scrollbar') as HTMLElement;
-            }
-
-            if (!scrollContainer) {
-                const mainContent = document.querySelector('main');
-                if (mainContent) {
-                    const scrollables = mainContent.querySelectorAll('div');
-                    for (const div of scrollables) {
-                        if (div.scrollHeight > div.clientHeight && div.classList.contains('overflow-y-auto')) {
-                            scrollContainer = div as HTMLElement;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (scrollContainer) {
-                attachScroller(scrollContainer);
-                smoothScrollToBottom();
-
-                requestAnimationFrame(() => {
-                    if (!isUserScrollingScroller.value && scrollContainer) {
-                        scrollContainer.scrollTo({
-                            top: scrollContainer.scrollHeight,
-                            behavior: 'smooth',
-                        });
-                    }
-                });
-            }
+            });
         });
     };
 
@@ -461,6 +528,8 @@ export function useChapterGeneration({
                     generationPhase.value = 'Connecting';
                     generationPercentage.value = 52;
                     generationProgress.value = 'Connecting to AI service...';
+                    // Initialize auto-scroll when streaming starts
+                    initializeAutoScroll();
                     break;
 
                 case 'content':
@@ -491,6 +560,7 @@ export function useChapterGeneration({
                     generationPercentage.value = 100;
                     isGenerating.value = false;
                     isStreamingMode.value = false;
+                    cachedScrollContainer.value = null; // Clear scroll container reference
                     chapterContent.value = streamBuffer.value;
 
                     const finalWords = data.final_word_count || streamWordCount.value;
@@ -516,6 +586,7 @@ export function useChapterGeneration({
                     generationPhase.value = 'Error';
                     generationPercentage.value = 50;
                     isStreamingMode.value = false;
+                    cachedScrollContainer.value = null; // Clear scroll container reference
 
                     if (data.partial_saved) {
                         partialContentSaved.value = true;
@@ -631,6 +702,8 @@ export function useChapterGeneration({
             switch (data.type) {
                 case 'start':
                     generationProgress.value = '✅ Reconnected! Continuing generation...';
+                    // Re-initialize auto-scroll after reconnection
+                    initializeAutoScroll();
                     toast.success('Reconnected', {
                         description: 'Generation resumed successfully.',
                         duration: 3000,
@@ -659,6 +732,7 @@ export function useChapterGeneration({
                     generationPercentage.value = 100;
                     isGenerating.value = false;
                     isReconnecting.value = false;
+                    cachedScrollContainer.value = null; // Clear scroll container reference
                     chapterContent.value = streamBuffer.value;
 
                     const finalWords = data.final_word_count || streamWordCount.value;
@@ -683,6 +757,7 @@ export function useChapterGeneration({
                     generationPhase.value = 'Error';
                     isGenerating.value = false;
                     isReconnecting.value = false;
+                    cachedScrollContainer.value = null; // Clear scroll container reference
                     generationProgress.value = '❌ Generation failed';
                     toast.error('Generation Error', {
                         description: data.message || 'Please try again.',
@@ -1042,6 +1117,41 @@ export function useChapterGeneration({
         savedWordCountOnError.value = 0;
     };
 
+    /**
+     * Regenerate chapter - clears existing content and generates fresh
+     * @param confirmed - Whether user has confirmed the action (skip confirmation dialog handling)
+     * @returns Promise<boolean> - Whether regeneration was started
+     */
+    const handleRegenerateChapter = async (confirmed: boolean = false): Promise<boolean> => {
+        // If not confirmed, return false to indicate component should show confirmation dialog
+        if (!confirmed) {
+            return false;
+        }
+
+        // Check word balance first
+        const requiredWords = estimates.chapter(targetWordCount.value || 0);
+        if (!ensureBalance(requiredWords, 'regenerate this chapter')) {
+            return false;
+        }
+
+        // Save current content to history for undo capability
+        if (chapterContent.value && chapterContent.value.trim().length > 0) {
+            pushToHistory('Before regenerate');
+            toast.info('Previous content saved', {
+                description: 'You can undo to restore it if needed.',
+                duration: 3000,
+            });
+        }
+
+        // Clear current content
+        chapterContent.value = '';
+
+        // Start fresh generation
+        await startStreamingGeneration('progressive');
+
+        return true;
+    };
+
     const checkForAutoGeneration = () => {
         const urlParams = new URLSearchParams(window.location.search);
         const shouldGenerate = urlParams.get('ai_generate') === 'true';
@@ -1112,6 +1222,7 @@ export function useChapterGeneration({
         startSectionGeneration,
         handleSelectionGeneration,
         handleAIGeneration,
+        handleRegenerateChapter,
         getAISuggestions,
         checkCitations,
         insertCitation,

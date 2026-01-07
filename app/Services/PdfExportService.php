@@ -13,7 +13,8 @@ use Spatie\Browsershot\Browsershot;
 class PdfExportService
 {
     public function __construct(
-        protected ProjectPrelimService $projectPrelimService
+        protected ProjectPrelimService $projectPrelimService,
+        protected ChapterReferenceService $chapterReferenceService
     ) {}
 
     /**
@@ -190,10 +191,14 @@ class PdfExportService
         array $chapterContents,
         string $tempDir
     ): string {
+        // Get formatted references section (collected from all chapters, sorted alphabetically)
+        $formattedReferences = $this->chapterReferenceService->formatProjectReferencesSection($project);
+
         $html = View::make('pdf.sections.main-content', [
             'project' => $project,
             'chapters' => $chapters,
             'chapterContents' => $chapterContents,
+            'formattedReferences' => $formattedReferences,
         ])->render();
 
         $tempPath = $tempDir.'/03_main_temp.pdf';

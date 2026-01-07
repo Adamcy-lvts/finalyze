@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Chapter;
 use App\Models\Project;
-use App\Services\ProjectPrelimService;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\IOFactory;
@@ -14,7 +13,8 @@ use PhpOffice\PhpWord\Shared\Html;
 class ExportService
 {
     public function __construct(
-        protected ProjectPrelimService $projectPrelimService
+        protected ProjectPrelimService $projectPrelimService,
+        protected ChapterReferenceService $chapterReferenceService
     ) {}
 
     /**
@@ -418,23 +418,11 @@ HTML;
             }
         }
 
-        // References
-        if ($project->references) {
-            $html .= '<h1>REFERENCES</h1>';
-            $references = json_decode($project->references, true) ?? [];
-
-            if (! empty($references)) {
-                $refNumber = 1;
-                foreach ($references as $reference) {
-                    $refText = $reference['citation'] ??
-                        $reference['text'] ??
-                        $reference['title'] ??
-                        'Unknown reference';
-
-                    $html .= '<p>'.$refNumber.'. '.htmlspecialchars($refText, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
-                    $refNumber++;
-                }
-            }
+        // References - collect from all chapters (sorted alphabetically)
+        $referencesHtml = $this->chapterReferenceService->formatProjectReferencesSection($project);
+        if (! empty($referencesHtml)) {
+            $html .= $referencesHtml;
+            Log::info('Added collected project references to export', ['project_id' => $project->id]);
         }
 
         return $html;
@@ -463,6 +451,13 @@ HTML;
                 $chapterHtml = '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $chapterHtml .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
                 $chapterHtml .= $chapter->content; // Content is processed by preprocessHtmlForPandoc
+
+                // Append chapter references section (for single chapter export)
+                $referencesHtml = $this->chapterReferenceService->formatChapterReferencesSection($chapter);
+                if (! empty($referencesHtml)) {
+                    $chapterHtml .= $referencesHtml;
+                    Log::info('Added chapter references to export', ['chapter_id' => $chapter->id]);
+                }
 
                 $metadata = [
                     'title' => htmlspecialchars($project->title.' - Chapter '.$chapter->chapter_number, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
@@ -662,25 +657,56 @@ HTML;
             }
         }
 
-        // Add references if applicable
-        $maxChapter = $project->chapters()->max('chapter_number');
-        if (in_array($maxChapter, $chapterNumbers) && $project->references) {
-            $html .= '<h1>REFERENCES</h1>';
-            $references = json_decode($project->references, true) ?? [];
+        // Add references for selected chapters (sorted alphabetically)
+        $referencesHtml = $this->formatSelectedChaptersReferences($chapters);
+        if (! empty($referencesHtml)) {
+            $html .= $referencesHtml;
+        }
 
-            if (! empty($references)) {
-                $refNumber = 1;
-                foreach ($references as $reference) {
-                    $refText = $reference['citation'] ??
-                        $reference['text'] ??
-                        $reference['title'] ??
-                        'Unknown reference';
+        return $html;
+    }
 
-                    $html .= '<p>'.$refNumber.'. '.htmlspecialchars($refText, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
-                    $refNumber++;
+    /**
+     * Format references section for selected chapters export.
+     *
+     * @param  \Illuminate\Support\Collection  $chapters
+     */
+    private function formatSelectedChaptersReferences($chapters, string $style = 'APA'): string
+    {
+        $allReferences = collect();
+
+        foreach ($chapters as $chapter) {
+            $chapterCitations = $this->chapterReferenceService->getChapterCitations($chapter, $style);
+
+            foreach ($chapterCitations as $citation) {
+                if (empty($citation['reference']) || $citation['reference'] === '[CITATION NEEDED - REQUIRES VERIFICATION]') {
+                    continue;
+                }
+
+                $refKey = $citation['reference'];
+                if (! $allReferences->has($refKey)) {
+                    $allReferences->put($refKey, $citation);
                 }
             }
         }
+
+        if ($allReferences->isEmpty()) {
+            return '';
+        }
+
+        // Sort alphabetically by reference text
+        $sortedRefs = $allReferences->values()->sortBy('reference');
+
+        $html = '<div class="references-section" style="page-break-before: always;">';
+        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em;">REFERENCES</h1>';
+
+        foreach ($sortedRefs as $ref) {
+            $html .= '<p style="text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+                htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
+                '</p>';
+        }
+
+        $html .= '</div>';
 
         return $html;
     }
@@ -769,7 +795,7 @@ HTML;
     /**
      * Add preliminary pages as simple sections before TOC
      *
-     * @param array<int, array{slug:string,title:string,html:string}> $preliminaryPages
+     * @param  array<int, array{slug:string,title:string,html:string}>  $preliminaryPages
      */
     private function addPreliminaryPages(PhpWord $phpWord, array $preliminaryPages): void
     {

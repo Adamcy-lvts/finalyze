@@ -849,8 +849,8 @@
       "_vendor-H8yUxHVJ.js"
     ]
   },
-  "_useChapterWordCount-EdL0jc5R.js": {
-    "file": "assets/useChapterWordCount-EdL0jc5R.js",
+  "_useChapterWordCount-D2dF0RzU.js": {
+    "file": "assets/useChapterWordCount-D2dF0RzU.js",
     "name": "useChapterWordCount",
     "imports": [
       "_useAppearance-DRazjLJ1.js",
@@ -875,12 +875,8 @@
       "_vendor-H8yUxHVJ.js"
     ]
   },
-  "_useManualEditorSuggestions-DtmVK_L8.css": {
-    "file": "assets/useManualEditorSuggestions-DtmVK_L8.css",
-    "src": "_useManualEditorSuggestions-DtmVK_L8.css"
-  },
-  "_useManualEditorSuggestions-JbDLOgCS.js": {
-    "file": "assets/useManualEditorSuggestions-JbDLOgCS.js",
+  "_useManualEditorSuggestions-C-K9xwYd.js": {
+    "file": "assets/useManualEditorSuggestions-C-K9xwYd.js",
     "name": "useManualEditorSuggestions",
     "imports": [
       "_vendor-H8yUxHVJ.js",
@@ -891,7 +887,7 @@
       "_SafeHtmlText.vue_vue_type_script_setup_true_lang-EuopzgQ8.js",
       "_useAppearance-DRazjLJ1.js",
       "_DefensePreparationPanel.vue_vue_type_script_setup_true_lang-CkGWB1gK.js",
-      "_useTextHistory-DHSBZqEV.js",
+      "_useTextHistory-DqzAe-xJ.js",
       "_Separator.vue_vue_type_script_setup_true_lang-CQwVu7eO.js",
       "__plugin-vue_export-helper-DlAUqK2U.js",
       "_index-CZRrGrlM.js",
@@ -901,6 +897,10 @@
       "assets/useManualEditorSuggestions-DtmVK_L8.css"
     ]
   },
+  "_useManualEditorSuggestions-DtmVK_L8.css": {
+    "file": "assets/useManualEditorSuggestions-DtmVK_L8.css",
+    "src": "_useManualEditorSuggestions-DtmVK_L8.css"
+  },
   "_useNonce-DREsFUzM.js": {
     "file": "assets/useNonce-DREsFUzM.js",
     "name": "useNonce",
@@ -909,8 +909,8 @@
       "_vendor-H8yUxHVJ.js"
     ]
   },
-  "_useTextHistory-DHSBZqEV.js": {
-    "file": "assets/useTextHistory-DHSBZqEV.js",
+  "_useTextHistory-DqzAe-xJ.js": {
+    "file": "assets/useTextHistory-DqzAe-xJ.js",
     "name": "useTextHistory",
     "imports": [
       "_vendor-H8yUxHVJ.js",
@@ -1451,7 +1451,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-DnPYZJ2-.js",
+    "file": "assets/app-De2sjRbC.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -1612,7 +1612,7 @@
     ]
   },
   "resources/js/components/chapter-editor/MobileNavOverlay.vue": {
-    "file": "assets/MobileNavOverlay-CZYu4yXy.js",
+    "file": "assets/MobileNavOverlay-C2WbBGIX.js",
     "name": "MobileNavOverlay",
     "src": "resources/js/components/chapter-editor/MobileNavOverlay.vue",
     "isDynamicEntry": true,
@@ -1640,6 +1640,7 @@
       "_DialogTitle-FvR-dACM.js",
       "_VisuallyHidden-BvUOvbOk.js",
       "_WordBalanceDisplay.vue_vue_type_script_setup_true_lang-BbR_80zF.js",
+      "_AlertDialogTitle.vue_vue_type_script_setup_true_lang-Cl9cN4K9.js",
       "_AppLayout.vue_vue_type_script_setup_true_lang-B_2lTwBH.js",
       "_UserInfo.vue_vue_type_script_setup_true_lang-B2g6QnB0.js",
       "_AppLogo.vue_vue_type_script_setup_true_lang-D_e9DFFg.js",
@@ -1651,7 +1652,7 @@
       "_DialogDescription.vue_vue_type_script_setup_true_lang-nvWA5ydV.js",
       "_DialogFooter.vue_vue_type_script_setup_true_lang-DjMQinTr.js",
       "_DialogTitle.vue_vue_type_script_setup_true_lang-Biexvk_x.js",
-      "_useChapterWordCount-EdL0jc5R.js",
+      "_useChapterWordCount-D2dF0RzU.js",
       "_Input.vue_vue_type_script_setup_true_lang-DRx-Lc7N.js",
       "_Label.vue_vue_type_script_setup_true_lang-PAGjh1rG.js",
       "_RichTextEditor-nW-jbWTT.js",
@@ -1663,8 +1664,7 @@
       "_RichTextViewer-CQFJwJ3K.js",
       "_CollapsibleTrigger.vue_vue_type_script_setup_true_lang-BXeGqnTB.js",
       "_CollapsibleTrigger-BfLHHp56.js",
-      "_useTextHistory-DHSBZqEV.js",
-      "_AlertDialogTitle.vue_vue_type_script_setup_true_lang-Cl9cN4K9.js",
+      "_useTextHistory-DqzAe-xJ.js",
       "_Checkbox.vue_vue_type_script_setup_true_lang-DRWhnreH.js",
       "_isValueEqualOrExist-DSClXoPv.js",
       "_ohash.D__AXeF1-C-E83dC9.js",
@@ -2067,7 +2067,7 @@
     ]
   },
   "resources/js/pages/Admin/System/Departments/Index.vue": {
-    "file": "assets/Index-5YrNwGZ-.js",
+    "file": "assets/Index-BTJ1qQ6h.js",
     "name": "Index",
     "src": "resources/js/pages/Admin/System/Departments/Index.vue",
     "isDynamicEntry": true,
@@ -2744,7 +2744,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-DvFmB4-U.js",
+    "file": "assets/BulkGeneration-BYlk4GMn.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
@@ -2784,7 +2784,7 @@
     ]
   },
   "resources/js/pages/projects/ChapterAIGenerationEditor.vue": {
-    "file": "assets/ChapterAIGenerationEditor-CVIRsK6O.js",
+    "file": "assets/ChapterAIGenerationEditor-zSyeSRoT.js",
     "name": "ChapterAIGenerationEditor",
     "src": "resources/js/pages/projects/ChapterAIGenerationEditor.vue",
     "isDynamicEntry": true,
@@ -2797,7 +2797,7 @@
       "_Label.vue_vue_type_script_setup_true_lang-PAGjh1rG.js",
       "_Progress.vue_vue_type_script_setup_true_lang-BEO86XnR.js",
       "_RichTextEditor-nW-jbWTT.js",
-      "_useChapterWordCount-EdL0jc5R.js",
+      "_useChapterWordCount-D2dF0RzU.js",
       "_useAppearance-DRazjLJ1.js",
       "_useWordBalance-C1hXK7OD.js",
       "_vendor-H8yUxHVJ.js",
@@ -2824,7 +2824,7 @@
     ]
   },
   "resources/js/pages/projects/ChapterEditor.vue": {
-    "file": "assets/ChapterEditor-D1OtY8NH.js",
+    "file": "assets/ChapterEditor-CsneWMi9.js",
     "name": "ChapterEditor",
     "src": "resources/js/pages/projects/ChapterEditor.vue",
     "isEntry": true,
@@ -2840,18 +2840,19 @@
       "_Separator.vue_vue_type_script_setup_true_lang-CQwVu7eO.js",
       "_TooltipTrigger.vue_vue_type_script_setup_true_lang-ev0g6x5g.js",
       "_WordBalanceDisplay.vue_vue_type_script_setup_true_lang-BbR_80zF.js",
+      "_AlertDialogTitle.vue_vue_type_script_setup_true_lang-Cl9cN4K9.js",
       "_AppLayout.vue_vue_type_script_setup_true_lang-B_2lTwBH.js",
       "_driver-B4w0q6_T.js",
       "_PurchaseModal.vue_vue_type_script_setup_true_lang-C2jaO2Qs.js",
       "_useWordBalance-C1hXK7OD.js",
-      "_useChapterWordCount-EdL0jc5R.js",
+      "_useChapterWordCount-D2dF0RzU.js",
       "_Input.vue_vue_type_script_setup_true_lang-DRx-Lc7N.js",
       "_Label.vue_vue_type_script_setup_true_lang-PAGjh1rG.js",
       "_RichTextEditor-nW-jbWTT.js",
       "_RichTextViewer-CQFJwJ3K.js",
       "_CollapsibleTrigger.vue_vue_type_script_setup_true_lang-BXeGqnTB.js",
       "_Progress.vue_vue_type_script_setup_true_lang-BEO86XnR.js",
-      "_useTextHistory-DHSBZqEV.js",
+      "_useTextHistory-DqzAe-xJ.js",
       "__plugin-vue_export-helper-DlAUqK2U.js",
       "_index-CZRrGrlM.js",
       "_Presence-Cn1h4MwK.js",
@@ -2873,7 +2874,6 @@
       "_step-CXjX0ghh.js",
       "_CollapsibleTrigger-BfLHHp56.js",
       "_nullish-CHIgUVhi.js",
-      "_AlertDialogTitle.vue_vue_type_script_setup_true_lang-Cl9cN4K9.js",
       "_Checkbox.vue_vue_type_script_setup_true_lang-DRWhnreH.js",
       "_isValueEqualOrExist-DSClXoPv.js",
       "_ohash.D__AXeF1-C-E83dC9.js",
@@ -2888,7 +2888,7 @@
       "resources/js/components/chapter-editor/CitationVerificationLayout.vue"
     ],
     "css": [
-      "assets/ChapterEditor-N0M16R6V.css"
+      "assets/ChapterEditor-eUaveFvr.css"
     ]
   },
   "resources/js/pages/projects/Create.vue": {
@@ -3099,7 +3099,7 @@
     ]
   },
   "resources/js/pages/projects/ManualEditor.vue": {
-    "file": "assets/ManualEditor-CzSOild3.js",
+    "file": "assets/ManualEditor-BSvfCVAh.js",
     "name": "ManualEditor",
     "src": "resources/js/pages/projects/ManualEditor.vue",
     "isDynamicEntry": true,
@@ -3112,12 +3112,12 @@
       "_Separator.vue_vue_type_script_setup_true_lang-CQwVu7eO.js",
       "_Progress.vue_vue_type_script_setup_true_lang-BEO86XnR.js",
       "_RichTextEditor-nW-jbWTT.js",
-      "_useManualEditorSuggestions-JbDLOgCS.js",
+      "_useManualEditorSuggestions-C-K9xwYd.js",
       "__plugin-vue_export-helper-DlAUqK2U.js",
       "_Input.vue_vue_type_script_setup_true_lang-DRx-Lc7N.js",
       "_ScrollArea.vue_vue_type_script_setup_true_lang-LIFwRXiL.js",
       "_ChapterNavigation.vue_vue_type_script_setup_true_lang-C7c8E1ku.js",
-      "_useTextHistory-DHSBZqEV.js",
+      "_useTextHistory-DqzAe-xJ.js",
       "_Sonner.vue_vue_type_script_setup_true_lang-a4iHnNww.js",
       "_WordBalanceDisplay.vue_vue_type_script_setup_true_lang-BbR_80zF.js",
       "_PurchaseModal.vue_vue_type_script_setup_true_lang-C2jaO2Qs.js",
@@ -3161,15 +3161,15 @@
     ]
   },
   "resources/js/pages/projects/ManualEditorDebug.vue": {
-    "file": "assets/ManualEditorDebug-ca50Rv5N.js",
+    "file": "assets/ManualEditorDebug-DGVYid1R.js",
     "name": "ManualEditorDebug",
     "src": "resources/js/pages/projects/ManualEditorDebug.vue",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-H8yUxHVJ.js",
       "_useAppearance-DRazjLJ1.js",
-      "_useManualEditorSuggestions-JbDLOgCS.js",
-      "_useTextHistory-DHSBZqEV.js",
+      "_useManualEditorSuggestions-C-K9xwYd.js",
+      "_useTextHistory-DqzAe-xJ.js",
       "_index-CwD5qkLf.js",
       "_Sonner.vue_vue_type_script_setup_true_lang-a4iHnNww.js",
       "_RichTextEditor-nW-jbWTT.js",
