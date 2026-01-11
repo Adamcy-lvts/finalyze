@@ -52,9 +52,30 @@ server {
     proxy_buffering off;
 
     # =====================================================
+    # WEBSOCKET PROXY - Laravel Reverb
+    # =====================================================
+    # Required for Laravel Reverb WebSocket connections
+    # Frontend connects to wss://finalyze.live/app/<key>
+    # This proxies to Reverb server on localhost:8080
+
+    location /app/ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Scheme $scheme;
+        proxy_set_header SERVER_PORT $server_port;
+        proxy_set_header REMOTE_ADDR $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+
+        proxy_pass http://127.0.0.1:8080;
+    }
+
+    # =====================================================
     # STANDARD LARAVEL CONFIGURATION
     # =====================================================
-    
+
     charset utf-8;
 
     location / {
@@ -83,6 +104,30 @@ server {
     }
 }
 ```
+
+## WebSocket Support for Laravel Reverb
+
+**CRITICAL:** Add this location block for WebSocket connections to work:
+
+```nginx
+# Add inside server { } block, BEFORE the main location / block:
+
+location /app/ {
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header Scheme $scheme;
+    proxy_set_header SERVER_PORT $server_port;
+    proxy_set_header REMOTE_ADDR $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+
+    proxy_pass http://127.0.0.1:8080;
+}
+```
+
+**Note:** Make sure the port (8080) matches your Reverb server port from `.env` (`REVERB_SERVER_PORT`).
 
 ## Quick Copy - Essential Settings Only
 
@@ -150,6 +195,7 @@ sudo systemctl restart php8.3-fpm
 
 | Issue | Symptom | Setting That Fixes It |
 |-------|---------|----------------------|
+| WebSocket stuck on "Connecting..." | Bulk generation page shows "Connecting..." forever | `location /app/` WebSocket proxy block |
 | 502 Bad Gateway on page refresh | "upstream sent too big header" in nginx logs | `fastcgi_buffers`, `fastcgi_buffer_size`, `proxy_buffer_size` |
 | AI generation connection error | Stream cuts off mid-generation | `proxy_read_timeout`, `fastcgi_read_timeout` set to 600s |
 | PHP timeout errors | "execution timed out" in FPM logs | `request_terminate_timeout` in PHP-FPM |
