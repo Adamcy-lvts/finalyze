@@ -38,8 +38,6 @@ window.Echo = new Echo({
     enabledTransports: ['ws', 'wss'],
 });
 
-
-
 // Configure Echo with environment-aware settings
 // const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'https';
 // const isSecure = reverbScheme === 'https';
