@@ -849,8 +849,8 @@
       "_vendor-H8yUxHVJ.js"
     ]
   },
-  "_useChapterWordCount-D2dF0RzU.js": {
-    "file": "assets/useChapterWordCount-D2dF0RzU.js",
+  "_useChapterWordCount-duTH59n8.js": {
+    "file": "assets/useChapterWordCount-duTH59n8.js",
     "name": "useChapterWordCount",
     "imports": [
       "_useAppearance-DRazjLJ1.js",
@@ -1451,7 +1451,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-De2sjRbC.js",
+    "file": "assets/app-CP5Ptyl_.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -1521,7 +1521,7 @@
       "resources/js/pages/settings/Profile.vue"
     ],
     "css": [
-      "assets/app-sLzQpFkr.css"
+      "assets/app-BP0suIOR.css"
     ]
   },
   "resources/js/components/chapter-editor/ChapterNavigation.vue": {
@@ -1612,7 +1612,7 @@
     ]
   },
   "resources/js/components/chapter-editor/MobileNavOverlay.vue": {
-    "file": "assets/MobileNavOverlay-C2WbBGIX.js",
+    "file": "assets/MobileNavOverlay-D5vDN4Mz.js",
     "name": "MobileNavOverlay",
     "src": "resources/js/components/chapter-editor/MobileNavOverlay.vue",
     "isDynamicEntry": true,
@@ -1652,7 +1652,7 @@
       "_DialogDescription.vue_vue_type_script_setup_true_lang-nvWA5ydV.js",
       "_DialogFooter.vue_vue_type_script_setup_true_lang-DjMQinTr.js",
       "_DialogTitle.vue_vue_type_script_setup_true_lang-Biexvk_x.js",
-      "_useChapterWordCount-D2dF0RzU.js",
+      "_useChapterWordCount-duTH59n8.js",
       "_Input.vue_vue_type_script_setup_true_lang-DRx-Lc7N.js",
       "_Label.vue_vue_type_script_setup_true_lang-PAGjh1rG.js",
       "_RichTextEditor-nW-jbWTT.js",
@@ -2744,7 +2744,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-BYlk4GMn.js",
+    "file": "assets/BulkGeneration-D-4WEeHN.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
@@ -2784,7 +2784,7 @@
     ]
   },
   "resources/js/pages/projects/ChapterAIGenerationEditor.vue": {
-    "file": "assets/ChapterAIGenerationEditor-zSyeSRoT.js",
+    "file": "assets/ChapterAIGenerationEditor-CKaS15w0.js",
     "name": "ChapterAIGenerationEditor",
     "src": "resources/js/pages/projects/ChapterAIGenerationEditor.vue",
     "isDynamicEntry": true,
@@ -2797,7 +2797,7 @@
       "_Label.vue_vue_type_script_setup_true_lang-PAGjh1rG.js",
       "_Progress.vue_vue_type_script_setup_true_lang-BEO86XnR.js",
       "_RichTextEditor-nW-jbWTT.js",
-      "_useChapterWordCount-D2dF0RzU.js",
+      "_useChapterWordCount-duTH59n8.js",
       "_useAppearance-DRazjLJ1.js",
       "_useWordBalance-C1hXK7OD.js",
       "_vendor-H8yUxHVJ.js",
@@ -2824,7 +2824,7 @@
     ]
   },
   "resources/js/pages/projects/ChapterEditor.vue": {
-    "file": "assets/ChapterEditor-CsneWMi9.js",
+    "file": "assets/ChapterEditor-DgWxnh3k.js",
     "name": "ChapterEditor",
     "src": "resources/js/pages/projects/ChapterEditor.vue",
     "isEntry": true,
@@ -2845,7 +2845,7 @@
       "_driver-B4w0q6_T.js",
       "_PurchaseModal.vue_vue_type_script_setup_true_lang-C2jaO2Qs.js",
       "_useWordBalance-C1hXK7OD.js",
-      "_useChapterWordCount-D2dF0RzU.js",
+      "_useChapterWordCount-duTH59n8.js",
       "_Input.vue_vue_type_script_setup_true_lang-DRx-Lc7N.js",
       "_Label.vue_vue_type_script_setup_true_lang-PAGjh1rG.js",
       "_RichTextEditor-nW-jbWTT.js",
@@ -2888,7 +2888,7 @@
       "resources/js/components/chapter-editor/CitationVerificationLayout.vue"
     ],
     "css": [
-      "assets/ChapterEditor-eUaveFvr.css"
+      "assets/ChapterEditor-BlnJ4bGk.css"
     ]
   },
   "resources/js/pages/projects/Create.vue": {
