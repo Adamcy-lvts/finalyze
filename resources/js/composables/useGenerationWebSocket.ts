@@ -149,14 +149,22 @@ export function useGenerationWebSocket(projectId: number) {
 
     // Initialize Echo and connect to channel
     const connect = () => {
-        if (channel) {
+        if (echoInstance) {
             console.warn('Already connected to WebSocket')
             return
         }
 
         try {
-            // Use the global Echo instance configured in app.ts (with authentication)
-            echoInstance = window.Echo
+            // Initialize Echo with Reverb configuration
+            echoInstance = new Echo({
+                broadcaster: 'reverb',
+                key: import.meta.env.VITE_REVERB_APP_KEY,
+                wsHost: import.meta.env.VITE_REVERB_HOST,
+                wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
+                wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
+                forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
+                enabledTransports: ['ws', 'wss'],
+            })
 
             // Subscribe to private channel
             channel = echoInstance.private(`project.${projectId}.generation`)
