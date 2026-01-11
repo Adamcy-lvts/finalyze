@@ -16,7 +16,7 @@ import { router } from '@inertiajs/vue3';
 declare global {
     interface Window {
         Pusher: typeof Pusher;
-        Echo: Echo<any>;
+        Echo: Echo;
         GA_MEASUREMENT_ID?: string;
         gtag?: (command: string, ...args: any[]) => void;
         deferredPWAPrompt?: BeforeInstallPromptEvent | null;
@@ -38,10 +38,6 @@ window.Echo = new Echo({
     enabledTransports: ['ws', 'wss'],
 });
 
-Echo.channel('test-channel')
-    .listen('TestReverbEvent', (e) => {
-        console.log('Reverb event received:', e);
-    });
 
 
 // Configure Echo with environment-aware settings
