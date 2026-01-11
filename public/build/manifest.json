@@ -1451,7 +1451,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-DKPGaWn8.js",
+    "file": "assets/app-Bnf3ffhK.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -2744,7 +2744,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-Ce04xYvr.js",
+    "file": "assets/BulkGeneration-D3Jlo98r.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
@@ -2756,7 +2756,6 @@
       "_index-DHzEmSrj.js",
       "_AlertTitle.vue_vue_type_script_setup_true_lang-C9ZZR0lx.js",
       "_AppLayout.vue_vue_type_script_setup_true_lang-B_2lTwBH.js",
-      "resources/js/app.ts",
       "_SafeHtmlText.vue_vue_type_script_setup_true_lang-EuopzgQ8.js",
       "_useAppearance-DRazjLJ1.js",
       "_PurchaseModal.vue_vue_type_script_setup_true_lang-C2jaO2Qs.js",
