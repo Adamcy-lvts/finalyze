@@ -1451,7 +1451,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-BkcV6koX.js",
+    "file": "assets/app-ByTLykqC.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -2744,7 +2744,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-DQu7DvO4.js",
+    "file": "assets/BulkGeneration-BhoTJO-s.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
