@@ -1173,6 +1173,59 @@ export function useChapterGeneration({
         }, 1000);
     };
 
+    /**
+     * Stop/abort the current generation
+     */
+    const stopGeneration = () => {
+        if (!isGenerating.value && !isCollectingPapers.value) {
+            return;
+        }
+
+        // Close EventSource connection
+        if (eventSource.value) {
+            eventSource.value.close();
+            eventSource.value = null;
+        }
+
+        // Clear paper collection interval
+        if (paperCollectionInterval.value) {
+            clearInterval(paperCollectionInterval.value);
+            paperCollectionInterval.value = null;
+        }
+
+        // Save any generated content so far
+        if (streamBuffer.value && streamWordCount.value > 0) {
+            chapterContent.value = streamBuffer.value;
+            toast.info('Generation Stopped', {
+                description: `${streamWordCount.value} words have been saved. You can continue editing or regenerate.`,
+                duration: 5000,
+            });
+        } else {
+            toast.info('Generation Stopped', {
+                description: 'Generation was cancelled.',
+                duration: 3000,
+            });
+        }
+
+        // Reset generation state
+        isGenerating.value = false;
+        isStreamingMode.value = false;
+        isCollectingPapers.value = false;
+        isReconnecting.value = false;
+        reconnectAttempts.value = 0;
+        reconnectDelay.value = 2000;
+        generationPhase.value = 'Stopped';
+        generationProgress.value = 'Generation stopped by user';
+        cachedScrollContainer.value = null;
+
+        // Auto-save if there's content
+        if (streamWordCount.value > 0) {
+            setTimeout(() => {
+                triggerAutoSave();
+            }, 500);
+        }
+    };
+
     return {
         isGenerating,
         generationProgress,
@@ -1229,6 +1282,7 @@ export function useChapterGeneration({
         resumeGeneration,
         dismissRecovery,
         checkForAutoGeneration,
+        stopGeneration,
         // Undo/Redo functionality
         contentHistory,
         canUndo,

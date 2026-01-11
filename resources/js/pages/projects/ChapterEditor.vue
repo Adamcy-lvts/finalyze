@@ -25,7 +25,7 @@ import 'driver.js/dist/driver.css';
 // SafeHtmlText DISABLED - causes dark mode issues
 // import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle, RefreshCw } from 'lucide-vue-next';
+import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle, RefreshCw, XCircle } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -419,6 +419,7 @@ const {
     resumeGeneration,
     dismissRecovery,
     checkForAutoGeneration,
+    stopGeneration,
 } = useChapterGeneration({
     props,
     chapterContent,
@@ -1347,10 +1348,20 @@ watch(globalIsDark, () => {
                                     <p class="text-xs text-blue-700 dark:text-blue-300">{{ generationPhase }}</p>
                                 </div>
                             </div>
-                            <Badge variant="outline"
-                                class="border-blue-300 text-xs text-blue-700 dark:border-blue-700 dark:text-blue-300">
-                                {{ Math.round(generationPercentage) }}%
-                            </Badge>
+                            <div class="flex items-center gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="h-7 w-7 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20"
+                                    @click="stopGeneration"
+                                    title="Stop generation">
+                                    <XCircle class="h-4 w-4 text-red-600 dark:text-red-400" />
+                                </Button>
+                                <Badge variant="outline"
+                                    class="border-blue-300 text-xs text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                                    {{ Math.round(generationPercentage) }}%
+                                </Badge>
+                            </div>
                         </div>
 
                         <!-- Progress Bar -->
@@ -1815,6 +1826,14 @@ watch(globalIsDark, () => {
                                                         </div>
                                                     </div>
                                                 </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    class="h-8 w-8 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20"
+                                                    @click="stopGeneration"
+                                                    title="Stop generation">
+                                                    <XCircle class="h-5 w-5 text-red-600 dark:text-red-400" />
+                                                </Button>
                                             </div>
                                             <p class="mt-2 text-xs text-muted-foreground ml-11 truncate">{{
                                                 generationProgress }}
