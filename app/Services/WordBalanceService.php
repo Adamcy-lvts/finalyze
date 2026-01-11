@@ -143,7 +143,15 @@ class WordBalanceService
 
         // Broadcast balance update for real-time UI updates
         $user->refresh(); // Ensure we have fresh data
-        WordBalanceUpdated::dispatch($user, 'usage');
+        try {
+            WordBalanceUpdated::dispatch($user, 'usage');
+        } catch (\Throwable $e) {
+            Log::warning('Word balance broadcast failed', [
+                'user_id' => $user->id,
+                'reason' => 'usage',
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Check for low balance after transaction completes
         $this->checkAndNotifyLowBalance($user);

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Lab404\Impersonate\Models\Impersonate;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
@@ -134,7 +135,15 @@ class User extends Authenticatable
 
         // Refresh to get updated values and broadcast
         $this->refresh();
-        WordBalanceUpdated::dispatch($this, $isPurchase ? 'purchase' : 'bonus');
+        try {
+            WordBalanceUpdated::dispatch($this, $isPurchase ? 'purchase' : 'bonus');
+        } catch (\Throwable $e) {
+            Log::warning('Word balance broadcast failed', [
+                'user_id' => $this->id,
+                'reason' => $isPurchase ? 'purchase' : 'bonus',
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -155,7 +164,15 @@ class User extends Authenticatable
 
         // Refresh to get updated values and broadcast
         $this->refresh();
-        WordBalanceUpdated::dispatch($this, 'usage');
+        try {
+            WordBalanceUpdated::dispatch($this, 'usage');
+        } catch (\Throwable $e) {
+            Log::warning('Word balance broadcast failed', [
+                'user_id' => $this->id,
+                'reason' => 'usage',
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -170,7 +187,15 @@ class User extends Authenticatable
 
         // Refresh to get updated values and broadcast
         $this->refresh();
-        WordBalanceUpdated::dispatch($this, 'refund');
+        try {
+            WordBalanceUpdated::dispatch($this, 'refund');
+        } catch (\Throwable $e) {
+            Log::warning('Word balance broadcast failed', [
+                'user_id' => $this->id,
+                'reason' => 'refund',
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
