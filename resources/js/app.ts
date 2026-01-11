@@ -16,7 +16,7 @@ import { router } from '@inertiajs/vue3';
 declare global {
     interface Window {
         Pusher: typeof Pusher;
-        Echo: Echo;
+        Echo: Echo<any>;
         GA_MEASUREMENT_ID?: string;
         gtag?: (command: string, ...args: any[]) => void;
         deferredPWAPrompt?: BeforeInstallPromptEvent | null;
@@ -37,6 +37,12 @@ window.Echo = new Echo({
     forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
     enabledTransports: ['ws', 'wss'],
 });
+
+Echo.channel('test-channel')
+    .listen('TestReverbEvent', (e) => {
+        console.log('Reverb event received:', e);
+    });
+
 
 // Configure Echo with environment-aware settings
 // const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'https';
