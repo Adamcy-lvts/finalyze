@@ -5221,6 +5221,9 @@ ORIGINAL PROMPT CONTEXT:
             $chapterReferenceService = app(\App\Services\ChapterReferenceService::class);
             $formattedReferences = $chapterReferenceService->formatChapterReferencesSection($chapter);
 
+            // Strip inline references from chapter content since we'll append them separately
+            $chapterContent = $this->stripReferencesFromHtml($chapterContent);
+
             // Create a unique filename
             $fileName = sprintf(
                 'chapter_%d_%s_%s.pdf',
@@ -5407,6 +5410,29 @@ ORIGINAL PROMPT CONTEXT:
     /**
      * Convert Tiptap JSON content to HTML
      */
+    /**
+     * Remove References section from HTML content
+     * Used for single chapter exports where references are appended separately
+     */
+    private function stripReferencesFromHtml(string $html): string
+    {
+        // Remove div.references-section wrapper if present
+        $html = preg_replace(
+            '/<div[^>]*class="references-section"[^>]*>.*?<\/div>/is',
+            '',
+            $html
+        );
+
+        // Remove References heading and all content until next heading or end
+        $html = preg_replace(
+            '/<h[12][^>]*>\s*REFERENCES?\s*<\/h[12]>.*?(?=<h[12]|$)/is',
+            '',
+            $html
+        );
+
+        return trim($html);
+    }
+
     private function convertTiptapToHtml(string $content): string
     {
         // If content is already HTML, process it for mermaid blocks and return

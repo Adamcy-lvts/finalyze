@@ -40,10 +40,21 @@ class ChapterReferenceService
      */
     public function formatChapterReferencesSection(Chapter $chapter, string $style = 'APA'): string
     {
+        // First try to get citations from database
         $citations = $this->getChapterCitations($chapter, $style);
 
         if ($citations->isEmpty()) {
-            return '';
+            // If no database citations, try extracting from chapter HTML content
+            $referencesFromHtml = $this->extractReferencesFromHtml($chapter->content);
+
+            if (empty($referencesFromHtml)) {
+                return '';
+            }
+
+            // Convert array of references to collection format
+            $citations = collect($referencesFromHtml)->map(function ($reference) {
+                return ['reference' => $reference];
+            });
         }
 
         // Get unique references (dedupe by reference text)
@@ -124,17 +135,143 @@ class ChapterReferenceService
     }
 
     /**
+     * Extract references from HTML content (for AI-generated chapters).
+     * Parses the References section from HTML and returns array of individual references.
+     */
+    public function extractReferencesFromHtml(string $html): array
+    {
+        $references = [];
+
+        // Match References section: <h1>REFERENCES</h1> or <h2>REFERENCES</h2>
+        // Followed by content until next heading or end
+        if (preg_match('/<h[12][^>]*>\s*REFERENCES?\s*<\/h[12]>(.*?)(?=<h[12]|$)/is', $html, $matches)) {
+            $referencesContent = $matches[1];
+
+            // Extract individual references (each in a <p> tag)
+            if (preg_match_all('/<p[^>]*>(.*?)<\/p>/is', $referencesContent, $paragraphs)) {
+                foreach ($paragraphs[1] as $paragraph) {
+                    // Clean up HTML tags and decode entities
+                    $reference = strip_tags($paragraph);
+                    $reference = html_entity_decode($reference, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $reference = trim($reference);
+
+                    // Skip empty references or placeholders
+                    if (empty($reference) ||
+                        stripos($reference, '[citation needed]') !== false ||
+                        stripos($reference, 'citation needed') !== false) {
+                        continue;
+                    }
+
+                    $references[] = $reference;
+                }
+            }
+
+            // Also try to match references in div.references-section
+            if (preg_match('/<div[^>]*class="references-section"[^>]*>(.*?)<\/div>/is', $html, $divMatches)) {
+                if (preg_match_all('/<p[^>]*>(.*?)<\/p>/is', $divMatches[1], $divParagraphs)) {
+                    foreach ($divParagraphs[1] as $paragraph) {
+                        $reference = strip_tags($paragraph);
+                        $reference = html_entity_decode($reference, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                        $reference = trim($reference);
+
+                        if (empty($reference) ||
+                            stripos($reference, '[citation needed]') !== false ||
+                            stripos($reference, 'citation needed') !== false) {
+                            continue;
+                        }
+
+                        $references[] = $reference;
+                    }
+                }
+            }
+        }
+
+        return array_unique($references);
+    }
+
+    /**
+     * Collect references from all chapters by parsing their HTML content.
+     * This is used for full project exports where references are in the chapter HTML.
+     */
+    public function collectReferencesFromChapterHtml(Project $project): Collection
+    {
+        $chapters = $project->chapters()
+            ->whereNotNull('content')
+            ->where('content', '!=', '')
+            ->orderBy('chapter_number')
+            ->get();
+
+        $allReferences = collect();
+
+        foreach ($chapters as $chapter) {
+            $chapterRefs = $this->extractReferencesFromHtml($chapter->content);
+
+            \Log::info('Extracted references from chapter HTML', [
+                'chapter_id' => $chapter->id,
+                'chapter_number' => $chapter->chapter_number,
+                'references_count' => count($chapterRefs),
+                'references' => $chapterRefs,
+            ]);
+
+            foreach ($chapterRefs as $reference) {
+                // Use the reference text as the key for deduplication
+                $refKey = $reference;
+
+                if (! $allReferences->has($refKey)) {
+                    $allReferences->put($refKey, [
+                        'reference' => $reference,
+                        'chapters' => [$chapter->chapter_number],
+                    ]);
+                } else {
+                    // Add chapter number to existing reference
+                    $existing = $allReferences->get($refKey);
+                    if (! in_array($chapter->chapter_number, $existing['chapters'])) {
+                        $existing['chapters'][] = $chapter->chapter_number;
+                        $allReferences->put($refKey, $existing);
+                    }
+                }
+            }
+        }
+
+        \Log::info('Total references collected from HTML', [
+            'project_id' => $project->id,
+            'total_references' => $allReferences->count(),
+        ]);
+
+        // Sort alphabetically by reference text
+        return $allReferences->values()->sortBy('reference')->values();
+    }
+
+    /**
      * Format full project references section for export.
      * Returns HTML-formatted references list with all unique citations.
      */
     public function formatProjectReferencesSection(Project $project, string $style = 'APA'): string
     {
+        // First try to collect from database citations
         $references = $this->collectProjectReferences($project, $style);
 
+        \Log::info('Formatting project references section', [
+            'project_id' => $project->id,
+            'database_citations_count' => $references->count(),
+        ]);
+
+        // If no database citations, parse from chapter HTML content
         if ($references->isEmpty()) {
-            // Also check project-level references as fallback
+            \Log::info('No database citations found, parsing from chapter HTML');
+            $references = $this->collectReferencesFromChapterHtml($project);
+        }
+
+        // If still empty, fall back to project-level references
+        if ($references->isEmpty()) {
+            \Log::info('No HTML references found, using project-level references fallback');
+
             return $this->formatProjectLevelReferences($project);
         }
+
+        \Log::info('Building consolidated references HTML', [
+            'total_references' => $references->count(),
+        ]);
 
         $html = '<div class="references-section" style="margin-top: 2em; font-size: 14px;">';
         $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h1>';

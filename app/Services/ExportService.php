@@ -269,6 +269,36 @@ HTML;
     }
 
     /**
+     * Remove References section from chapter HTML content
+     * This is used when exporting full projects to avoid duplicate references
+     */
+    private function stripReferencesSection(string $html): string
+    {
+        // Pattern to match References section with various possible structures:
+        // 1. <h1>REFERENCES</h1> or <h2>REFERENCES</h2>
+        // 2. Followed by content until next heading or end of document
+        // 3. May include div wrappers, class="references-section", etc.
+
+        // Remove div.references-section wrapper if present
+        $html = preg_replace(
+            '/<div[^>]*class="references-section"[^>]*>.*?<\/div>/is',
+            '',
+            $html
+        );
+
+        // Remove References heading and all content until next chapter-level heading or end
+        // Match: <h1>REFERENCES</h1> or <h2>References</h2> (case insensitive)
+        // Followed by: everything until <h1> or <h2> or end of string
+        $html = preg_replace(
+            '/<h[12][^>]*>\s*REFERENCES?\s*<\/h[12]>.*?(?=<h[12]|$)/is',
+            '',
+            $html
+        );
+
+        return trim($html);
+    }
+
+    /**
      * Export entire project to Word document
      */
     public function exportToWord(Project $project): string
@@ -419,9 +449,12 @@ HTML;
             if (! empty($chapter->content)) {
                 $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
-                $html .= $chapter->content; // Content is processed by preprocessHtmlForPandoc which handles escaping
 
-                // If this is the last chapter, append references (no page break)
+                // Strip individual chapter references - we'll add consolidated references at the end
+                $chapterContent = $this->stripReferencesSection($chapter->content);
+                $html .= $chapterContent; // Content is processed by preprocessHtmlForPandoc which handles escaping
+
+                // If this is the last chapter, append consolidated references (no page break)
                 if ($lastChapter && $chapter->id === $lastChapter->id && ! empty($referencesHtml)) {
                     $html .= $referencesHtml;
                     Log::info('Added collected project references to last chapter', ['project_id' => $project->id, 'last_chapter' => $chapter->chapter_number]);
@@ -457,7 +490,10 @@ HTML;
                 // Build chapter HTML with title - escape special characters
                 $chapterHtml = '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $chapterHtml .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
-                $chapterHtml .= $chapter->content; // Content is processed by preprocessHtmlForPandoc
+
+                // Strip inline references from chapter content
+                $cleanedContent = $this->stripReferencesSection($chapter->content);
+                $chapterHtml .= $cleanedContent; // Content is processed by preprocessHtmlForPandoc
 
                 // Append chapter references section (for single chapter export)
                 $referencesHtml = $this->chapterReferenceService->formatChapterReferencesSection($chapter);
@@ -665,9 +701,12 @@ HTML;
             if (! empty($chapter->content)) {
                 $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
-                $html .= $chapter->content; // Content is processed by preprocessHtmlForPandoc
 
-                // If this is the last chapter, append references (no page break)
+                // Strip individual chapter references - we'll add consolidated references at the end
+                $chapterContent = $this->stripReferencesSection($chapter->content);
+                $html .= $chapterContent; // Content is processed by preprocessHtmlForPandoc
+
+                // If this is the last chapter, append consolidated references (no page break)
                 if ($lastChapter && $chapter->id === $lastChapter->id && ! empty($referencesHtml)) {
                     $html .= $referencesHtml;
                 } else {
@@ -689,6 +728,7 @@ HTML;
     {
         $allReferences = collect();
 
+        // First try to get citations from database
         foreach ($chapters as $chapter) {
             $chapterCitations = $this->chapterReferenceService->getChapterCitations($chapter, $style);
 
@@ -700,6 +740,20 @@ HTML;
                 $refKey = $citation['reference'];
                 if (! $allReferences->has($refKey)) {
                     $allReferences->put($refKey, $citation);
+                }
+            }
+        }
+
+        // If no database citations, parse from chapter HTML content
+        if ($allReferences->isEmpty()) {
+            foreach ($chapters as $chapter) {
+                $chapterRefs = $this->chapterReferenceService->extractReferencesFromHtml($chapter->content);
+
+                foreach ($chapterRefs as $reference) {
+                    $refKey = $reference;
+                    if (! $allReferences->has($refKey)) {
+                        $allReferences->put($refKey, ['reference' => $reference]);
+                    }
                 }
             }
         }

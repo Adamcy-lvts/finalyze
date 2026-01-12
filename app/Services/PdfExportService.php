@@ -18,6 +18,36 @@ class PdfExportService
     ) {}
 
     /**
+     * Remove References section from chapter HTML content
+     * This is used when exporting full projects to avoid duplicate references
+     */
+    private function stripReferencesSection(string $html): string
+    {
+        // Pattern to match References section with various possible structures:
+        // 1. <h1>REFERENCES</h1> or <h2>REFERENCES</h2>
+        // 2. Followed by content until next heading or end of document
+        // 3. May include div wrappers, class="references-section", etc.
+
+        // Remove div.references-section wrapper if present
+        $html = preg_replace(
+            '/<div[^>]*class="references-section"[^>]*>.*?<\/div>/is',
+            '',
+            $html
+        );
+
+        // Remove References heading and all content until next chapter-level heading or end
+        // Match: <h1>REFERENCES</h1> or <h2>References</h2> (case insensitive)
+        // Followed by: everything until <h1> or <h2> or end of string
+        $html = preg_replace(
+            '/<h[12][^>]*>\s*REFERENCES?\s*<\/h[12]>.*?(?=<h[12]|$)/is',
+            '',
+            $html
+        );
+
+        return trim($html);
+    }
+
+    /**
      * Export entire project to PDF with proper page numbering
      *
      * Page numbering scheme:
@@ -194,10 +224,16 @@ class PdfExportService
         // Get formatted references section (collected from all chapters, sorted alphabetically)
         $formattedReferences = $this->chapterReferenceService->formatProjectReferencesSection($project);
 
+        // Strip individual References sections from each chapter
+        $cleanedChapterContents = [];
+        foreach ($chapterContents as $chapterId => $content) {
+            $cleanedChapterContents[$chapterId] = $this->stripReferencesSection($content);
+        }
+
         $html = View::make('pdf.sections.main-content', [
             'project' => $project,
             'chapters' => $chapters,
-            'chapterContents' => $chapterContents,
+            'chapterContents' => $cleanedChapterContents,
             'formattedReferences' => $formattedReferences,
         ])->render();
 
