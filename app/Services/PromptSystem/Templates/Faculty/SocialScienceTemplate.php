@@ -106,6 +106,11 @@ REQUIRED TABLES:
 - Table 3.2: Sample Size Distribution (if stratified)
 - Table 3.3: Reliability Test Results (Cronbach's Alpha)
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -176,6 +181,11 @@ Generate realistic sample data for:
 - Statistical test results (realistic t-values, p-values)
 
 Mark ALL sample data: "THIS IS SAMPLE DATA - Replace with your actual data"
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

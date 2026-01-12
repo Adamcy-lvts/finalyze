@@ -104,6 +104,11 @@ REQUIRED TABLES:
 - Table 3.2: Assessment Instruments and Their Psychometric Properties
 - Table 3.3: Intervention Protocol (if applicable)
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -150,6 +155,11 @@ REQUIRED TABLES:
 - Table 4.2: Clinical Characteristics at Baseline
 - Table 4.3: Comparison of Pre and Post Intervention Scores
 - Table 4.4: Summary of Hypothesis Testing Results
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

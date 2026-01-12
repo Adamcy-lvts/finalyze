@@ -100,6 +100,11 @@ REQUIRED TABLES:
 - Table 3.2: Research Instruments and Their Properties
 - Table 3.3: Data Analysis Plan
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -146,6 +151,11 @@ REQUIRED TABLES:
 - Table 4.2: Pre-test and Post-test Performance Summary
 - Table 4.3: Comparison of Experimental and Control Groups
 - Table 4.4: Summary of Hypothesis Testing
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

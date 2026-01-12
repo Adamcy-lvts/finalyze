@@ -8,7 +8,7 @@
     <style>
         body {
             font-family: 'Times New Roman', serif;
-            font-size: 16px;
+            font-size: 14px;
             line-height: 2.0;
             color: #000;
             margin: 0;
@@ -23,7 +23,7 @@
         }
 
         .header h1 {
-            font-size: 24px;
+            font-size: 16px;
             font-weight: bold;
             text-transform: uppercase;
             margin: 0 0 8px 0;
@@ -31,13 +31,13 @@
         }
 
         .header h2 {
-            font-size: 20px;
+            font-size: 15px;
             font-weight: bold;
             margin: 0 0 5px 0;
         }
 
         .header h3 {
-            font-size: 18px;
+            font-size: 14px;
             margin: 0 0 15px 0;
         }
 
@@ -50,7 +50,7 @@
         }
 
         .chapter-number {
-            font-size: 22px;
+            font-size: 16px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -58,13 +58,13 @@
         }
 
         .chapter-title {
-            font-size: 20px;
+            font-size: 15px;
             font-weight: bold;
             margin: 0;
         }
 
         .section-title {
-            font-size: 18px;
+            font-size: 15px;
             font-weight: bold;
             margin: 25px 0 15px 0;
             border-bottom: 1px solid #000;
@@ -73,7 +73,7 @@
 
         .info-item {
             margin-bottom: 8px;
-            font-size: 15px;
+            font-size: 14px;
         }
 
         .info-item strong {
@@ -81,26 +81,26 @@
         }
 
         .content {
-            font-size: 20px;
+            font-size: 14px;
             line-height: 2.0;
             text-align: justify;
             margin: 20px 0;
         }
 
         .content h1 {
-            font-size: 24px;
+            font-size: 16px;
             font-weight: bold;
             margin: 20px 0 10px 0;
         }
 
         .content h2 {
-            font-size: 22px;
+            font-size: 15px;
             font-weight: bold;
             margin: 18px 0 10px 0;
         }
 
         .content h3 {
-            font-size: 20px;
+            font-size: 14px;
             font-weight: bold;
             margin: 16px 0 8px 0;
         }
@@ -227,7 +227,7 @@
         }
 
         .stat-value {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             color: #000;
         }
@@ -239,6 +239,11 @@
             text-align: center;
             font-size: 12px;
             color: #666;
+        }
+
+        .page-break {
+            page-break-after: always;
+            break-after: page;
         }
     </style>
 </head>
@@ -318,6 +323,9 @@
             <strong>Export Date:</strong> {{ now()->format('F j, Y') }}
         </div>
     </div>
+
+    <!-- Page Break -->
+    <div class="page-break"></div>
 
     <!-- Chapter Content -->
     <div>

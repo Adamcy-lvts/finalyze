@@ -408,21 +408,28 @@ HTML;
 
         $html .= '<div style="page-break-after: always;"></div>';
 
+        // Get references to append to last chapter
+        $referencesHtml = $this->chapterReferenceService->formatProjectReferencesSection($project);
+
         // All chapters
+        $chaptersWithContent = $chapters->filter(fn ($ch) => ! empty($ch->content));
+        $lastChapter = $chaptersWithContent->last();
+
         foreach ($chapters as $chapter) {
             if (! empty($chapter->content)) {
                 $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
                 $html .= $chapter->content; // Content is processed by preprocessHtmlForPandoc which handles escaping
-                $html .= '<div style="page-break-after: always;"></div>';
-            }
-        }
 
-        // References - collect from all chapters (sorted alphabetically)
-        $referencesHtml = $this->chapterReferenceService->formatProjectReferencesSection($project);
-        if (! empty($referencesHtml)) {
-            $html .= $referencesHtml;
-            Log::info('Added collected project references to export', ['project_id' => $project->id]);
+                // If this is the last chapter, append references (no page break)
+                if ($lastChapter && $chapter->id === $lastChapter->id && ! empty($referencesHtml)) {
+                    $html .= $referencesHtml;
+                    Log::info('Added collected project references to last chapter', ['project_id' => $project->id, 'last_chapter' => $chapter->chapter_number]);
+                } else {
+                    // Only add page break if not the last chapter
+                    $html .= '<div style="page-break-after: always;"></div>';
+                }
+            }
         }
 
         return $html;
@@ -647,20 +654,27 @@ HTML;
 
         $html .= '<div style="page-break-after: always;"></div>';
 
+        // Get references to append to last chapter
+        $referencesHtml = $this->formatSelectedChaptersReferences($chapters);
+
         // Selected chapters
+        $chaptersWithContent = $chapters->filter(fn ($ch) => ! empty($ch->content));
+        $lastChapter = $chaptersWithContent->last();
+
         foreach ($chapters as $chapter) {
             if (! empty($chapter->content)) {
                 $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
                 $html .= $chapter->content; // Content is processed by preprocessHtmlForPandoc
-                $html .= '<div style="page-break-after: always;"></div>';
-            }
-        }
 
-        // Add references for selected chapters (sorted alphabetically)
-        $referencesHtml = $this->formatSelectedChaptersReferences($chapters);
-        if (! empty($referencesHtml)) {
-            $html .= $referencesHtml;
+                // If this is the last chapter, append references (no page break)
+                if ($lastChapter && $chapter->id === $lastChapter->id && ! empty($referencesHtml)) {
+                    $html .= $referencesHtml;
+                } else {
+                    // Only add page break if not the last chapter
+                    $html .= '<div style="page-break-after: always;"></div>';
+                }
+            }
         }
 
         return $html;
@@ -697,11 +711,11 @@ HTML;
         // Sort alphabetically by reference text
         $sortedRefs = $allReferences->values()->sortBy('reference');
 
-        $html = '<div class="references-section" style="page-break-before: always;">';
-        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em;">REFERENCES</h1>';
+        $html = '<div class="references-section" style="margin-top: 2em; font-size: 14px;">';
+        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h1>';
 
         foreach ($sortedRefs as $ref) {
-            $html .= '<p style="text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+            $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
                 htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
                 '</p>';
         }

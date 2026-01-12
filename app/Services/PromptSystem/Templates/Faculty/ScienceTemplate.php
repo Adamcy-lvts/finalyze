@@ -96,6 +96,11 @@ REQUIRED TABLES:
 - Table 3.2: Experimental Conditions
 - Table 3.3: Variables and Measurements
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -145,6 +150,11 @@ REQUIRED TABLES:
 - Table 4.2: Descriptive Statistics by Treatment/Group
 - Table 4.3: Statistical Test Results
 - Table 4.4: Comparison with Theoretical/Literature Values
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

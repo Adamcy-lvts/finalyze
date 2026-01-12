@@ -66,32 +66,27 @@
 
         <div class="chapter-content">
             {!! $content !!}
+
+            {{-- Append references to last chapter --}}
+            @if($loop->last && !empty($formattedReferences))
+                <div style="margin-top: 2em;">
+                    {!! $formattedReferences !!}
+                </div>
+            @elseif($loop->last && $project->references)
+                {{-- Fallback to project-level references --}}
+                <div style="margin-top: 2em;">
+                    <div class="chapter-title">REFERENCES</div>
+                    <div class="content">
+                        {!! nl2br(e($project->references)) !!}
+                    </div>
+                </div>
+            @endif
         </div>
 
         @if(!$loop->last)
             <div class="page-break"></div>
         @endif
     @endforeach
-
-    {{-- REFERENCES --}}
-    <div class="page-break"></div>
-    <div class="section-content">
-        @if(!empty($formattedReferences))
-            {{-- Use formatted references from ChapterReferenceService (sorted alphabetically) --}}
-            {!! $formattedReferences !!}
-        @elseif($project->references)
-            {{-- Fallback to project-level references --}}
-            <div class="chapter-title">REFERENCES</div>
-            <div class="content">
-                {!! nl2br(e($project->references)) !!}
-            </div>
-        @else
-            <div class="chapter-title">REFERENCES</div>
-            <div class="content">
-                <p>References will be added here.</p>
-            </div>
-        @endif
-    </div>
 
     {{-- APPENDICES --}}
     <div class="page-break"></div>

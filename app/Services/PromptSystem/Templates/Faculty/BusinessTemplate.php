@@ -97,6 +97,11 @@ REQUIRED TABLES:
 - Table 3.2: Reliability Test Results
 - Table 3.3: Data Analysis Plan by Objective
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -150,6 +155,11 @@ REQUIRED TABLES:
 - Table 4.2: Descriptive Statistics for Study Variables
 - Table 4.3: Correlation Matrix
 - Table 4.4: Hypothesis Test Results
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

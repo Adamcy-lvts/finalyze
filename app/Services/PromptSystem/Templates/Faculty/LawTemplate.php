@@ -86,6 +86,11 @@ REQUIRED SECTIONS:
     - Access to sources
     - Currency of law
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -136,6 +141,11 @@ Use proper legal citation throughout:
 - Statutes: [Short Title] [Year] [Jurisdiction] (if applicable)
 - Cases: [Party v Party] [Year] [Court] [Citation]
 - Include paragraph/section numbers where relevant
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

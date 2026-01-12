@@ -87,6 +87,11 @@ REQUIRED SECTIONS:
     - Cultural sensitivity
     - Representation ethics
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -129,6 +134,11 @@ PRESENTATION FORMAT:
 - Include relevant quotations with proper citations
 - Integrate analysis with evidence throughout
 - Use subheadings to organize themes
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

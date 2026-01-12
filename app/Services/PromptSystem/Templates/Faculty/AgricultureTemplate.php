@@ -106,6 +106,11 @@ REQUIRED DIAGRAMS:
 - Field layout diagram showing plot arrangement
 - Treatment application diagram
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 METHOD;
     }
 
@@ -167,6 +172,11 @@ REQUIRED TABLES:
 TABLE FORMAT:
 Include LSD or SE values for mean comparisons
 Use letter notation for mean separation (a, b, c)
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

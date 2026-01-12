@@ -73,8 +73,35 @@ export default defineConfig({
                 ],
             },
             workbox: {
-                globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+                // Only precache critical CSS files - use runtime caching for JS
+                globPatterns: [
+                    'build/assets/*.css',
+                ],
+                // Ignore large JS bundles - they'll be runtime cached
+                globIgnores: [
+                    '**/node_modules/**/*',
+                    '**/storage/**/*',
+                    '**/vendor/**/*',
+                    '**/*.map',
+                    '**/*.html',
+                    '**/pwa-icons/**/*',
+                    'build/assets/*.js', // Don't precache JS bundles
+                ],
+                // Higher limit for the few files we do precache
+                maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
                 runtimeCaching: [
+                    // Runtime cache for JS bundles
+                    {
+                        urlPattern: /\/build\/assets\/.*\.js$/,
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'js-bundles',
+                            expiration: {
+                                maxEntries: 50,
+                                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                            },
+                        },
+                    },
                     {
                         urlPattern: /^https:\/\/fonts\.bunny\.net\/.*/i,
                         handler: 'CacheFirst',
@@ -125,11 +152,42 @@ export default defineConfig({
     ],
     build: {
         rollupOptions: {
+            onwarn(warning, warn) {
+                // Suppress manualChunks warning in Vite 7
+                if (warning.code === 'INVALID_OPTION') return;
+                warn(warning);
+            },
             output: {
-                manualChunks: {
-                    vendor: ['vue', '@inertiajs/vue3', 'vue-sonner', 'lucide-vue-next'],
+                // Simplified chunking - function-based for better performance
+                manualChunks: (id) => {
+                    // Only split the heaviest libraries
+                    if (id.includes('mermaid')) {
+                        return 'vendor-mermaid';
+                    }
+                    if (id.includes('@tiptap')) {
+                        return 'vendor-tiptap';
+                    }
+                    // Everything else in one vendor chunk
+                    if (id.includes('node_modules')) {
+                        return 'vendor';
+                    }
                 },
             },
         },
+
+        // Use esbuild instead of terser - MUCH faster (10-100x)
+        minify: 'esbuild',
+
+        // Reduce chunk size warnings
+        chunkSizeWarningLimit: 1500,
+
+        // Target modern browsers for faster builds
+        target: 'esnext',
+
+        // Disable source maps in production to save CPU
+        sourcemap: false,
+
+        // Reduce CSS processing
+        cssMinify: 'esbuild',
     },
 });

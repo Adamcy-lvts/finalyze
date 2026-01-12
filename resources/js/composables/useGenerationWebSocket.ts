@@ -1,4 +1,5 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { route } from 'ziggy-js'
 import Echo from 'laravel-echo'
 import axios from 'axios'
 
@@ -81,7 +82,7 @@ export interface GenerationEventPayload {
 /**
  * Composable for managing WebSocket connection to generation progress channel
  */
-export function useGenerationWebSocket(projectId: number) {
+export function useGenerationWebSocket(projectId: number, projectSlug: string) {
     // State
     const state = ref<GenerationState>({
         status: 'not_started',
@@ -756,7 +757,9 @@ export function useGenerationWebSocket(projectId: number) {
             }
 
             try {
-                const response = await axios.get(`/api/projects/${projectId}/bulk-generate/status`)
+                const response = await axios.get(
+                    route('api.projects.bulk-generate.status', projectSlug)
+                )
                 const data = response.data
 
                 // Only update if we have newer data (higher progress or different status)

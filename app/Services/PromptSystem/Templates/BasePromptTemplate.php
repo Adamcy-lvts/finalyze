@@ -49,18 +49,25 @@ CONTENT QUALITY:
 - Include transitions between major sections
 
 STRICT CITATION POLICY:
-- Use in-text citations only (no References/Bibliography section inside a chapter)
+- Use in-text citations throughout the chapter in the format: (AuthorLastName, Year)
 - If a "Verified Sources" block is provided in the user prompt, you may ONLY cite those sources
 - Use ONLY the format (FirstAuthorLastName, Year) - e.g., (Smith, 2020) or (Johnson, 2019)
+- For multiple authors, use: (Smith and Johnson, 2020) - never use "&"
 - Do NOT use "et al." and do NOT invent author names or years
 - If you cannot support a sentence with an allowed in-text citation, add: [Citation needed]
 
+REFERENCES SECTION REQUIREMENT:
+- MUST include a complete "References" section at the END of the chapter
+- List ALL sources cited in the chapter in APA 7th edition format
+- Sort references alphabetically by author's last name
+- Use proper APA formatting with hanging indents
+- Example format: "Smith, J. (2020). Title of the work. Journal Name, Volume(Issue), pages."
+- If you used [Citation needed] markers, do NOT include those in the References section
+
 CITATION FORMAT FOR REFERENCE TRACKING:
 - Every in-text citation MUST match this exact pattern: (AuthorLastName, Year)
-- For multiple authors, use: (Smith and Johnson, 2020) - never use "&"
-- Citations are automatically extracted for the References section
 - Consistent formatting ensures proper reference collection during export
-- Each citation used will appear in the final References section (sorted alphabetically)
+- Each citation used will be automatically tracked for final document compilation
 PROMPT;
     }
 
@@ -292,13 +299,14 @@ FORMATTING INSTRUCTIONS:
 - Reference all tables and figures in the text
 
 CITATION REMINDERS:
-- Use consistent (AuthorLastName, Year) format for all citations
+- Use consistent (AuthorLastName, Year) format for all in-text citations
 - Distribute citations across sections (don't cluster all in one paragraph)
-- Each unique citation will be collected for the References section
+- MUST end chapter with a "References" section listing all cited sources in APA format
 
 CRITICAL REMINDERS:
 - Generate comprehensive content to meet word count
 - Include realistic sample data with replacement instructions
+- Do NOT forget the References section at the end
 
 FORMAT_INSTRUCTIONS;
     }
@@ -373,6 +381,12 @@ REQUIRED SECTIONS:
     - What is NOT covered
     - Justification for boundaries
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
+
 INTRO;
     }
 
@@ -436,8 +450,13 @@ CITATION BEHAVIOR:
  - Do not reuse the same single citation repeatedly; distribute citations across themes and studies where relevant.
 
 OUTPUT RULES:
-- Do NOT add a "References" section at the end of this chapter
 - Do NOT include any "Note:" or meta commentary; output only academic chapter content
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
 
 LITREV;
     }
@@ -473,6 +492,12 @@ REQUIRED SECTIONS:
     - Consent procedures
     - Confidentiality measures
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
+
 METHOD;
     }
 
@@ -503,6 +528,12 @@ TABLE REQUIREMENTS:
 - Reference all tables in the text
 - Generate sample data with clear replacement instructions
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
+
 RESULTS;
     }
 
@@ -532,6 +563,12 @@ REQUIRED SECTIONS:
     - Study limitations acknowledged
     - How they affect interpretation
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
+
 DISCUSSION;
     }
 
@@ -555,6 +592,12 @@ REQUIRED SECTIONS:
     - Policy recommendations (if applicable)
     - Recommendations for future research
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
+
 CONCLUSION;
     }
 
@@ -563,7 +606,18 @@ CONCLUSION;
      */
     protected function getGenericChapterInstructions(): string
     {
-        return "\n\nProvide comprehensive content for this chapter following standard academic structure.\n";
+        return <<<'GENERIC'
+
+
+Provide comprehensive content for this chapter following standard academic structure.
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+- Do NOT include [Citation needed] markers in References
+
+GENERIC;
     }
 
     /**

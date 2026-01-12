@@ -95,6 +95,11 @@ REQUIRED SECTIONS:
     - Test procedures
     - Expected outcomes
 
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
+
 REQUIRED TABLES:
 - Table 3.1: Bill of Materials (Components, Specifications, Quantity, Cost)
 - Table 3.2: Pin Connections (Component, Pin, Connection, Purpose)
@@ -157,6 +162,11 @@ SAMPLE DATA NOTE:
 For tables with test results, generate realistic sample data based on typical
 engineering project outcomes. Mark all sample data clearly:
 "THIS IS SAMPLE DATA - Replace with your actual measurements"
+
+CRITICAL: END CHAPTER WITH REFERENCES SECTION
+- After all content sections, include a "References" section
+- List ALL sources cited in this chapter in APA 7th edition format
+- Sort alphabetically by author's last name
 
 RESULTS;
     }

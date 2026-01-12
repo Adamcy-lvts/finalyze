@@ -59,11 +59,11 @@ class ChapterReferenceService
         // Sort alphabetically by the reference text (which starts with author name in APA)
         $sortedRefs = $uniqueRefs->sortBy('reference');
 
-        $html = '<div class="references-section" style="margin-top: 2em; page-break-before: always;">';
-        $html .= '<h2 style="text-align: center; font-weight: bold; margin-bottom: 1em;">REFERENCES</h2>';
+        $html = '<div class="references-section" style="margin-top: 2em; page-break-before: always; font-size: 14px;">';
+        $html .= '<h2 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h2>';
 
         foreach ($sortedRefs as $ref) {
-            $html .= '<p style="text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+            $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
                 htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
                 '</p>';
         }
@@ -136,11 +136,11 @@ class ChapterReferenceService
             return $this->formatProjectLevelReferences($project);
         }
 
-        $html = '<div class="references-section" style="page-break-before: always;">';
-        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em;">REFERENCES</h1>';
+        $html = '<div class="references-section" style="margin-top: 2em; font-size: 14px;">';
+        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h1>';
 
         foreach ($references as $ref) {
-            $html .= '<p style="text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+            $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
                 htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
                 '</p>';
         }
@@ -173,8 +173,8 @@ class ChapterReferenceService
             return strcasecmp($textA, $textB);
         });
 
-        $html = '<div class="references-section" style="page-break-before: always;">';
-        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em;">REFERENCES</h1>';
+        $html = '<div class="references-section" style="margin-top: 2em; font-size: 14px;">';
+        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h1>';
 
         foreach ($references as $reference) {
             $refText = $reference['citation'] ??
@@ -182,7 +182,7 @@ class ChapterReferenceService
                 $reference['title'] ??
                 'Unknown reference';
 
-            $html .= '<p style="text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+            $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
                 htmlspecialchars($refText, ENT_QUOTES | ENT_HTML5, 'UTF-8').
                 '</p>';
         }

@@ -71,7 +71,7 @@ const {
     disconnect,
     restoreFromApiData,
     reset,
-} = useGenerationWebSocket(props.project.id)
+} = useGenerationWebSocket(props.project.id, props.project.slug)
 
 // Word balance guard
 const {

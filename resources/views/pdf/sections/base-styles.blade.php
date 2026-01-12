@@ -11,7 +11,7 @@
 
     body {
         font-family: 'Times New Roman', Times, serif;
-        font-size: 16px;
+        font-size: 14px;
         line-height: 2.0;
         color: #000;
         margin: 0;
@@ -210,29 +210,29 @@
     }
 
     .chapter-content {
-        font-size: 20px !important;
+        font-size: 14px !important;
         line-height: 2.0;
         text-align: justify;
     }
 
     .chapter-content * {
-        font-size: 20px !important;
+        font-size: 14px !important;
     }
 
     .chapter-content h1 {
-        font-size: 24px !important;
+        font-size: 16px !important;
         font-weight: bold;
         margin: 20px 0 10px 0;
     }
 
     .chapter-content h2 {
-        font-size: 22px !important;
+        font-size: 15px !important;
         font-weight: bold;
         margin: 18px 0 10px 0;
     }
 
     .chapter-content h3 {
-        font-size: 20px !important;
+        font-size: 14px !important;
         font-weight: bold;
         margin: 16px 0 8px 0;
     }
@@ -241,7 +241,7 @@
     .chapter-content li,
     .chapter-content td,
     .chapter-content th {
-        font-size: 20px !important;
+        font-size: 14px !important;
     }
 
     /* Page breaks */
