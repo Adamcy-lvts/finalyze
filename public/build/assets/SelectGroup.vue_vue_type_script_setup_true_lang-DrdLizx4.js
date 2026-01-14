@@ -1,0 +1,1 @@
+import{bu as t,cn as a,co as r,bF as c,gu as p,d3 as n,cp as l,cC as u}from"./vendor-BXA9o5aE.js";const f=t({__name:"SelectGroup",props:{asChild:{type:Boolean},as:{}},setup(e){const o=e;return(s,d)=>(r(),a(c(p),n({"data-slot":"select-group"},o),{default:l(()=>[u(s.$slots,"default")]),_:3},16))}});export{f as _};
