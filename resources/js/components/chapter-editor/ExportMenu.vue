@@ -101,8 +101,26 @@ const exportCurrentChapter = async () => {
                 return;
             }
 
+            if (contentType && contentType.includes('text/html')) {
+                const text = await response.text();
+                toast.error('Export Failed', {
+                    id: 'export-chapter',
+                    description: `Server returned HTML instead of DOCX. ${text.slice(0, 80)}`,
+                });
+                return;
+            }
+
             // Success - trigger download
             const blob = await response.blob();
+            const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+            const isZip = head.length === 2 && head[0] === 0x50 && head[1] === 0x4b; // "PK"
+            if (!isZip) {
+                toast.error('Export Failed', {
+                    id: 'export-chapter',
+                    description: 'Downloaded file is not a valid DOCX (missing PK zip header).',
+                });
+                return;
+            }
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -166,8 +184,26 @@ const exportFullProject = async () => {
                 return;
             }
 
+            if (contentType && contentType.includes('text/html')) {
+                const text = await response.text();
+                toast.error('Export Failed', {
+                    id: 'export-project',
+                    description: `Server returned HTML instead of DOCX. ${text.slice(0, 80)}`,
+                });
+                return;
+            }
+
             // Success - trigger download
             const blob = await response.blob();
+            const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+            const isZip = head.length === 2 && head[0] === 0x50 && head[1] === 0x4b; // "PK"
+            if (!isZip) {
+                toast.error('Export Failed', {
+                    id: 'export-project',
+                    description: 'Downloaded file is not a valid DOCX (missing PK zip header).',
+                });
+                return;
+            }
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -316,8 +352,26 @@ const exportSelectedChapters = async () => {
                 return;
             }
 
+            if (contentType && contentType.includes('text/html')) {
+                const text = await response.text();
+                toast.error('Export Failed', {
+                    id: 'export-chapters',
+                    description: `Server returned HTML instead of DOCX. ${text.slice(0, 80)}`,
+                });
+                return;
+            }
+
             // Success - create blob from response
             const blob = await response.blob();
+            const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+            const isZip = head.length === 2 && head[0] === 0x50 && head[1] === 0x4b; // "PK"
+            if (!isZip) {
+                toast.error('Export Failed', {
+                    id: 'export-chapters',
+                    description: 'Downloaded file is not a valid DOCX (missing PK zip header).',
+                });
+                return;
+            }
             
             // Create download link
             const url = window.URL.createObjectURL(blob);
@@ -474,6 +528,16 @@ const exportCurrentChapterPdf = async () => {
                 <!-- Current Chapter Export Options -->
                 <DropdownMenuLabel>Current Chapter</DropdownMenuLabel>
 
+                <DropdownMenuItem @click="exportCurrentChapter" class="gap-2">
+                    <FileDown class="h-4 w-4" />
+                    <div class="flex flex-col">
+                        <span class="font-medium">Export as Word</span>
+                        <span class="text-xs text-muted-foreground">
+                            DOCX with chapter references at end
+                        </span>
+                    </div>
+                </DropdownMenuItem>
+
                 <DropdownMenuItem @click="exportCurrentChapterPdf" class="gap-2">
                     <FileText class="h-4 w-4" />
                     <div class="flex flex-col">
@@ -489,12 +553,35 @@ const exportCurrentChapterPdf = async () => {
                 <!-- Full Project Export -->
                 <DropdownMenuLabel>Full Project</DropdownMenuLabel>
 
+                <DropdownMenuItem @click="exportFullProject" class="gap-2">
+                    <FileDown class="h-4 w-4" />
+                    <div class="flex flex-col">
+                        <span class="font-medium">Export as Word</span>
+                        <span class="text-xs text-muted-foreground">
+                            All references collected and sorted
+                        </span>
+                    </div>
+                </DropdownMenuItem>
+
                 <DropdownMenuItem @click="exportFullProjectPdf" class="gap-2">
                     <FileText class="h-4 w-4" />
                     <div class="flex flex-col">
                         <span class="font-medium">Export as PDF</span>
                         <span class="text-xs text-muted-foreground">
                             All references collected & sorted alphabetically
+                        </span>
+                    </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuLabel>Selected Chapters</DropdownMenuLabel>
+                <DropdownMenuItem @click="openMultiChapterDialog" class="gap-2">
+                    <FileDown class="h-4 w-4" />
+                    <div class="flex flex-col">
+                        <span class="font-medium">Export selected as Word</span>
+                        <span class="text-xs text-muted-foreground">
+                            Pick chapters to include in DOCX
                         </span>
                     </div>
                 </DropdownMenuItem>
