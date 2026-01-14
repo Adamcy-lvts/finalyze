@@ -75,6 +75,11 @@ const richTextEditor = ref<{ editor?: any } | null>(null);
 const richTextEditorFullscreen = ref<{ editor?: any } | null>(null);
 const showRegenerateDialog = ref(false);
 
+// Navigation guard during generation
+const showNavigationGuardDialog = ref(false);
+const pendingNavigation = ref<{ url: string; event: any } | null>(null);
+const isUserConfirmedLeave = ref(false); // Flag to bypass interceptor after user confirms
+
 const isThemeSandbox = ref(false);
 const isThemeSandboxNoLayout = ref(false);
 const themeSandboxStep = ref(0);
@@ -420,6 +425,7 @@ const {
     dismissRecovery,
     checkForAutoGeneration,
     stopGeneration,
+    cleanupGenerationProtection,
 } = useChapterGeneration({
     props,
     chapterContent,
@@ -529,7 +535,9 @@ const confirmRegenerateChapter = async () => {
 
 // Navigation
 const goToChapter = (chapterNumber: number) => {
-    if (hasUnsavedChanges.value) {
+    // Skip the unsaved changes prompt if generation is in progress
+    // The router interceptor will show the custom generation dialog instead
+    if (!isGenerating.value && hasUnsavedChanges.value) {
         if (confirm('You have unsaved changes. Save before switching chapters?')) {
             save();
         }
@@ -716,7 +724,57 @@ onMounted(() => {
 
     // Initialize custom theme
     initChapterTheme();
+
+    // Navigation guard: intercept Inertia navigation during generation
+    router.on('before', (event) => {
+        // Skip if user already confirmed they want to leave
+        if (isUserConfirmedLeave.value) {
+            return true;
+        }
+
+        if (isGenerating.value && streamWordCount.value > 0) {
+            // Store the pending navigation and show custom dialog
+            pendingNavigation.value = {
+                url: event.detail.visit.url.href,
+                event: event
+            };
+            showNavigationGuardDialog.value = true;
+            // Prevent the navigation
+            return false;
+        }
+        return true;
+    });
 });
+
+// Navigation guard dialog handlers
+const confirmLeaveGeneration = () => {
+    showNavigationGuardDialog.value = false;
+
+    // Set flag to bypass the interceptor on next navigation
+    isUserConfirmedLeave.value = true;
+
+    // Stop the current generation and disable beforeunload
+    if (stopGeneration) {
+        stopGeneration();
+    }
+    cleanupGenerationProtection();
+
+    // Proceed with navigation
+    if (pendingNavigation.value) {
+        router.visit(pendingNavigation.value.url);
+    }
+    pendingNavigation.value = null;
+
+    // Reset flag after a short delay (in case navigation fails)
+    setTimeout(() => {
+        isUserConfirmedLeave.value = false;
+    }, 1000);
+};
+
+const cancelLeaveGeneration = () => {
+    showNavigationGuardDialog.value = false;
+    pendingNavigation.value = null;
+};
 
 // Keyboard navigation
 const handleChapterKeyboardNavigation = (e: KeyboardEvent) => {
@@ -791,6 +849,8 @@ onUnmounted(() => {
     if (eventSource.value) {
         eventSource.value.close();
     }
+    // Clean up generation protection (beforeunload handler and periodic save interval)
+    cleanupGenerationProtection();
     // Streaming mode cleanup is handled by the useSmoothScroller composable
     document.removeEventListener('keydown', handleKeydown);
     document.removeEventListener('keydown', handleChapterKeyboardNavigation);
@@ -1035,7 +1095,7 @@ watch(globalIsDark, () => {
                                     </div>
                                     <div><span class="text-muted-foreground">isDark:</span> {{ globalIsDark }}</div>
                                     <div><span class="text-muted-foreground">html.dark:</span> {{ themeDebug.htmlHasDark
-                                    }}</div>
+                                        }}</div>
                                     <div><span class="text-muted-foreground">step:</span> {{ themeSandboxStep }}</div>
                                 </div>
                                 <Separator />
@@ -1116,7 +1176,7 @@ watch(globalIsDark, () => {
                                     </div>
                                     <div><span class="text-muted-foreground">isDark:</span> {{ globalIsDark }}</div>
                                     <div><span class="text-muted-foreground">html.dark:</span> {{ themeDebug.htmlHasDark
-                                    }}</div>
+                                        }}</div>
                                     <div><span class="text-muted-foreground">step:</span> {{ themeSandboxStep }}</div>
                                 </div>
                                 <Separator />
@@ -1340,25 +1400,25 @@ watch(globalIsDark, () => {
                                     </div>
                                     <!-- Pulsing ring -->
                                     <div
-                                        class="absolute inset-0 h-6 w-6 animate-ping rounded-full bg-gradient-to-br from-blue-500 to-purple-600 opacity-20">
+                                        class="absolute inset-0 h-6 w-6 animate-ping rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 opacity-20">
                                     </div>
                                 </div>
                                 <div>
-                                    <h4 class="text-xs font-semibold text-blue-900 dark:text-blue-100">AI Generator</h4>
-                                    <p class="text-xs text-blue-700 dark:text-blue-300">{{ generationPhase }}</p>
+                                    <h4 class="text-xs font-semibold text-indigo-900 dark:text-indigo-100">AI Writing
+                                        Assistant</h4>
+                                    <p
+                                        class="text-[10px] text-indigo-700 dark:text-indigo-300 font-medium tracking-wide uppercase">
+                                        {{ generationPhase }}</p>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    class="h-7 w-7 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20"
-                                    @click="stopGeneration"
-                                    title="Stop generation">
+                                <Button variant="ghost" size="icon"
+                                    class="h-7 w-7 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                    @click="stopGeneration" title="Stop writing">
                                     <XCircle class="h-4 w-4 text-red-600 dark:text-red-400" />
                                 </Button>
-                                <Badge variant="outline"
-                                    class="border-blue-300 text-xs text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                                <Badge variant="secondary"
+                                    class="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border-0">
                                     {{ Math.round(generationPercentage) }}%
                                 </Badge>
                             </div>
@@ -1366,28 +1426,30 @@ watch(globalIsDark, () => {
 
                         <!-- Progress Bar -->
                         <div class="relative z-10 mb-2">
-                            <div class="mb-1 flex items-center justify-between">
-                                <span class="text-xs text-blue-800 dark:text-blue-200">Generation Progress</span>
-                                <span class="text-xs text-blue-600 dark:text-blue-400">{{ streamWordCount }} / {{
-                                    estimatedTotalWords }} words</span>
+                            <div class="mb-1.5 flex items-center justify-between">
+                                <span
+                                    class="text-[10px] font-medium text-indigo-800 dark:text-indigo-200 uppercase tracking-wider">Writing
+                                    Progress</span>
+                                <span class="text-[10px] tabular-nums text-indigo-600 dark:text-indigo-400 font-mono">{{
+                                    streamWordCount }} / {{
+                                        estimatedTotalWords }} words</span>
                             </div>
-                            <div class="relative h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50">
+                            <div
+                                class="relative h-1.5 overflow-hidden rounded-full bg-indigo-100 dark:bg-indigo-950/50">
                                 <!-- Animated progress bar -->
-                                <div class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500 ease-out"
+                                <div class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(99,102,241,0.5)]"
                                     :style="{ width: `${generationPercentage}%` }">
                                     <!-- Shimmer effect -->
                                     <div
-                                        class="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/30 to-transparent">
+                                        class="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/40 to-transparent">
                                     </div>
                                 </div>
-                                <!-- Progress glow -->
-                                <div class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-400 to-purple-400 opacity-50 blur-sm transition-all duration-500"
-                                    :style="{ width: `${generationPercentage}%` }"></div>
                             </div>
                         </div>
 
                         <!-- Status Message -->
-                        <div class="relative z-10 flex items-center gap-2">
+                        <div
+                            class="relative z-10 flex items-center gap-2.5 bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg border border-indigo-100 dark:border-indigo-800/30">
                             <!-- Dynamic icon based on phase -->
                             <div class="flex-shrink-0">
                                 <div v-if="generationPhase === 'Initializing'"
@@ -1399,7 +1461,7 @@ watch(globalIsDark, () => {
                                     <div class="h-2 w-0.5 animate-pulse rounded-full bg-blue-500"
                                         style="animation-delay: 0.4s"></div>
                                 </div>
-                                <div v-else-if="generationPhase === 'Generating'"
+                                <div v-else-if="generationPhase === 'Writing' || generationPhase === 'Writing Section'"
                                     class="h-2 w-2 animate-spin rounded-full border-2 border-blue-500 border-t-transparent">
                                 </div>
                                 <div v-else-if="generationPhase === 'Complete'"
@@ -1456,8 +1518,7 @@ watch(globalIsDark, () => {
                     <div class="flex min-h-0 flex-1 flex-col bg-transparent relative">
                         <!-- Editor Container - Floating Paper Style -->
                         <div class="flex-1 overflow-hidden relative">
-                            <div
-                                data-editor-scroll-container
+                            <div data-editor-scroll-container
                                 class="absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col items-center py-8 px-4 sm:px-8">
 
                                 <!-- The "Paper" -->
@@ -1585,8 +1646,7 @@ watch(globalIsDark, () => {
 
                                         <Button variant="outline" size="icon"
                                             class="h-8 w-8 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground bg-background/50 backdrop-blur-sm rounded-full"
-                                            :disabled="isGenerating"
-                                            @click="showRegenerateDialog = true"
+                                            :disabled="isGenerating" @click="showRegenerateDialog = true"
                                             title="Regenerate chapter">
                                             <RefreshCw class="w-4 h-4" />
                                         </Button>
@@ -1671,7 +1731,7 @@ watch(globalIsDark, () => {
                                                     <Edit2 v-else class="h-3.5 w-3.5" />
                                                     <span class="hidden xl:inline">{{ showPresentationMode ? 'Edit' :
                                                         'Preview'
-                                                    }}</span>
+                                                        }}</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>Toggle Preview Mode</TooltipContent>
@@ -1702,7 +1762,7 @@ watch(globalIsDark, () => {
                                                     <span class="hidden xl:inline">{{ isNativeFullscreen ? `Exit
                                                         Fullscreen` :
                                                         'Fullscreen'
-                                                    }}</span>
+                                                        }}</span>
                                                 </Button>
                                             </TooltipTrigger>
                                             <TooltipContent>
@@ -1743,8 +1803,7 @@ watch(globalIsDark, () => {
                                             <TooltipTrigger asChild>
                                                 <Button id="regenerate-button" variant="outline" size="sm"
                                                     class="h-9 gap-2 text-zinc-700 dark:text-zinc-300 hover:text-foreground bg-background/50 backdrop-blur-sm rounded-full"
-                                                    :disabled="isGenerating"
-                                                    @click="showRegenerateDialog = true">
+                                                    :disabled="isGenerating" @click="showRegenerateDialog = true">
                                                     <RefreshCw class="w-4 h-4" />
                                                     <span class="text-xs font-medium">Regenerate</span>
                                                 </Button>
@@ -1802,42 +1861,78 @@ watch(globalIsDark, () => {
                                 leave-active-class="transition-all duration-200 ease-in"
                                 leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-4">
                                 <div v-if="isGenerating"
-                                    class="absolute top-6 left-0 right-0 z-40 px-4 flex justify-center pointer-events-none">
-                                    <div class="w-full max-w-lg pointer-events-auto">
+                                    class="absolute top-8 left-0 right-0 z-40 px-4 flex justify-center pointer-events-none">
+                                    <div class="w-full max-w-md pointer-events-auto">
                                         <div
-                                            class="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50/95 to-purple-50/95 p-3 shadow-lg backdrop-blur-lg dark:border-blue-800 dark:from-blue-950/90 dark:to-purple-950/90">
-                                            <div class="flex items-center gap-3">
-                                                <div
-                                                    class="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 shadow-md">
-                                                    <Brain class="h-4 w-4 text-white animate-pulse" />
-                                                </div>
-                                                <div class="flex-1 min-w-0">
-                                                    <div class="flex items-center justify-between mb-1">
-                                                        <h4 class="text-xs font-semibold text-foreground">
-                                                            Generating
-                                                            Content...</h4>
-                                                        <span class="text-xs font-mono text-muted-foreground">{{
-                                                            Math.round(generationPercentage) }}%</span>
-                                                    </div>
+                                            class="group relative overflow-hidden rounded-2xl border border-white/20 bg-white/80 dark:bg-zinc-900/80 p-5 shadow-2xl backdrop-blur-xl transition-all duration-300 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/5">
+
+                                            <!-- Animated Background Glow -->
+                                            <div
+                                                class="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-blue-500/20 blur-3xl animate-pulse">
+                                            </div>
+                                            <div
+                                                class="absolute -bottom-24 -left-24 h-48 w-48 rounded-full bg-purple-500/20 blur-3xl animate-pulse delay-1000">
+                                            </div>
+
+                                            <div class="relative flex items-center gap-4">
+                                                <!-- Icon & Spinner -->
+                                                <div class="relative flex-shrink-0">
+                                                    <!-- Outer Ring Spinner -->
                                                     <div
-                                                        class="h-1.5 w-full bg-blue-100 dark:bg-blue-900/40 rounded-full overflow-hidden">
-                                                        <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                                                        class="absolute inset-0 -m-1.5 rounded-full border-2 border-transparent border-t-blue-500 border-r-purple-500 animate-spin [animation-duration:2s]">
+                                                    </div>
+
+                                                    <!-- Icon Container -->
+                                                    <div
+                                                        class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 z-10 relative">
+                                                        <Brain class="h-5 w-5 text-white animate-pulse" />
+                                                    </div>
+                                                </div>
+
+                                                <!-- Content -->
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="flex items-center justify-between mb-2">
+                                                        <div class="flex flex-col">
+                                                            <h4
+                                                                class="text-sm font-bold text-foreground tracking-tight flex items-center gap-2">
+                                                                Writing Chapter
+                                                                <span
+                                                                    class="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                            </h4>
+                                                        </div>
+                                                        <span
+                                                            class="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
+                                                            {{ Math.round(generationPercentage) }}%
+                                                        </span>
+                                                    </div>
+
+                                                    <!-- Progress Bar -->
+                                                    <div
+                                                        class="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden backdrop-blur-sm">
+                                                        <div class="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(59,130,246,0.5)] relative"
                                                             :style="{ width: `${generationPercentage}%` }">
+                                                            <div
+                                                                class="absolute inset-0 bg-white/30 w-full animate-shimmer -skew-x-12 translate-x-[-100%]">
+                                                            </div>
                                                         </div>
                                                     </div>
+
+                                                    <!-- Detailed Status -->
+                                                    <div class="mt-2.5 flex items-center justify-between">
+                                                        <p
+                                                            class="text-[10px] font-medium text-muted-foreground truncate max-w-[200px] flex items-center gap-1.5">
+                                                            <span class="w-1 h-1 rounded-full bg-blue-500"></span>
+                                                            {{ generationProgress || 'Initializing writer...' }}
+                                                        </p>
+
+                                                        <!-- Stop Button (Integrated) -->
+                                                        <button @click="stopGeneration"
+                                                            class="text-[10px] font-semibold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors uppercase tracking-wider flex items-center gap-1 hover:bg-red-50 dark:hover:bg-red-900/10 px-2 py-0.5 rounded-full">
+                                                            Stop
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    class="h-8 w-8 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20"
-                                                    @click="stopGeneration"
-                                                    title="Stop generation">
-                                                    <XCircle class="h-5 w-5 text-red-600 dark:text-red-400" />
-                                                </Button>
                                             </div>
-                                            <p class="mt-2 text-xs text-muted-foreground ml-11 truncate">{{
-                                                generationProgress }}
-                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -1873,7 +1968,7 @@ watch(globalIsDark, () => {
                                 <span>Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
                                 <span class="hidden sm:inline">Last saved: {{ isSaving ? 'Saving...' : `Just
                                     now`
-                                    }}</span>
+                                }}</span>
                             </div>
                             <div class="flex items-center gap-2">
                                 <span>Quality: <span
@@ -1899,6 +1994,7 @@ watch(globalIsDark, () => {
                     :chapter-content-length="chapterContent.length" :is-generating="isGenerating"
                     :selected-text="selectedText" :is-loading-suggestions="isLoadingSuggestions"
                     :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+                    :outlines="project.outlines || []" :faculty-chapters="facultyChapters || []"
                     @update:show-left-sidebar="showLeftSidebar = $event"
                     @update:show-right-sidebar="showRightSidebar = $event" @go-to-chapter="goToChapter"
                     @generate-next-chapter="generateNextChapter" @start-streaming-generation="handleAIGeneration"
@@ -1920,6 +2016,37 @@ watch(globalIsDark, () => {
                             <AlertDialogAction @click="confirmRegenerateChapter" class="bg-primary hover:bg-primary/90">
                                 <RefreshCw class="w-4 h-4 mr-2" />
                                 Regenerate
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
+                <!-- Navigation Guard Dialog (during generation) -->
+                <AlertDialog :open="showNavigationGuardDialog" @update:open="showNavigationGuardDialog = $event">
+                    <AlertDialogContent class="max-w-md">
+                        <AlertDialogHeader>
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+                                    <Brain class="w-5 h-5 text-amber-500" />
+                                </div>
+                                <AlertDialogTitle class="text-lg">AI is Writing Your Chapter</AlertDialogTitle>
+                            </div>
+                            <AlertDialogDescription class="text-sm space-y-2">
+                                <p>Your chapter is currently being written by AI. Leaving now will:</p>
+                                <ul class="list-disc list-inside text-muted-foreground space-y-1 ml-2">
+                                    <li>Stop the writing process immediately</li>
+                                    <li>Lose any unsaved content ({{ streamWordCount }} words written so far)</li>
+                                </ul>
+                                <p class="font-medium text-foreground pt-2">Are you sure you want to leave?</p>
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter class="gap-2 sm:gap-0">
+                            <AlertDialogCancel @click="cancelLeaveGeneration" class="flex-1 sm:flex-none">
+                                Stay on Page
+                            </AlertDialogCancel>
+                            <AlertDialogAction @click="confirmLeaveGeneration"
+                                class="flex-1 sm:flex-none bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                                Leave Anyway
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
@@ -2039,5 +2166,15 @@ watch(globalIsDark, () => {
 .custom-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
+}
+
+@keyframes shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-shimmer {
+    animation: shimmer 2s infinite;
 }
 </style>

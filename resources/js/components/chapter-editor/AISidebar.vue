@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Brain, Lightbulb, Quote, Sparkles, Target, Wand2, ChevronDown, Zap, RefreshCw, AlignLeft, Type, CheckCircle2, PenTool, MessageSquarePlus, Undo2 } from 'lucide-vue-next';
-import { computed, ref, watch } from 'vue';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { computed, ref, watch, onMounted } from 'vue';
 import { toast } from 'vue-sonner';
 import CitationHelper from './CitationHelper.vue';
 import CustomPromptDialog from './CustomPromptDialog.vue';
@@ -19,6 +20,9 @@ interface Props {
         mode: 'auto' | 'manual';
         id: number;
         slug: string;
+        settings?: {
+            writing_style?: string;
+        };
     };
     chapter: {
         id: number;
@@ -48,7 +52,7 @@ const emit = defineEmits<{
 }>();
 
 // Local state
-const writingStyle = ref('Academic Formal');
+const writingStyle = ref(props.project.settings?.writing_style || 'Auto');
 const aiChapterAnalysis = ref<any>(null);
 const isLoadingAISuggestions = ref(false);
 
@@ -61,6 +65,22 @@ const actionLoadingStates = ref({
     'generate-full': false,
     'generate-section': false,
     custom: false
+});
+
+// Watch writing style for persistence
+watch(writingStyle, async (newStyle) => {
+    try {
+        await axios.patch(route('projects.update', props.project.slug), {
+            settings: {
+                ...(props.project.settings || {}),
+                writing_style: newStyle
+            }
+        });
+        toast.success('Writing style saved');
+    } catch (error) {
+        console.error('Failed to save writing style:', error);
+        toast.error('Failed to save preferences');
+    }
 });
 
 // Custom prompt dialog state - DISABLED
@@ -105,7 +125,7 @@ const getFallbackSections = () => [
 
 // Methods
 const handleGenerateAction = (type: 'progressive' | 'outline' | 'improve') => {
-    emit('startStreamingGeneration', type);
+    emit('startStreamingGeneration', type, { style: writingStyle.value });
 };
 
 const handleGetSuggestions = () => {
@@ -130,7 +150,8 @@ const handleQuickAction = async (action: string, options?: any) => {
             case 'expand':
                 if (props.selectedText) {
                     emit('startStreamingGeneration', 'expand', {
-                        selectedText: props.selectedText
+                        selectedText: props.selectedText,
+                        style: writingStyle.value
                     });
                     toast('Expanding selected text...');
                 } else {
@@ -138,7 +159,7 @@ const handleQuickAction = async (action: string, options?: any) => {
                 }
                 break;
             case 'improve':
-                emit('startStreamingGeneration', 'improve');
+                emit('startStreamingGeneration', 'improve', { style: writingStyle.value });
                 toast('Improving chapter content...');
                 break;
             case 'rephrase':
@@ -469,9 +490,7 @@ watch(
                             -->
 
                             <!-- Undo Button -->
-                            <Button v-if="canUndo" 
-                                @click="emit('undoLastAction')"
-                                variant="outline"
+                            <Button v-if="canUndo" @click="emit('undoLastAction')" variant="outline"
                                 class="h-20 flex-col gap-2 rounded-xl border-border/50 bg-background/50 hover:bg-amber-500/10 hover:border-amber-500/30 transition-all duration-300 col-span-2">
                                 <div class="p-1.5 rounded-full bg-amber-500/10 text-amber-500">
                                     <Undo2 class="h-4 w-4" />
@@ -497,15 +516,30 @@ watch(
                             class="h-3 w-3 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </CollapsibleTrigger>
                     <CollapsibleContent class="pt-1">
-                        <div class="p-1 rounded-xl bg-muted/30 border border-border/50">
-                            <select v-model="writingStyle"
-                                class="w-full bg-transparent border-none text-xs font-medium focus:ring-0 cursor-pointer py-1.5 px-2">
-                                <option value="Academic Formal">Academic Formal</option>
-                                <option value="Academic Casual">Academic Casual</option>
-                                <option value="Technical">Technical</option>
-                                <option value="Analytical">Analytical</option>
-                                <option value="Research-Heavy">Research-Heavy</option>
-                            </select>
+                        <div class="p-1">
+                            <Select v-model="writingStyle">
+                                <SelectTrigger class="w-full bg-muted/30 border-border/50 text-xs font-medium h-9">
+                                    <SelectValue placeholder="Select style" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectLabel class="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                            Style Preference</SelectLabel>
+                                        <SelectItem value="Auto">
+                                            <div class="flex flex-col gap-0.5">
+                                                <span class="font-medium">Auto (AI Decides)</span>
+                                                <span class="text-[10px] text-muted-foreground">Best fit for the
+                                                    content</span>
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="Academic Formal">Academic Formal</SelectItem>
+                                        <SelectItem value="Academic Casual">Academic Casual</SelectItem>
+                                        <SelectItem value="Technical">Technical</SelectItem>
+                                        <SelectItem value="Analytical">Analytical</SelectItem>
+                                        <SelectItem value="Research-Heavy">Research-Heavy</SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </CollapsibleContent>
                 </Collapsible>
@@ -513,13 +547,9 @@ watch(
         </Card>
 
         <!-- Citation Helper -->
-        <CitationHelper 
-            :show-citation-helper="showCitationHelper" 
-            :chapter-content="chapterContent"
-            :chapter-id="chapter?.id || 0"
-            @update:show-citation-helper="emit('update:showCitationHelper', $event)"
-            @insert-citation="handleInsertCitation" 
-        />
+        <CitationHelper :show-citation-helper="showCitationHelper" :chapter-content="chapterContent"
+            :chapter-id="chapter?.id || 0" @update:show-citation-helper="emit('update:showCitationHelper', $event)"
+            @insert-citation="handleInsertCitation" />
 
         <!-- Custom Prompt Dialog - DISABLED
         <CustomPromptDialog 

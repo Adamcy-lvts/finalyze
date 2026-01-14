@@ -190,7 +190,9 @@ class ChapterController extends Controller
             $prompt = $this->buildSectionPrompt($project, $chapterNumber, $request->input('section_type'));
         } elseif ($request->input('generation_type') === 'improve') {
             // Chapter improvement generation
-            $prompt = $this->buildImprovePrompt($project, $chapter);
+            $style = $request->input('style');
+            if ($style === 'Auto') { $style = null; }
+            $prompt = $this->buildImprovePrompt($project, $chapter, $style);
         } elseif ($request->input('generation_type') === 'rephrase') {
             // Text rephrasing generation
             $selectedText = $request->input('selected_text', '');
@@ -220,12 +222,22 @@ class ChapterController extends Controller
                 'user_id' => auth()->id(),
             ]);
 
-            $prompt = $this->buildExpandPrompt($project, $selectedText, $chapter);
+            ]);
+
+            $style = $request->input('style');
+            if ($style === 'Auto') { $style = null; }
+            $prompt = $this->buildExpandPrompt($project, $selectedText, $chapter, $style);
         } else {
             // Regular chapter generation
+            $style = $request->input('style');
+            // If style is "Auto", treat it as null so we don't enforce a specific style
+            if ($style === 'Auto') {
+                $style = null;
+            }
+
             $prompt = $validated['generation_type'] === 'progressive'
-                ? $this->buildProgressivePrompt($project, $chapterNumber)
-                : $this->buildSinglePrompt($project, $chapterNumber);
+                ? $this->buildProgressivePrompt($project, $chapterNumber, $style)
+                : $this->buildSinglePrompt($project, $chapterNumber, $style);
         }
 
         // Log before starting stream
@@ -865,6 +877,7 @@ class ChapterController extends Controller
                 'field_of_study' => $project->field_of_study,
                 'university' => $project->universityRelation?->name,
                 'course' => $project->course,
+                'settings' => $project->settings,
                 'outlines' => $outlines,
             ],
             'chapter' => $chapterModel,
@@ -939,6 +952,7 @@ class ChapterController extends Controller
                 'field_of_study' => $project->field_of_study,
                 'university' => $project->universityRelation?->name,
                 'course' => $project->course,
+                'settings' => $project->settings,
                 'outlines' => $outlines,
             ],
             'chapter' => $chapter,
@@ -1023,6 +1037,7 @@ class ChapterController extends Controller
                 'field_of_study' => $project->field_of_study,
                 'university' => $project->universityRelation?->name,
                 'course' => $project->course,
+                'settings' => $project->settings,
                 'outlines' => $outlines,
             ],
             'chapter' => $chapter,
@@ -1156,7 +1171,7 @@ class ChapterController extends Controller
      * GENERATE PROGRESSIVE CHAPTER
      * Builds on previous chapters for contextual writing
      */
-    public function generateProgressiveChapter(Project $project, int $chapterNumber, $collectedPapers = null, ?string $chapterTitle = null, ?int $targetWordCount = null): Chapter
+    public function generateProgressiveChapter(Project $project, int $chapterNumber, $collectedPapers = null, ?string $chapterTitle = null, ?int $targetWordCount = null, ?string $style = null): Chapter
     {
         // Get previous chapters for context
         $previousChapters = Chapter::where('project_id', $project->id)
@@ -1169,7 +1184,7 @@ class ChapterController extends Controller
             $collectedPapers = \App\Models\CollectedPaper::forProject($project->id)->get();
         }
 
-        $prompt = $this->buildProgressiveChapterPrompt($project, $chapterNumber, $previousChapters, $collectedPapers);
+        $prompt = $this->buildProgressiveChapterPrompt($project, $chapterNumber, $previousChapters, $collectedPapers, $style);
         $targetWordCount = $targetWordCount ?? $this->getChapterWordCount($project, $chapterNumber);
 
         // Use word count validation to ensure we reach at least 90% of target
@@ -1215,7 +1230,7 @@ class ChapterController extends Controller
      * BUILD AI PROMPT FOR CHAPTER GENERATION
      * Creates contextual prompts based on project details and faculty structure
      */
-    private function buildChapterPrompt(Project $project, int $chapterNumber): string
+    private function buildChapterPrompt(Project $project, int $chapterNumber, ?string $style = null): string
     {
         // Get faculty structure for context-aware generation
         $facultyStructureService = app(\App\Services\FacultyStructureService::class);
@@ -1238,6 +1253,15 @@ Project Details:
 - University: {$project->universityRelation?->name}
 - Course: {$project->course}
 - Academic Level: {$project->type}";
+
+        if ($style) {
+            $guidelines = $this->getStyleGuidelines($style);
+            $prompt .= "\n\nWRITING STYLE REQUIREMENTS ({$style}):\n";
+            $prompt .= $guidelines;
+        } else {
+             // Default academic tone if no style specified
+             $prompt .= "\n- Writing Style: Academic Formal";
+        }
 
         // Add chapter-specific context from faculty structure
         if ($chapterDescription) {
@@ -1263,10 +1287,10 @@ Project Details:
      * BUILD PROGRESSIVE CHAPTER PROMPT
      * Includes context from previous chapters and collected papers for citations
      */
-    private function buildProgressiveChapterPrompt(Project $project, int $chapterNumber, $previousChapters, $collectedPapers = null): string
+    private function buildProgressiveChapterPrompt(Project $project, int $chapterNumber, $previousChapters, $collectedPapers = null, ?string $style = null): string
     {
         $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
-        $basePrompt = $this->buildChapterPrompt($project, $chapterNumber);
+        $basePrompt = $this->buildChapterPrompt($project, $chapterNumber, $style);
 
         // Add previous chapters context
         if ($previousChapters->count() > 0) {
@@ -1780,7 +1804,7 @@ ORIGINAL PROMPT CONTEXT:
         return $context;
     }
 
-    public function buildProgressivePrompt($project, $chapterNumber)
+    public function buildProgressivePrompt($project, $chapterNumber, ?string $style = null)
     {
         $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
 
@@ -1825,7 +1849,7 @@ ORIGINAL PROMPT CONTEXT:
         return $prompt;
     }
 
-    private function buildSinglePrompt($project, $chapterNumber)
+    private function buildSinglePrompt($project, $chapterNumber, ?string $style = null)
     {
         $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
 
@@ -1844,13 +1868,19 @@ ORIGINAL PROMPT CONTEXT:
         // Add context-aware content generation instructions based on project type
         $prompt .= $this->projectTypeDetector->getContextualInstructions($project, $chapterNumber);
 
+        if ($style) {
+            $guidelines = $this->getStyleGuidelines($style);
+            $prompt .= "\n\nWRITING STYLE REQUIREMENTS ({$style}):\n";
+            $prompt .= $guidelines;
+        }
+
         // Add intelligent prompt system instructions (faculty-specific templates, tables, diagrams)
         $prompt .= $this->promptRouter->buildPrompt($project, $chapterNumber);
 
         return $prompt;
     }
 
-    private function buildImprovePrompt(Project $project, Chapter $chapter): string
+    private function buildImprovePrompt(Project $project, Chapter $chapter, ?string $style = null): string
     {
         $chapterContent = $chapter->content ?? '';
         $chapterTitle = $chapter->title ?? $this->getDefaultChapterTitle($chapter->chapter_number);
@@ -1867,6 +1897,12 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Academic Level: {$project->type}\n";
         $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Course: {$project->course}\n\n";
+
+        if ($style) {
+            $guidelines = $this->getStyleGuidelines($style);
+            $prompt .= "WRITING STYLE TARGET ({$style}):\n";
+            $prompt .= $guidelines . "\n\n";
+        }
 
         $prompt .= "CURRENT CHAPTER CONTENT:\n";
         $prompt .= "===================================\n";
@@ -1942,7 +1978,7 @@ ORIGINAL PROMPT CONTEXT:
         return $prompt;
     }
 
-    private function buildExpandPrompt(Project $project, string $selectedText, Chapter $chapter): string
+    private function buildExpandPrompt(Project $project, string $selectedText, Chapter $chapter, ?string $style = null): string
     {
         $prompt = "Expand the selected text.\n\n";
 
@@ -1953,6 +1989,12 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "University: {$project->universityRelation?->name}\n";
         $prompt .= "Course: {$project->course}\n";
         $prompt .= "Chapter: {$chapter->title}\n\n";
+
+        if ($style) {
+            $guidelines = $this->getStyleGuidelines($style);
+            $prompt .= "WRITING STYLE TARGET ({$style}):\n";
+            $prompt .= $guidelines . "\n\n";
+        }
 
         $prompt .= "CURRENT CHAPTER CONTEXT:\n";
         $prompt .= "===================================\n";

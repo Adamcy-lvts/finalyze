@@ -329,6 +329,38 @@ export function useChapterGeneration({
         lastUndoneContent.value = null;
     };
 
+    // === GENERATION PROTECTION: beforeunload warning ===
+
+    // Handler for beforeunload event
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        if (isGenerating.value && streamWordCount.value > 0) {
+            // Standard way to trigger browser's "Leave site?" dialog
+            e.preventDefault();
+            // Some browsers require returnValue to be set
+            e.returnValue = 'Chapter generation is in progress. Your content may not be fully saved.';
+            return e.returnValue;
+        }
+    };
+
+    // Start beforeunload protection when generation starts
+    const enableGenerationProtection = () => {
+        if (typeof window !== 'undefined') {
+            window.addEventListener('beforeunload', handleBeforeUnload);
+        }
+    };
+
+    // Remove beforeunload protection when generation completes
+    const disableGenerationProtection = () => {
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        }
+    };
+
+    // Cleanup function to be called when composable is unmounted
+    const cleanupGenerationProtection = () => {
+        disableGenerationProtection();
+    };
+
     const monitorPaperCollection = async (): Promise<boolean> => {
         return new Promise((resolve) => {
             let attempts = 0;
@@ -465,7 +497,7 @@ export function useChapterGeneration({
         }
     };
 
-    const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'improve') => {
+    const startStreamingGeneration = async (type: 'progressive' | 'outline' | 'improve' | 'section' | 'rephrase' | 'expand' | 'custom', options: { section?: string, mode?: string, selectedText?: string, style?: string, customPrompt?: string } = {}) => {
         // Quick action guard: for "improve", only require a minimum balance threshold
         const requiredWords = type === 'improve' ? 300 : estimates.chapter(targetWordCount.value || 0);
         const actionLabel = type === 'improve' ? 'improve this chapter' : 'generate this chapter with AI';
@@ -501,6 +533,9 @@ export function useChapterGeneration({
             return;
         }
 
+        // Enable generation protection (beforeunload warning)
+        enableGenerationProtection();
+
         generationPhase.value = 'Initializing';
         generationProgress.value = 'Starting AI generation with verified sources...';
         generationPercentage.value = 51;
@@ -518,7 +553,12 @@ export function useChapterGeneration({
             chapter: props.chapter.chapter_number,
         });
 
-        eventSource.value = new EventSource(`${url}?generation_type=${type}`);
+        let queryParams = `?generation_type=${type}`;
+        if (options.section) queryParams += `&section_type=${encodeURIComponent(options.section)}`;
+        if (options.selectedText) queryParams += `&selected_text=${encodeURIComponent(options.selectedText)}`;
+        if (options.style) queryParams += `&style=${encodeURIComponent(options.style)}`;
+
+        eventSource.value = new EventSource(`${url}${queryParams}`);
 
         eventSource.value.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -533,7 +573,7 @@ export function useChapterGeneration({
                     break;
 
                 case 'content':
-                    generationPhase.value = 'Generating';
+                    generationPhase.value = 'Writing';
                     streamBuffer.value += data.content;
                     streamWordCount.value = data.word_count || streamBuffer.value.split(/\s+/).filter((word) => word.length > 0).length;
 
@@ -544,7 +584,7 @@ export function useChapterGeneration({
 
                         const wordProgress = Math.min((streamWordCount.value / Math.max(estimatedTotalWords.value, 1)) * 43, 43);
                         generationPercentage.value = Math.max(52, 52 + wordProgress);
-                        generationProgress.value = `Generating chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
+                        generationProgress.value = `Writing chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
                         scrollToBottom();
                     }
                     break;
@@ -562,6 +602,9 @@ export function useChapterGeneration({
                     isStreamingMode.value = false;
                     cachedScrollContainer.value = null; // Clear scroll container reference
                     chapterContent.value = streamBuffer.value;
+
+                    // Disable protection since generation completed successfully
+                    disableGenerationProtection();
 
                     const finalWords = data.final_word_count || streamWordCount.value;
                     generationProgress.value = `✓ Generated ${finalWords} words successfully`;
@@ -587,6 +630,9 @@ export function useChapterGeneration({
                     generationPercentage.value = 50;
                     isStreamingMode.value = false;
                     cachedScrollContainer.value = null; // Clear scroll container reference
+
+                    // Disable protection
+                    disableGenerationProtection();
 
                     if (data.partial_saved) {
                         partialContentSaved.value = true;
@@ -638,7 +684,7 @@ export function useChapterGeneration({
                 eventSource.value = null;
 
                 const delay = reconnectDelay.value * Math.pow(2, reconnectAttempts.value - 1);
-                setTimeout(() => attemptReconnection(type), delay);
+                setTimeout(() => attemptReconnection(type as any), delay);
             } else {
                 generationPhase.value = 'Error';
                 generationPercentage.value = 50;
@@ -646,12 +692,15 @@ export function useChapterGeneration({
                 isReconnecting.value = false;
                 generationProgress.value = '❌ Connection failed after multiple attempts';
 
+                // Disable protection
+                disableGenerationProtection();
+
                 if (streamWordCount.value > 100) {
                     partialContentSaved.value = true;
                     savedWordCountOnError.value = streamWordCount.value;
                     showRecoveryDialog.value = true;
                     toast.warning('Connection Lost', {
-                        description: `${streamWordCount.value} words may have been saved. Check and resume if needed.`,
+                        description: `${streamWordCount.value} words have been saved. Check and resume if needed.`,
                         duration: 8000,
                     });
                 } else {
@@ -696,7 +745,7 @@ export function useChapterGeneration({
             if (['content', 'start'].includes(data.type)) {
                 isReconnecting.value = false;
                 reconnectAttempts.value = 0;
-                generationPhase.value = 'Generating';
+                generationPhase.value = 'Writing';
             }
 
             switch (data.type) {
@@ -711,7 +760,7 @@ export function useChapterGeneration({
                     break;
 
                 case 'content':
-                    generationPhase.value = 'Generating';
+                    generationPhase.value = 'Writing';
                     streamBuffer.value += data.content;
                     streamWordCount.value = data.word_count || streamBuffer.value.split(/\s+/).filter((word) => word.length > 0).length;
 
@@ -722,7 +771,7 @@ export function useChapterGeneration({
 
                         const wordProgress = Math.min((streamWordCount.value / Math.max(estimatedTotalWords.value, 1)) * 43, 43);
                         generationPercentage.value = Math.max(52, 52 + wordProgress);
-                        generationProgress.value = `Generating chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
+                        generationProgress.value = `Writing chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
                         scrollToBottom();
                     }
                     break;
@@ -825,7 +874,7 @@ export function useChapterGeneration({
             await new Promise((resolve) => setTimeout(resolve, 500));
 
             generationPhase.value = 'Section';
-            generationProgress.value = `Generating ${sectionType} section with verified sources...`;
+            generationProgress.value = `Writing ${sectionType} section with verified sources...`;
             generationPercentage.value = 51;
 
             const url = route('chapters.stream', {
@@ -840,7 +889,7 @@ export function useChapterGeneration({
 
                 switch (data.type) {
                     case 'start':
-                        generationPhase.value = 'Generating Section';
+                        generationPhase.value = 'Writing Section';
                         generationPercentage.value = 52;
                         generationProgress.value = `Starting ${sectionType} section generation...`;
                         break;
@@ -856,7 +905,7 @@ export function useChapterGeneration({
 
                             const progress = Math.min((streamWordCount.value / estimatedTotalWords.value) * 43, 43);
                             generationPercentage.value = Math.max(52, 52 + progress);
-                            generationProgress.value = `Generating ${sectionType} section... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
+                            generationProgress.value = `Writing ${sectionType} section... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
 
                             calculateWritingStats();
                             scrollToBottom();
@@ -1168,7 +1217,7 @@ export function useChapterGeneration({
             url.searchParams.delete('generation_type');
             window.history.replaceState({}, '', url.toString());
             toast.success('🚀 AI Generation Started', {
-                description: `Generating ${props.chapter.title} with AI assistance...`,
+                description: `Writing ${props.chapter.title} with AI assistance...`,
             });
         }, 1000);
     };
@@ -1289,5 +1338,7 @@ export function useChapterGeneration({
         pushToHistory,
         undoLastAction,
         clearHistory,
+        // Generation protection (page refresh/navigation)
+        cleanupGenerationProtection,
     };
 }
