@@ -28,21 +28,45 @@ class PdfExportService
         // 2. Followed by content until next heading or end of document
         // 3. May include div wrappers, class="references-section", etc.
 
-        // Remove div.references-section wrapper if present
+        // Log original HTML length for debugging
+        $originalLength = strlen($html);
+        Log::debug('stripReferencesSection: Starting', ['original_length' => $originalLength]);
+
+        // First, remove div.references-section wrapper if present (case insensitive)
         $html = preg_replace(
-            '/<div[^>]*class="references-section"[^>]*>.*?<\/div>/is',
+            '/<div[^>]*class=["\']?references-section["\']?[^>]*>.*?<\/div>/is',
             '',
             $html
         );
 
-        // Remove References heading and all content until next chapter-level heading or end
-        // Match: <h1>REFERENCES</h1> or <h2>References</h2> (case insensitive)
-        // Followed by: everything until <h1> or <h2> or end of string
+        // Remove References heading and all content until next major heading or end
+        // Match various heading levels (h1-h3) with "REFERENCES" or "REFERENCE" (case insensitive)
         $html = preg_replace(
-            '/<h[12][^>]*>\s*REFERENCES?\s*<\/h[12]>.*?(?=<h[12]|$)/is',
+            '/<h[123][^>]*>\s*REFERENCES?\s*<\/h[123]>.*?(?=<h[123]|$)/is',
             '',
             $html
         );
+
+        // Also catch references sections that might be wrapped in other divs
+        $html = preg_replace(
+            '/<div[^>]*>\s*<h[123][^>]*>\s*REFERENCES?\s*<\/h[123]>.*?<\/div>/is',
+            '',
+            $html
+        );
+
+        // Remove any standalone references heading without content (edge case)
+        $html = preg_replace(
+            '/<h[123][^>]*>\s*REFERENCES?\s*<\/h[123]>/is',
+            '',
+            $html
+        );
+
+        $finalLength = strlen($html);
+        Log::debug('stripReferencesSection: Complete', [
+            'original_length' => $originalLength,
+            'final_length' => $finalLength,
+            'removed_bytes' => $originalLength - $finalLength,
+        ]);
 
         return trim($html);
     }
@@ -707,16 +731,42 @@ class PdfExportService
 
         if ($type === 'text') {
             $text = htmlspecialchars($node['text'] ?? '', ENT_QUOTES, 'UTF-8');
+            $styles = [];
 
             foreach ($marks as $mark) {
-                $text = match ($mark['type']) {
-                    'bold' => "<strong>{$text}</strong>",
-                    'italic' => "<em>{$text}</em>",
-                    'underline' => "<u>{$text}</u>",
-                    'code' => "<code>{$text}</code>",
-                    'link' => '<a href="'.htmlspecialchars($mark['attrs']['href'] ?? '#', ENT_QUOTES, 'UTF-8').'">'.$text.'</a>',
-                    default => $text,
-                };
+                $markType = $mark['type'] ?? '';
+
+                if ($markType === 'textStyle') {
+                    // Handle textStyle marks (fontSize, color, etc.)
+                    $attrs = $mark['attrs'] ?? [];
+                    if (isset($attrs['fontSize'])) {
+                        $styles[] = 'font-size: '.$attrs['fontSize'];
+                    }
+                    if (isset($attrs['color'])) {
+                        $styles[] = 'color: '.$attrs['color'];
+                    }
+                } elseif ($markType === 'highlight') {
+                    // Handle highlight marks
+                    $color = $mark['attrs']['color'] ?? '#ffff00';
+                    $styles[] = 'background-color: '.$color;
+                } else {
+                    // Handle other marks
+                    $text = match ($markType) {
+                        'bold' => "<strong>{$text}</strong>",
+                        'italic' => "<em>{$text}</em>",
+                        'underline' => "<u>{$text}</u>",
+                        'code' => "<code>{$text}</code>",
+                        'strike' => "<s>{$text}</s>",
+                        'link' => '<a href="'.htmlspecialchars($mark['attrs']['href'] ?? '#', ENT_QUOTES, 'UTF-8').'">'.$text.'</a>',
+                        default => $text,
+                    };
+                }
+            }
+
+            // Wrap text with styles if any
+            if (! empty($styles)) {
+                $styleAttr = implode('; ', $styles);
+                $text = '<span style="'.$styleAttr.'">'.$text.'</span>';
             }
 
             return $text;

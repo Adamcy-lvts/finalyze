@@ -4,11 +4,11 @@ namespace App\Services;
 
 use App\Models\Chapter;
 use App\Models\Project;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
-use PhpOffice\PhpWord\Element\Section;
-use PhpOffice\PhpWord\IOFactory;
-use PhpOffice\PhpWord\PhpWord;
-use PhpOffice\PhpWord\Shared\Html;
+use Illuminate\Support\Str;
+use Spatie\Browsershot\Browsershot;
+use App\Services\TiptapToHtmlService;
 
 class ExportService
 {
@@ -16,6 +16,37 @@ class ExportService
         protected ProjectPrelimService $projectPrelimService,
         protected ChapterReferenceService $chapterReferenceService
     ) {}
+
+    /**
+     * Normalize stored chapter content into HTML suitable for Pandoc.
+     * - If already HTML, return as-is.
+     * - If Markdown/plain text, convert to HTML.
+     * - If unknown (e.g. JSON), fall back to escaped preformatted text.
+     */
+    private function normalizeContentToHtml(string $content): string
+    {
+        $trimmed = trim($content);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        if (str_starts_with($trimmed, '<')) {
+            return $content;
+        }
+
+        // If it looks like JSON, try rendering it as a Tiptap document.
+        $decoded = json_decode($trimmed, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            if (($decoded['type'] ?? null) || ($decoded['content'] ?? null)) {
+                return app(TiptapToHtmlService::class)->convert($trimmed);
+            }
+
+            return '<pre>'.htmlspecialchars($trimmed, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</pre>';
+        }
+
+        // Markdown/plain-text to HTML
+        return Str::markdown($content);
+    }
 
     /**
      * Check if Pandoc is available on the system
@@ -26,7 +57,157 @@ class ExportService
         $returnCode = 0;
         exec('pandoc --version 2>&1', $output, $returnCode);
 
+        if ($returnCode !== 0) {
+            Log::debug('Pandoc is not available', [
+                'return_code' => $returnCode,
+                'output' => implode("\n", $output),
+            ]);
+        }
+
         return $returnCode === 0;
+    }
+
+    private function findLibreOfficeBinary(): ?string
+    {
+        $candidates = [];
+
+        $output = [];
+        $returnCode = 0;
+        exec('command -v soffice 2>/dev/null', $output, $returnCode);
+        if ($returnCode === 0 && ! empty($output[0])) {
+            $candidates[] = trim((string) $output[0]);
+        }
+
+        $output = [];
+        $returnCode = 0;
+        exec('command -v libreoffice 2>/dev/null', $output, $returnCode);
+        if ($returnCode === 0 && ! empty($output[0])) {
+            $candidates[] = trim((string) $output[0]);
+        }
+
+        $candidates = array_merge($candidates, [
+            '/usr/bin/soffice',
+            '/usr/bin/libreoffice',
+            '/usr/lib/libreoffice/program/soffice',
+            '/opt/libreoffice/program/soffice',
+        ]);
+
+        foreach ($candidates as $path) {
+            if (is_string($path) && $path !== '' && is_file($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    private function isLibreOfficeAvailable(): bool
+    {
+        $bin = $this->findLibreOfficeBinary();
+        if (! $bin) {
+            Log::debug('LibreOffice is not available; falling back to Pandoc', [
+                'return_code' => 127,
+                'output' => 'LibreOffice binary not found',
+            ]);
+
+            return false;
+        }
+
+        $output = [];
+        $returnCode = 0;
+        exec(escapeshellarg($bin).' --version 2>&1', $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            Log::debug('LibreOffice is not available; falling back to Pandoc', [
+                'return_code' => $returnCode,
+                'output' => implode("\n", $output),
+            ]);
+        }
+
+        return $returnCode === 0;
+    }
+
+    /**
+     * Convert HTML to DOCX using LibreOffice (HTML import tends to respect page breaks and layout better than Pandoc).
+     */
+    private function convertWithLibreOffice(string $html, string $outputPath, array $metadata = []): bool
+    {
+        try {
+            $bin = $this->findLibreOfficeBinary();
+            if (! $bin) {
+                return false;
+            }
+
+            $tempDir = rtrim(sys_get_temp_dir(), '/').'/finalyze-export';
+            if (! is_dir($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            $jobDir = $tempDir.'/word_export_'.uniqid();
+            if (! is_dir($jobDir)) {
+                mkdir($jobDir, 0755, true);
+            }
+
+            $tempHtmlFile = $jobDir.'/export.html';
+
+            $fullHtml = $this->prepareHtmlForPandoc($html, $metadata);
+            $fullHtml = $this->normalizeHtmlForLibreOffice($fullHtml);
+            $fullHtml = $this->prepareAssetsForLibreOffice($fullHtml, $jobDir);
+
+            file_put_contents($tempHtmlFile, $fullHtml);
+
+            $inputUrl = 'file://'.$tempHtmlFile;
+            $profileDir = $jobDir.'/lo-profile';
+            if (! is_dir($profileDir)) {
+                mkdir($profileDir, 0755, true);
+            }
+
+            $command = sprintf(
+                '%s --headless --norestore --nodefault --nolockcheck --nofirststartwizard -env:UserInstallation=%s --convert-to %s --outdir %s %s 2>&1',
+                escapeshellarg($bin),
+                escapeshellarg('file://'.$profileDir),
+                escapeshellarg('docx:MS Word 2007 XML'),
+                escapeshellarg($jobDir),
+                escapeshellarg($inputUrl),
+            );
+
+            $output = [];
+            $returnCode = 0;
+            exec($command, $output, $returnCode);
+
+            $generated = $jobDir.'/export.docx';
+            if ($returnCode !== 0 || ! file_exists($generated)) {
+                Log::warning('LibreOffice conversion failed', [
+                    'command' => $command,
+                    'output' => implode("\n", $output),
+                    'return_code' => $returnCode,
+                ]);
+
+                File::deleteDirectory($jobDir);
+
+                return false;
+            }
+
+            File::move($generated, $outputPath);
+            File::deleteDirectory($jobDir);
+
+            if (! $this->validateAndRepairDocx($outputPath)) {
+                Log::warning('LibreOffice produced an invalid DOCX (failed validation/repair)', [
+                    'output_file' => $outputPath,
+                ]);
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('LibreOffice conversion error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return false;
+        }
     }
 
     /**
@@ -41,11 +222,17 @@ class ExportService
                 mkdir($tempDir, 0755, true);
             }
 
+            $jobDir = $tempDir.'/word_export_'.uniqid();
+            if (! is_dir($jobDir)) {
+                mkdir($jobDir, 0755, true);
+            }
+
             // Create temporary HTML file
-            $tempHtmlFile = $tempDir.'/export_'.uniqid().'.html';
+            $tempHtmlFile = $jobDir.'/export.html';
 
             // Prepare HTML with metadata and proper structure
             $fullHtml = $this->prepareHtmlForPandoc($html, $metadata);
+            $fullHtml = $this->prepareAssetsForPandoc($fullHtml, $jobDir);
 
             // Write HTML to temp file
             file_put_contents($tempHtmlFile, $fullHtml);
@@ -54,12 +241,19 @@ class ExportService
             $referenceDoc = resource_path('templates/reference.docx');
             $referenceOption = file_exists($referenceDoc) ? '--reference-doc='.escapeshellarg($referenceDoc) : '';
 
+            $resourcePath = implode(':', array_filter([
+                $jobDir,
+                storage_path('app/public'),
+                public_path(),
+            ]));
+
             // Build Pandoc command with enhanced options
             $command = sprintf(
-                'pandoc %s -f html -t docx -o %s %s --standalone 2>&1',
+                'pandoc %s -f html -t docx -o %s %s --resource-path=%s --standalone 2>&1',
                 escapeshellarg($tempHtmlFile),
                 escapeshellarg($outputPath),
-                $referenceOption
+                $referenceOption,
+                escapeshellarg($resourcePath)
             );
 
             // Execute Pandoc
@@ -67,9 +261,9 @@ class ExportService
             $returnCode = 0;
             exec($command, $output, $returnCode);
 
-            // Clean up temp file
-            if (file_exists($tempHtmlFile)) {
-                unlink($tempHtmlFile);
+            // Clean up job directory
+            if (is_dir($jobDir)) {
+                File::deleteDirectory($jobDir);
             }
 
             if ($returnCode !== 0) {
@@ -77,6 +271,14 @@ class ExportService
                     'command' => $command,
                     'output' => implode("\n", $output),
                     'return_code' => $returnCode,
+                ]);
+
+                return false;
+            }
+
+            if (! $this->validateAndRepairDocx($outputPath)) {
+                Log::warning('Pandoc produced an invalid DOCX (failed validation/repair)', [
+                    'output_file' => $outputPath,
                 ]);
 
                 return false;
@@ -96,6 +298,361 @@ class ExportService
 
             return false;
         }
+    }
+
+    /**
+     * Prepare embedded assets (images + mermaid diagrams) so Pandoc can include them in DOCX.
+     * - Rewrites <img src="/storage/..."> to an absolute filesystem path inside the container.
+     * - Extracts base64 images into files.
+     * - Renders Mermaid blocks into PNGs using Puppeteer + Mermaid (node script).
+     */
+    private function prepareAssetsForPandoc(string $html, string $jobDir): string
+    {
+        $html = $this->normalizeMermaidBlocks($html);
+        $html = $this->renderMermaidBlocksToImages($html, $jobDir);
+        $html = $this->rewriteImageSourcesForPandoc($html, $jobDir);
+
+        return $html;
+    }
+
+    private function prepareAssetsForLibreOffice(string $html, string $jobDir): string
+    {
+        $html = $this->normalizeMermaidBlocks($html);
+        $html = $this->renderMermaidBlocksToImages($html, $jobDir);
+        $html = $this->rewriteImageSourcesForLibreOffice($html, $jobDir);
+
+        return $html;
+    }
+
+    private function normalizeMermaidBlocks(string $html): string
+    {
+        // Convert data-mermaid blocks into <div class="mermaid">code</div>
+        $html = preg_replace_callback(
+            '/<div[^>]*data-mermaid[^>]*data-mermaid-code="([^"]*)"[^>]*>.*?<\/div>/s',
+            function ($matches) {
+                $code = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+
+                return '<div class="mermaid">'."\n".$code."\n".'</div>';
+            },
+            $html
+        ) ?? $html;
+
+        // Convert <pre><code class="...language-mermaid..."> into <div class="mermaid">
+        $html = preg_replace_callback(
+            '/<pre[^>]*>\s*<code[^>]*class="[^"]*language-mermaid[^"]*"[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/s',
+            function ($matches) {
+                $code = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+                $code = strip_tags($code);
+
+                return '<div class="mermaid">'."\n".trim($code)."\n".'</div>';
+            },
+            $html
+        ) ?? $html;
+
+        return $html;
+    }
+
+    private function renderMermaidBlocksToImages(string $html, string $jobDir): string
+    {
+        $assetsDir = $jobDir.'/assets';
+        if (! is_dir($assetsDir)) {
+            mkdir($assetsDir, 0755, true);
+        }
+
+        $pattern = '/<div[^>]*class=["\'][^"\']*mermaid[^"\']*["\'][^>]*>([\s\S]*?)<\/div>/i';
+
+        return preg_replace_callback($pattern, function ($matches) use ($assetsDir) {
+            $raw = $matches[1] ?? '';
+            $code = html_entity_decode($raw, ENT_QUOTES, 'UTF-8');
+            $code = strip_tags($code);
+            $code = trim($code);
+
+            if ($code === '') {
+                return '';
+            }
+
+            $hash = substr(sha1($code), 0, 12);
+            $outputPath = $assetsDir."/mermaid_{$hash}.png";
+
+            if (! file_exists($outputPath)) {
+                $ok = $this->renderMermaidToPng($code, $outputPath);
+                if (! $ok) {
+                    Log::warning('Failed to render Mermaid diagram for DOCX export; keeping as code block');
+
+                    return '<pre><code>'.htmlspecialchars($code, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</code></pre>';
+                }
+            }
+
+            return '<p><img src="'.htmlspecialchars($outputPath, ENT_QUOTES | ENT_HTML5, 'UTF-8').'" style="max-width: 100%;"/></p>';
+        }, $html) ?? $html;
+    }
+
+    private function findChromePathForBrowsershot(): ?string
+    {
+        $candidates = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+        ];
+
+        foreach ($candidates as $path) {
+            if (file_exists($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    private function renderMermaidToPng(string $code, string $outputPath): bool
+    {
+        $chromePath = $this->findChromePathForBrowsershot();
+        if (! $chromePath) {
+            Log::warning('Chrome not found; cannot render Mermaid diagrams for DOCX export');
+
+            return false;
+        }
+
+        $mermaidJs = base_path('node_modules/mermaid/dist/mermaid.min.js');
+        if (! file_exists($mermaidJs)) {
+            Log::warning('Mermaid JS not found; cannot render Mermaid diagrams for DOCX export', [
+                'path' => $mermaidJs,
+            ]);
+
+            return false;
+        }
+
+        $mermaidScript = file_get_contents($mermaidJs);
+        if (! is_string($mermaidScript) || $mermaidScript === '') {
+            Log::warning('Failed to read Mermaid JS; cannot render Mermaid diagrams for DOCX export', [
+                'path' => $mermaidJs,
+            ]);
+
+            return false;
+        }
+
+        $html = <<<HTML
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { margin: 0; padding: 0; background: white; }
+      .wrap { padding: 16px; }
+    </style>
+    <script>{$mermaidScript}</script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.mermaid) {
+          window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'strict' });
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mermaid">{$this->escapeBareAmpersands(htmlspecialchars($code, ENT_NOQUOTES | ENT_HTML5, 'UTF-8'))}</div>
+    </div>
+  </body>
+</html>
+HTML;
+
+        try {
+            Browsershot::html($html)
+                ->setChromePath($chromePath)
+                ->windowSize(1400, 900)
+                ->deviceScaleFactor(2)
+                ->noSandbox()
+                ->addChromiumArguments([
+                    'disable-dev-shm-usage',
+                    'disable-gpu',
+                    'no-zygote',
+                    'single-process',
+                    'disable-crashpad',
+                    'disable-breakpad',
+                ])
+                ->setDelay(1500)
+                ->select('.mermaid')
+                ->save($outputPath);
+
+            return file_exists($outputPath) && filesize($outputPath) > 100;
+        } catch (\Throwable $e) {
+            Log::warning('Mermaid render failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function rewriteImageSourcesForPandoc(string $html, string $jobDir): string
+    {
+        $assetsDir = $jobDir.'/assets';
+        if (! is_dir($assetsDir)) {
+            mkdir($assetsDir, 0755, true);
+        }
+
+        return preg_replace_callback(
+            '/<img([^>]*)\ssrc=["\']([^"\']+)["\']([^>]*)>/i',
+            function ($matches) use ($assetsDir) {
+                $beforeSrc = $matches[1];
+                $src = $matches[2];
+                $afterSrc = $matches[3];
+
+                $resolved = $this->resolveImageSrcForPandoc($src, $assetsDir);
+
+                return '<img'.$beforeSrc.' src="'.htmlspecialchars($resolved, ENT_QUOTES | ENT_HTML5, 'UTF-8').'"'.$afterSrc.'>';
+            },
+            $html
+        ) ?? $html;
+    }
+
+    private function rewriteImageSourcesForLibreOffice(string $html, string $jobDir): string
+    {
+        $assetsDir = $jobDir.'/assets';
+        if (! is_dir($assetsDir)) {
+            mkdir($assetsDir, 0755, true);
+        }
+
+        return preg_replace_callback(
+            '/<img([^>]*)\ssrc=["\']([^"\']+)["\']([^>]*)>/i',
+            function ($matches) use ($assetsDir) {
+                $beforeSrc = $matches[1];
+                $src = $matches[2];
+                $afterSrc = $matches[3];
+
+                $resolved = $this->resolveImageSrcForLibreOffice($src, $assetsDir);
+
+                return '<img'.$beforeSrc.' src="'.htmlspecialchars($resolved, ENT_QUOTES | ENT_HTML5, 'UTF-8').'"'.$afterSrc.'>';
+            },
+            $html
+        ) ?? $html;
+    }
+
+    private function resolveImageSrcForPandoc(string $src, string $assetsDir): string
+    {
+        $src = trim($src);
+        if ($src === '') {
+            return $src;
+        }
+
+        // Keep remote images as-is (Pandoc may fetch them if allowed).
+        if (str_starts_with($src, 'http://') || str_starts_with($src, 'https://')) {
+            return $src;
+        }
+
+        // Extract base64 images into files.
+        if (preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/', $src, $m)) {
+            $mime = strtolower($m[1]);
+            $data = base64_decode($m[2], true);
+            if ($data === false) {
+                return $src;
+            }
+
+            $ext = match ($mime) {
+                'image/png' => 'png',
+                'image/jpeg' => 'jpg',
+                'image/jpg' => 'jpg',
+                'image/gif' => 'gif',
+                'image/svg+xml' => 'svg',
+                'image/webp' => 'webp',
+                default => 'png',
+            };
+
+            $file = $assetsDir.'/img_'.substr(sha1($src), 0, 12).'.'.$ext;
+            if (! file_exists($file)) {
+                file_put_contents($file, $data);
+            }
+
+            return $file;
+        }
+
+        // /storage/... maps to storage/app/public/...
+        if (str_starts_with($src, '/storage/')) {
+            $relative = substr($src, strlen('/storage/'));
+            $path = storage_path('app/public/'.$relative);
+
+            return file_exists($path) ? $path : $src;
+        }
+
+        // Already a filesystem path
+        if (str_starts_with($src, '/')) {
+            return $src;
+        }
+
+        // Relative path (try public/ first)
+        $publicPath = public_path($src);
+        if (file_exists($publicPath)) {
+            return $publicPath;
+        }
+
+        return $src;
+    }
+
+    private function resolveImageSrcForLibreOffice(string $src, string $assetsDir): string
+    {
+        $src = trim($src);
+        if ($src === '') {
+            return $src;
+        }
+
+        if (str_starts_with($src, 'data:image/')) {
+            return $src;
+        }
+
+        if (str_starts_with($src, 'http://') || str_starts_with($src, 'https://')) {
+            return $src;
+        }
+
+        $resolved = $this->resolveImageSrcForPandoc($src, $assetsDir);
+
+        if (str_starts_with($resolved, 'http://') || str_starts_with($resolved, 'https://')) {
+            return $resolved;
+        }
+
+        if (str_starts_with($resolved, 'file://')) {
+            return $resolved;
+        }
+
+        $dataUri = $this->fileToDataUri($resolved);
+        if ($dataUri !== null) {
+            return $dataUri;
+        }
+
+        return $this->toFileUrl($resolved);
+    }
+
+    private function toFileUrl(string $path): string
+    {
+        $path = str_replace('\\', '/', $path);
+        if (! str_starts_with($path, '/')) {
+            $path = '/'.$path;
+        }
+
+        return 'file://'.$path;
+    }
+
+    private function fileToDataUri(string $path): ?string
+    {
+        if (! is_file($path) || ! is_readable($path)) {
+            return null;
+        }
+
+        $data = file_get_contents($path);
+        if (! is_string($data) || $data === '') {
+            return null;
+        }
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = match ($ext) {
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'svg' => 'image/svg+xml',
+            'webp' => 'image/webp',
+            default => 'image/png',
+        };
+
+        return 'data:'.$mime.';base64,'.base64_encode($data);
     }
 
     /**
@@ -123,6 +680,10 @@ HTML;
         $htmlDocument .= <<<'HTML'
 
     <style>
+        .page-break {
+            page-break-after: always;
+            break-after: page;
+        }
         body {
             font-family: 'Times New Roman', serif;
             font-size: 12pt;
@@ -172,7 +733,7 @@ HTML;
 
         $htmlDocument .= "\n{$cleanedHtml}\n</body>\n</html>";
 
-        return $htmlDocument;
+        return $this->sanitizeForDocx($htmlDocument);
     }
 
     /**
@@ -180,11 +741,13 @@ HTML;
      */
     private function preprocessHtmlForPandoc(string $html): string
     {
-        // CRITICAL: Escape HTML entities first to prevent XML corruption
-        // This fixes issues with &, <, >, quotes in content
-        $html = $this->escapeHtmlEntities($html);
+        $html = $this->sanitizeForDocx($html);
 
-        // Don't strip all styles - Pandoc handles them better than PHPWord
+        // CRITICAL: Escape bare ampersands to prevent invalid XML/HTML.
+        // This fixes issues with & in text and attribute values (e.g. "A & B", URLs with query params).
+        $html = $this->escapeBareAmpersands($html);
+
+        // Don't strip all styles - Pandoc handles them well
         // Just clean up problematic patterns
 
         // Remove data-* attributes that might confuse Pandoc
@@ -196,7 +759,28 @@ HTML;
             $style = $matches[1];
 
             // Keep only Word-relevant CSS properties
-            $allowedProps = ['color', 'background-color', 'font-size', 'font-weight', 'font-style', 'text-align'];
+            $allowedProps = [
+                'color',
+                'background-color',
+                'font-size',
+                'font-weight',
+                'font-style',
+                'text-align',
+                // Layout + structure (critical for page breaks and reference indentation)
+                'page-break-after',
+                'page-break-before',
+                'break-after',
+                'break-before',
+                'margin',
+                'margin-left',
+                'margin-right',
+                'margin-top',
+                'margin-bottom',
+                'text-indent',
+                'line-height',
+                'page-break-inside',
+                'break-inside',
+            ];
             $styleParts = explode(';', $style);
             $filteredParts = [];
 
@@ -234,38 +818,214 @@ HTML;
         return $html;
     }
 
-    /**
-     * Properly escape HTML entities in text content while preserving HTML tags
-     * This prevents XML corruption in DOCX files from special characters like &, <, >, etc.
-     */
-    private function escapeHtmlEntities(string $html): string
+    private function normalizeHtmlForLibreOffice(string $html): string
     {
-        // Strategy: Only escape text nodes, preserve HTML structure
-        // We need to handle & and other special chars WITHOUT breaking HTML tags
-
-        // First, protect HTML tags by temporarily replacing them
-        $tagPlaceholders = [];
-        $tagCounter = 0;
-
-        // Match and protect all HTML tags (opening, closing, self-closing)
-        $html = preg_replace_callback('/<[^>]+>/', function ($matches) use (&$tagPlaceholders, &$tagCounter) {
-            $placeholder = '___TAG_PLACEHOLDER_'.$tagCounter.'___';
-            $tagPlaceholders[$placeholder] = $matches[0];
-            $tagCounter++;
-
-            return $placeholder;
-        }, $html);
-
-        // Now escape special characters in the remaining text content
-        $html = str_replace('&', '&amp;', $html);
-        // Don't escape < and > as they should be protected by tag placeholders
-
-        // Restore HTML tags
-        foreach ($tagPlaceholders as $placeholder => $originalTag) {
-            $html = str_replace($placeholder, $originalTag, $html);
-        }
+        $html = str_replace(['&nbsp;', '&#160;', "\xc2\xa0"], ' ', $html);
+        $html = preg_replace('/[ \t]{2,}/', ' ', $html) ?? $html;
 
         return $html;
+    }
+
+    /**
+     * Remove characters that are invalid in XML 1.0 (DOCX is XML-based).
+     */
+    private function sanitizeForDocx(string $text): string
+    {
+        $text = (string) $text;
+
+        if ($text === '') {
+            return '';
+        }
+
+        // Ensure valid UTF-8 and drop invalid byte sequences
+        $text = @iconv('UTF-8', 'UTF-8//IGNORE', $text) ?: $text;
+
+        // Strip invalid XML 1.0 characters (keep TAB, LF, CR)
+        $text = preg_replace(
+            '/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u',
+            '',
+            $text
+        );
+
+        return $text ?? '';
+    }
+
+    /**
+     * Escape bare ampersands without double-escaping existing HTML entities.
+     */
+    private function escapeBareAmpersands(string $html): string
+    {
+        return preg_replace('/&(?![a-zA-Z]+;|#\d+;|#x[0-9A-Fa-f]+;)/', '&amp;', $html) ?? $html;
+    }
+
+    private function isValidDocx(string $path): bool
+    {
+        if (! file_exists($path) || filesize($path) < 512) {
+            return false;
+        }
+
+        $handle = @fopen($path, 'rb');
+        if ($handle) {
+            $signature = fread($handle, 4) ?: '';
+            fclose($handle);
+            // DOCX is a zip; should start with "PK".
+            if (! str_starts_with($signature, "PK")) {
+                return false;
+            }
+        }
+
+        if (! class_exists(\ZipArchive::class)) {
+            // Can't validate without zip support; assume ok.
+            return true;
+        }
+
+        $zip = new \ZipArchive();
+        $result = $zip->open($path);
+        if ($result !== true) {
+            return false;
+        }
+
+        $required = ['[Content_Types].xml', '_rels/.rels'];
+        foreach ($required as $requiredEntry) {
+            if ($zip->locateName($requiredEntry) === false) {
+                $zip->close();
+
+                return false;
+            }
+        }
+
+        $xmlEntriesToValidate = [
+            '[Content_Types].xml',
+            '_rels/.rels',
+            'word/document.xml',
+            'word/styles.xml',
+            'word/_rels/document.xml.rels',
+            'docProps/core.xml',
+            'docProps/app.xml',
+        ];
+
+        foreach ($xmlEntriesToValidate as $entry) {
+            $index = $zip->locateName($entry);
+            if ($index === false) {
+                continue;
+            }
+
+            $xml = $zip->getFromIndex($index);
+            if (! is_string($xml) || $xml === '') {
+                $zip->close();
+
+                return false;
+            }
+
+            if (! $this->isWellFormedXml($xml)) {
+                $zip->close();
+
+                return false;
+            }
+        }
+
+        $zip->close();
+
+        return true;
+    }
+
+    private function isWellFormedXml(string $xml): bool
+    {
+        if ($xml === '') {
+            return false;
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        libxml_clear_errors();
+
+        $dom = new \DOMDocument();
+        $ok = $dom->loadXML($xml, LIBXML_NONET);
+
+        $errors = libxml_get_errors();
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        return $ok && empty($errors);
+    }
+
+    /**
+     * DOCX conversion can emit invalid WordprocessingML (notably bare '&' in <w:t>),
+     * which makes the resulting DOCX unreadable by Word. Validate the output, attempt an in-place XML
+     * repair if needed, then re-validate.
+     */
+    private function validateAndRepairDocx(string $path): bool
+    {
+        if ($this->isValidDocx($path)) {
+            return true;
+        }
+
+        $repaired = $this->repairDocxXmlInPlace($path);
+
+        if ($repaired) {
+            Log::info('Attempted DOCX XML repair', ['path' => $path]);
+        }
+
+        return $this->isValidDocx($path);
+    }
+
+    private function escapeBareAmpersandsForXml(string $xml): string
+    {
+        return preg_replace('/&(?!((?:amp|lt|gt|apos|quot);|#\d+;|#x[0-9A-Fa-f]+;))/', '&amp;', $xml) ?? $xml;
+    }
+
+    private function repairDocxXmlInPlace(string $path): bool
+    {
+        if (! class_exists(\ZipArchive::class)) {
+            return false;
+        }
+
+        $zip = new \ZipArchive();
+        $result = $zip->open($path);
+        if ($result !== true) {
+            return false;
+        }
+
+        $entries = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            $name = is_array($stat) ? ($stat['name'] ?? null) : null;
+            if (! is_string($name) || $name === '') {
+                continue;
+            }
+
+            if (! (str_ends_with($name, '.xml') || str_ends_with($name, '.rels'))) {
+                continue;
+            }
+
+            $entries[] = $name;
+        }
+
+        $changed = false;
+
+        foreach ($entries as $name) {
+            $xml = $zip->getFromName($name);
+            if (! is_string($xml) || $xml === '') {
+                continue;
+            }
+
+            $fixed = $this->sanitizeForDocx($xml);
+            $fixed = $this->escapeBareAmpersandsForXml($fixed);
+
+            if ($fixed === $xml) {
+                continue;
+            }
+
+            if (! $this->isWellFormedXml($fixed)) {
+                continue;
+            }
+
+            $zip->addFromString($name, $fixed);
+            $changed = true;
+        }
+
+        $zip->close();
+
+        return $changed;
     }
 
     /**
@@ -279,21 +1039,45 @@ HTML;
         // 2. Followed by content until next heading or end of document
         // 3. May include div wrappers, class="references-section", etc.
 
-        // Remove div.references-section wrapper if present
+        // Log original HTML length for debugging
+        $originalLength = strlen($html);
+        Log::debug('stripReferencesSection: Starting', ['original_length' => $originalLength]);
+
+        // First, remove div.references-section wrapper if present (case insensitive)
         $html = preg_replace(
-            '/<div[^>]*class="references-section"[^>]*>.*?<\/div>/is',
+            '/<div[^>]*class=["\']?references-section["\']?[^>]*>.*?<\/div>/is',
             '',
             $html
         );
 
-        // Remove References heading and all content until next chapter-level heading or end
-        // Match: <h1>REFERENCES</h1> or <h2>References</h2> (case insensitive)
-        // Followed by: everything until <h1> or <h2> or end of string
+        // Remove References heading and all content until next major heading or end
+        // Match various heading levels (h1-h3) with "REFERENCES" or "REFERENCE" (case insensitive)
         $html = preg_replace(
-            '/<h[12][^>]*>\s*REFERENCES?\s*<\/h[12]>.*?(?=<h[12]|$)/is',
+            '/<h[123][^>]*>\s*REFERENCES?\s*<\/h[123]>.*?(?=<h[123]|$)/is',
             '',
             $html
         );
+
+        // Also catch references sections that might be wrapped in other divs
+        $html = preg_replace(
+            '/<div[^>]*>\s*<h[123][^>]*>\s*REFERENCES?\s*<\/h[123]>.*?<\/div>/is',
+            '',
+            $html
+        );
+
+        // Remove any standalone references heading without content (edge case)
+        $html = preg_replace(
+            '/<h[123][^>]*>\s*REFERENCES?\s*<\/h[123]>/is',
+            '',
+            $html
+        );
+
+        $finalLength = strlen($html);
+        Log::debug('stripReferencesSection: Complete', [
+            'original_length' => $originalLength,
+            'final_length' => $finalLength,
+            'removed_bytes' => $originalLength - $finalLength,
+        ]);
 
         return trim($html);
     }
@@ -314,16 +1098,28 @@ HTML;
 
             $filename = $exportDir.'/'.$project->slug.'_'.time().'.docx';
 
-            // Try Pandoc first for superior quality
+            $fullHtml = $this->buildFullProjectHtml($project, $preliminaryPages);
+            $metadata = [
+                'title' => $project->title,
+                'author' => $project->student_name ?: ($project->user->name ?? 'Unknown'),
+            ];
+
+            // Prefer LibreOffice for layout fidelity (page breaks + CSS).
+            if ($this->isLibreOfficeAvailable()) {
+                Log::info('Using LibreOffice for full project Word export', ['project_id' => $project->id]);
+
+                if ($this->convertWithLibreOffice($fullHtml, $filename, $metadata)) {
+                    Log::info('LibreOffice full project export successful');
+
+                    return $filename;
+                }
+
+                Log::warning('LibreOffice failed for full project, falling back to Pandoc');
+            }
+
+            // Try Pandoc next
             if ($this->isPandocAvailable()) {
                 Log::info('Using Pandoc for full project export', ['project_id' => $project->id]);
-
-                $fullHtml = $this->buildFullProjectHtml($project, $preliminaryPages);
-
-                $metadata = [
-                    'title' => $project->title,
-                    'author' => $project->student_name ?: ($project->user->name ?? 'Unknown'),
-                ];
 
                 if ($this->convertWithPandoc($fullHtml, $filename, $metadata)) {
                     Log::info('Pandoc full project export successful');
@@ -331,45 +1127,10 @@ HTML;
                     return $filename;
                 }
 
-                Log::warning('Pandoc failed for full project, falling back to PHPWord');
+                Log::warning('Pandoc failed for full project');
             }
 
-            // Fallback to PHPWord
-            Log::info('Using PHPWord for full project export (fallback)');
-
-            $phpWord = $this->initializeDocument($project);
-
-            // Add title page
-            $this->addTitlePage($phpWord, $project);
-
-            // Add preliminary pages
-            if (! empty($preliminaryPages)) {
-                $this->addPreliminaryPages($phpWord, $preliminaryPages);
-            }
-
-            // Add table of contents (simplified approach without TOC field to avoid corruption)
-            $this->addTableOfContents($phpWord, $project);
-
-            // Add all chapters
-            $chapters = $project->chapters()
-                ->orderBy('chapter_number')
-                ->get();
-
-            foreach ($chapters as $chapter) {
-                if (! empty($chapter->content)) {
-                    $this->addChapter($phpWord, $chapter);
-                }
-            }
-
-            // Add references if available
-            if ($project->references) {
-                $this->addReferences($phpWord, $project);
-            }
-
-            $writer = IOFactory::createWriter($phpWord, 'Word2007');
-            $writer->save($filename);
-
-            return $filename;
+            throw new \Exception('Export failed: LibreOffice and Pandoc are unavailable or failed');
         } catch (\Exception $e) {
             Log::error('Export to Word failed', [
                 'project_id' => $project->id,
@@ -410,7 +1171,7 @@ HTML;
 
         $html .= '<p>'.$project->created_at->format('F Y').'</p>';
         $html .= '</div>';
-        $html .= '<div style="page-break-after: always;"></div>';
+        $html .= '<div class="page-break"></div>';
 
         // Preliminary pages
         foreach ($preliminaryPages as $page) {
@@ -419,7 +1180,7 @@ HTML;
 
             $html .= '<h1 style="text-align: center;">'.$title.'</h1>';
             $html .= $content;
-            $html .= '<div style="page-break-after: always;"></div>';
+            $html .= '<div class="page-break"></div>';
         }
 
         // Table of contents
@@ -436,10 +1197,10 @@ HTML;
             $html .= '<p>REFERENCES</p>';
         }
 
-        $html .= '<div style="page-break-after: always;"></div>';
+        $html .= '<div class="page-break"></div>';
 
         // Get references to append to last chapter
-        $referencesHtml = $this->chapterReferenceService->formatProjectReferencesSection($project);
+        $referencesHtml = $this->chapterReferenceService->formatProjectReferencesFromDatabase($project);
 
         // All chapters
         $chaptersWithContent = $chapters->filter(fn ($ch) => ! empty($ch->content));
@@ -451,7 +1212,8 @@ HTML;
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
 
                 // Strip individual chapter references - we'll add consolidated references at the end
-                $chapterContent = $this->stripReferencesSection($chapter->content);
+                $chapterContent = $this->normalizeContentToHtml($chapter->content);
+                $chapterContent = $this->stripReferencesSection($chapterContent);
                 $html .= $chapterContent; // Content is processed by preprocessHtmlForPandoc which handles escaping
 
                 // If this is the last chapter, append consolidated references (no page break)
@@ -460,7 +1222,7 @@ HTML;
                     Log::info('Added collected project references to last chapter', ['project_id' => $project->id, 'last_chapter' => $chapter->chapter_number]);
                 } else {
                     // Only add page break if not the last chapter
-                    $html .= '<div style="page-break-after: always;"></div>';
+                    $html .= '<div class="page-break"></div>';
                 }
             }
         }
@@ -483,16 +1245,14 @@ HTML;
             // Generate filename
             $filename = $exportDir.'/'.$project->slug.'-chapter-'.$chapter->chapter_number.'_'.time().'.docx';
 
-            // Try Pandoc first for superior quality
-            if ($this->isPandocAvailable() && ! empty($chapter->content)) {
-                Log::info('Using Pandoc for chapter export', ['chapter_id' => $chapter->id]);
-
+            if (! empty($chapter->content)) {
                 // Build chapter HTML with title - escape special characters
                 $chapterHtml = '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $chapterHtml .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
 
                 // Strip inline references from chapter content
-                $cleanedContent = $this->stripReferencesSection($chapter->content);
+                $chapterContent = $this->normalizeContentToHtml($chapter->content);
+                $cleanedContent = $this->stripReferencesSection($chapterContent);
                 $chapterHtml .= $cleanedContent; // Content is processed by preprocessHtmlForPandoc
 
                 // Append chapter references section (for single chapter export)
@@ -507,44 +1267,29 @@ HTML;
                     'author' => htmlspecialchars($project->student_name ?: ($project->user->name ?? 'Unknown'), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
                 ];
 
+                if ($this->isLibreOfficeAvailable()) {
+                    Log::info('Using LibreOffice for chapter export', ['chapter_id' => $chapter->id]);
+
+                    if ($this->convertWithLibreOffice($chapterHtml, $filename, $metadata)) {
+                        Log::info('LibreOffice chapter export successful');
+
+                        return $filename;
+                    }
+
+                    Log::warning('LibreOffice failed for chapter export, falling back to Pandoc');
+                }
+
+                // Try Pandoc next
                 if ($this->convertWithPandoc($chapterHtml, $filename, $metadata)) {
                     Log::info('Pandoc chapter export successful');
 
                     return $filename;
                 }
 
-                Log::warning('Pandoc failed, falling back to PHPWord');
+                Log::warning('Pandoc failed for chapter export');
             }
 
-            // Fallback to PHPWord if Pandoc not available or failed
-            Log::info('Using PHPWord for chapter export (fallback)', ['chapter_id' => $chapter->id]);
-
-            $phpWord = $this->initializeDocument($project);
-            $section = $phpWord->addSection();
-
-            // Add chapter title
-            $section->addText('Chapter: '.$chapter->title);
-
-            // Add chapter content
-            if (! empty($chapter->content)) {
-                $cleanHtml = $this->removeInlineStyles($chapter->content);
-
-                try {
-                    Html::addHtml($section, $cleanHtml, false, false);
-                } catch (\Exception $e) {
-                    Log::error('HTML parsing failed, falling back to plain text', ['error' => $e->getMessage()]);
-                    $plainText = strip_tags($cleanHtml);
-                    $plainText = html_entity_decode($plainText, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                    $section->addText($plainText);
-                }
-            } else {
-                $section->addText('No content available');
-            }
-
-            $writer = IOFactory::createWriter($phpWord, 'Word2007');
-            $writer->save($filename);
-
-            return $filename;
+            throw new \Exception('Export failed: LibreOffice and Pandoc are unavailable or failed');
         } catch (\Exception $e) {
             Log::error('Export chapter to Word failed', [
                 'project_id' => $project->id,
@@ -584,16 +1329,27 @@ HTML;
             $chaptersString = implode('-', $chapterNumbers);
             $filename = $exportDir.'/'.$project->slug.'-chapters-'.$chaptersString.'_'.time().'.docx';
 
-            // Try Pandoc first
+            $html = $this->buildMultipleChaptersHtml($project, $chapterNumbers);
+
+            $metadata = [
+                'title' => $project->title.' (Selected Chapters)',
+                'author' => $project->student_name ?: ($project->user->name ?? 'Unknown'),
+            ];
+
+            if ($this->isLibreOfficeAvailable()) {
+                Log::info('Using LibreOffice for multiple chapters export');
+
+                if ($this->convertWithLibreOffice($html, $filename, $metadata)) {
+                    Log::info('LibreOffice multiple chapters export successful');
+
+                    return $filename;
+                }
+
+                Log::warning('LibreOffice failed for multiple chapters, falling back to Pandoc');
+            }
+
             if ($this->isPandocAvailable()) {
                 Log::info('Using Pandoc for multiple chapters export');
-
-                $html = $this->buildMultipleChaptersHtml($project, $chapterNumbers);
-
-                $metadata = [
-                    'title' => $project->title.' (Selected Chapters)',
-                    'author' => $project->student_name ?: ($project->user->name ?? 'Unknown'),
-                ];
 
                 if ($this->convertWithPandoc($html, $filename, $metadata)) {
                     Log::info('Pandoc multiple chapters export successful');
@@ -601,46 +1357,10 @@ HTML;
                     return $filename;
                 }
 
-                Log::warning('Pandoc failed for multiple chapters, falling back to PHPWord');
+                Log::warning('Pandoc failed for multiple chapters');
             }
 
-            // Fallback to PHPWord
-            Log::info('Using PHPWord for multiple chapters export (fallback)');
-
-            $phpWord = $this->initializeDocument($project);
-
-            // Add title page
-            $this->addTitlePage($phpWord, $project, $chapterNumbers);
-
-            // Add simplified table of contents
-            $this->addSimpleTableOfContents($phpWord, $project, $chapterNumbers);
-
-            // Get and add selected chapters
-            $chapters = $project->chapters()
-                ->whereIn('chapter_number', $chapterNumbers)
-                ->orderBy('chapter_number')
-                ->get();
-
-            if ($chapters->isEmpty()) {
-                throw new \Exception('No chapters found for the selected chapter numbers');
-            }
-
-            foreach ($chapters as $chapter) {
-                if (! empty($chapter->content)) {
-                    $this->addChapter($phpWord, $chapter);
-                }
-            }
-
-            // Add references if it's the last chapter set
-            $maxChapter = $project->chapters()->max('chapter_number');
-            if (in_array($maxChapter, $chapterNumbers) && $project->references) {
-                $this->addReferences($phpWord, $project);
-            }
-
-            $writer = IOFactory::createWriter($phpWord, 'Word2007');
-            $writer->save($filename);
-
-            return $filename;
+            throw new \Exception('Export failed: LibreOffice and Pandoc are unavailable or failed');
         } catch (\Exception $e) {
             Log::error('Export multiple chapters failed', [
                 'project_id' => $project->id,
@@ -672,7 +1392,7 @@ HTML;
 
         $html .= '<p>'.$project->created_at->format('F Y').'</p>';
         $html .= '</div>';
-        $html .= '<div style="page-break-after: always;"></div>';
+        $html .= '<div class="page-break"></div>';
 
         // Table of contents
         $html .= '<h1 style="text-align: center;">TABLE OF CONTENTS</h1>';
@@ -688,7 +1408,7 @@ HTML;
             }
         }
 
-        $html .= '<div style="page-break-after: always;"></div>';
+        $html .= '<div class="page-break"></div>';
 
         // Get references to append to last chapter
         $referencesHtml = $this->formatSelectedChaptersReferences($chapters);
@@ -703,7 +1423,8 @@ HTML;
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
 
                 // Strip individual chapter references - we'll add consolidated references at the end
-                $chapterContent = $this->stripReferencesSection($chapter->content);
+                $chapterContent = $this->normalizeContentToHtml($chapter->content);
+                $chapterContent = $this->stripReferencesSection($chapterContent);
                 $html .= $chapterContent; // Content is processed by preprocessHtmlForPandoc
 
                 // If this is the last chapter, append consolidated references (no page break)
@@ -711,7 +1432,7 @@ HTML;
                     $html .= $referencesHtml;
                 } else {
                     // Only add page break if not the last chapter
-                    $html .= '<div style="page-break-after: always;"></div>';
+                    $html .= '<div class="page-break"></div>';
                 }
             }
         }
@@ -730,7 +1451,7 @@ HTML;
 
         // First try to get citations from database
         foreach ($chapters as $chapter) {
-            $chapterCitations = $this->chapterReferenceService->getChapterCitations($chapter, $style);
+            $chapterCitations = $this->chapterReferenceService->getChapterReferencesFromDatabase($chapter, $style);
 
             foreach ($chapterCitations as $citation) {
                 if (empty($citation['reference']) || $citation['reference'] === '[CITATION NEEDED - REQUIRES VERIFICATION]') {
@@ -780,482 +1501,6 @@ HTML;
     }
 
     /**
-     * Initialize PHPWord document with minimal settings to prevent corruption
-     */
-    private function initializeDocument(Project $project): PhpWord
-    {
-        $phpWord = new PhpWord;
-
-        // Only set basic document properties - no complex formatting
-        $properties = $phpWord->getDocInfo();
-        $properties->setCreator($project->student_name ?: ($project->user->name ?? 'Unknown'));
-        $properties->setTitle($project->title);
-
-        // NO font settings, NO styles, NO language settings
-        // All of these could potentially cause corruption
-
-        return $phpWord;
-    }
-
-    /**
-     * Add title page to document
-     */
-    private function addTitlePage(PhpWord $phpWord, Project $project, array $selectedChapters = []): void
-    {
-        $section = $phpWord->addSection();
-
-        // Title
-        $section->addText(
-            strtoupper($project->title),
-            ['size' => 16, 'bold' => true],
-            ['alignment' => 'center', 'spaceAfter' => 400]
-        );
-
-        // If selected chapters, indicate it's a partial export
-        if (! empty($selectedChapters)) {
-            $section->addText(
-                '(Selected Chapters: '.implode(', ', $selectedChapters).')',
-                ['size' => 12, 'italic' => true],
-                ['alignment' => 'center', 'spaceAfter' => 200]
-            );
-        }
-
-        // Author
-        $section->addText(
-            'BY',
-            ['size' => 12],
-            ['alignment' => 'center', 'spaceAfter' => 100]
-        );
-
-        $section->addText(
-            strtoupper($project->student_name ?: ($project->user->name ?? 'AUTHOR NAME')),
-            ['size' => 14, 'bold' => true],
-            ['alignment' => 'center', 'spaceAfter' => 400]
-        );
-
-        // University and Department
-        if ($project->university) {
-            $section->addText(
-                strtoupper($project->university),
-                ['size' => 12],
-                ['alignment' => 'center', 'spaceAfter' => 100]
-            );
-        }
-
-        if ($project->field_of_study) {
-            $section->addText(
-                'Department of '.$project->field_of_study,
-                ['size' => 12],
-                ['alignment' => 'center', 'spaceAfter' => 200]
-            );
-        }
-
-        // Date
-        $section->addText(
-            $project->created_at->format('F Y'),
-            ['size' => 12],
-            ['alignment' => 'center']
-        );
-
-        $section->addPageBreak();
-    }
-
-    /**
-     * Add preliminary pages as simple sections before TOC
-     *
-     * @param  array<int, array{slug:string,title:string,html:string}>  $preliminaryPages
-     */
-    private function addPreliminaryPages(PhpWord $phpWord, array $preliminaryPages): void
-    {
-        foreach ($preliminaryPages as $page) {
-            $section = $phpWord->addSection();
-
-            $section->addText(
-                strtoupper($page['title']),
-                ['size' => 14, 'bold' => true],
-                ['alignment' => 'center', 'spaceAfter' => 200]
-            );
-
-            $this->addHtmlContent($section, $page['html'] ?? '');
-
-            $section->addPageBreak();
-        }
-    }
-
-    /**
-     * Add chapter header for single chapter export - NO FORMATTING to prevent corruption
-     */
-    private function addChapterHeader(PhpWord $phpWord, Project $project, $chapter): void
-    {
-        $section = $phpWord->addSection();
-
-        $section->addText(
-            strtoupper($project->title),
-            [], // No font formatting
-            ['alignment' => 'center', 'spaceAfter' => 200]
-        );
-
-        $section->addText(
-            'CHAPTER '.$chapter->chapter_number,
-            [], // No font formatting
-            ['alignment' => 'center', 'spaceAfter' => 100]
-        );
-
-        $section->addText(
-            strtoupper($chapter->title),
-            [], // No font formatting
-            ['alignment' => 'center', 'spaceAfter' => 300]
-        );
-
-        $section->addText(
-            'Author: '.($project->student_name ?: $project->user->name),
-            [], // No font formatting
-            ['alignment' => 'center', 'spaceAfter' => 100]
-        );
-
-        if ($project->university) {
-            $section->addText(
-                $project->university,
-                [], // No font formatting
-                ['alignment' => 'center', 'spaceAfter' => 200]
-            );
-        }
-
-        $section->addPageBreak();
-    }
-
-    /**
-     * Add simplified table of contents (without TOC field to avoid corruption)
-     */
-    private function addTableOfContents(PhpWord $phpWord, Project $project): void
-    {
-        $section = $phpWord->addSection();
-
-        $section->addText(
-            'TABLE OF CONTENTS',
-            ['size' => 14, 'bold' => true],
-            ['alignment' => 'center', 'spaceAfter' => 300]
-        );
-
-        $chapters = $project->chapters()
-            ->orderBy('chapter_number')
-            ->get();
-
-        foreach ($chapters as $chapter) {
-            if (! empty($chapter->content)) {
-                $section->addText(
-                    'CHAPTER '.$chapter->chapter_number.': '.strtoupper($chapter->title),
-                    ['size' => 12],
-                    ['alignment' => 'left', 'indentation' => ['left' => 240], 'spaceAfter' => 100]
-                );
-            }
-        }
-
-        if ($project->references) {
-            $section->addText(
-                'REFERENCES',
-                ['size' => 12],
-                ['alignment' => 'left', 'indentation' => ['left' => 240], 'spaceAfter' => 100]
-            );
-        }
-
-        $section->addPageBreak();
-    }
-
-    /**
-     * Add simple table of contents for selected chapters
-     */
-    private function addSimpleTableOfContents(PhpWord $phpWord, Project $project, array $chapterNumbers): void
-    {
-        $section = $phpWord->addSection();
-
-        $section->addText(
-            'TABLE OF CONTENTS',
-            ['size' => 14, 'bold' => true],
-            ['alignment' => 'center', 'spaceAfter' => 300]
-        );
-
-        $chapters = $project->chapters()
-            ->whereIn('chapter_number', $chapterNumbers)
-            ->orderBy('chapter_number')
-            ->get();
-
-        foreach ($chapters as $chapter) {
-            if (! empty($chapter->content)) {
-                $section->addText(
-                    'CHAPTER '.$chapter->chapter_number.': '.strtoupper($chapter->title),
-                    ['size' => 12],
-                    ['alignment' => 'left', 'indentation' => ['left' => 240], 'spaceAfter' => 100]
-                );
-            }
-        }
-
-        $section->addPageBreak();
-    }
-
-    /**
-     * Add chapter content to document
-     */
-    private function addChapter(PhpWord $phpWord, $chapter): void
-    {
-        try {
-            Log::info('Creating new section for chapter content');
-            $section = $phpWord->addSection();
-
-            // Add proper centered, bold chapter headers
-            $section->addText(
-                'CHAPTER '.$this->numberToWords($chapter->chapter_number),
-                ['bold' => true, 'size' => 14],
-                ['alignment' => 'center', 'spaceAfter' => 200]
-            );
-
-            $section->addText(
-                strtoupper($chapter->title),
-                ['bold' => true, 'size' => 14],
-                ['alignment' => 'center', 'spaceAfter' => 300]
-            );
-
-            // Process chapter content
-            if (! empty($chapter->content)) {
-                Log::info('Processing chapter content', ['content_length' => strlen($chapter->content)]);
-                $this->addHtmlContent($section, $chapter->content);
-            } else {
-                Log::info('Chapter has no content, adding placeholder');
-                $section->addText(
-                    '[This chapter has no content yet]',
-                    [],
-                    ['alignment' => 'center', 'spaceAfter' => 200]
-                );
-            }
-
-            Log::info('Adding page break after chapter');
-            $section->addPageBreak();
-        } catch (\Exception $e) {
-            Log::error('Error adding chapter to document', [
-                'chapter_id' => $chapter->id ?? 'unknown',
-                'error' => $e->getMessage(),
-            ]);
-
-            // Add error placeholder instead of failing - NO FORMATTING
-            $section = $phpWord->addSection();
-            $section->addText(
-                'Chapter '.($chapter->chapter_number ?? '?').': '.($chapter->title ?? 'Unknown'),
-                [], // No font formatting
-                ['spaceAfter' => 200]
-            );
-            $section->addText(
-                '[Error processing chapter content]',
-                [], // No font formatting
-                []
-            );
-            $section->addPageBreak();
-        }
-    }
-
-    /**
-     * Add content to section using only native PHPWord methods
-     */
-    private function addHtmlContent(Section $section, string $htmlContent): void
-    {
-        if (empty($htmlContent)) {
-            return;
-        }
-
-        $cleanHtml = $this->removeInlineStyles($htmlContent);
-
-        try {
-            Html::addHtml($section, $cleanHtml, false, false);
-        } catch (\Exception $e) {
-            Log::error('HTML parsing failed, falling back to plain text', ['error' => $e->getMessage()]);
-            $plainText = strip_tags($cleanHtml);
-            $plainText = html_entity_decode($plainText, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $section->addText($plainText);
-        }
-    }
-
-    /**
-     * Add structured text content preserving formatting using native PHPWord methods
-     */
-    private function addStructuredTextContent(Section $section, string $htmlContent): void
-    {
-        // Parse HTML and convert to structured text with formatting
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        $dom->loadHTML('<?xml encoding="utf-8" ?>'.$htmlContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-
-        $this->processNode($section, $dom->documentElement);
-    }
-
-    /**
-     * Process DOM nodes and add to Word section with appropriate formatting
-     */
-    private function processNode(Section $section, \DOMNode $node): void
-    {
-        foreach ($node->childNodes as $child) {
-            switch ($child->nodeName) {
-                case 'h1':
-                case 'h2':
-                case 'h3':
-                    $section->addText($child->textContent, ['size' => 14, 'bold' => true], ['spaceAfter' => 200]);
-                    break;
-                case 'p':
-                    if (! empty(trim($child->textContent))) {
-                        $section->addText($child->textContent, [], ['alignment' => 'both', 'spaceAfter' => 120]);
-                    }
-                    break;
-                case 'strong':
-                    $section->addText($child->textContent, ['bold' => true], ['spaceAfter' => 0]);
-                    break;
-                case 'em':
-                    $section->addText($child->textContent, ['italic' => true], ['spaceAfter' => 0]);
-                    break;
-                case 'ul':
-                case 'ol':
-                    $this->processListNode($section, $child);
-                    break;
-                default:
-                    if ($child->hasChildNodes()) {
-                        $this->processNode($section, $child);
-                    } else {
-                        $text = trim($child->textContent);
-                        if (! empty($text)) {
-                            $section->addText($text, [], ['spaceAfter' => 120]);
-                        }
-                    }
-                    break;
-            }
-        }
-    }
-
-    /**
-     * Process list nodes
-     */
-    private function processListNode(Section $section, \DOMNode $listNode): void
-    {
-        foreach ($listNode->childNodes as $listItem) {
-            if ($listItem->nodeName === 'li') {
-                $section->addText('• '.$listItem->textContent, [], ['indentation' => ['left' => 360], 'spaceAfter' => 120]);
-            }
-        }
-    }
-
-    /**
-     * Add clean text content with minimal structure using only native PHPWord methods
-     */
-    private function addCleanTextContent(Section $section, string $htmlContent): void
-    {
-        // Completely strip all HTML and only preserve basic line structure
-        $plainText = strip_tags($htmlContent);
-        $plainText = html_entity_decode($plainText, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-        // Split by double line breaks to identify paragraphs
-        $paragraphs = array_filter(preg_split('/\n\s*\n/', $plainText), function ($p) {
-            return ! empty(trim($p));
-        });
-
-        foreach ($paragraphs as $paragraph) {
-            $paragraph = trim($paragraph);
-
-            if (empty($paragraph)) {
-                continue;
-            }
-
-            // Split long paragraphs into lines and handle each line
-            $lines = array_filter(explode("\n", $paragraph), function ($line) {
-                return ! empty(trim($line));
-            });
-
-            foreach ($lines as $line) {
-                $line = trim($line);
-
-                if (empty($line)) {
-                    continue;
-                }
-
-                // Add as simple text with basic paragraph formatting
-                // No complex styles that could cause corruption
-                $section->addText(
-                    $line,
-                    [], // No font formatting
-                    ['alignment' => 'both', 'lineHeight' => 1.6, 'spaceAfter' => 120] // Basic paragraph style
-                );
-            }
-
-            // Add extra space between paragraphs
-            $section->addText('', [], ['spaceAfter' => 100]);
-        }
-    }
-
-    /**
-     * Remove inline CSS styles but preserve HTML structure tags
-     */
-    private function removeInlineStyles(string $html): string
-    {
-        // Enhance semantic tags for better Word formatting
-        $htmlWithEnhancedTags = $this->enhanceSemanticTags($html);
-
-        // Remove style attributes from all tags
-        $cleanHtml = preg_replace('/\s*style\s*=\s*["\'][^"\']*["\']/', '', $htmlWithEnhancedTags);
-
-        // Remove class attributes that are only for web styling
-        $cleanHtml = preg_replace('/\s*class\s*=\s*["\'][^"\']*["\']/', '', $cleanHtml);
-
-        // Remove empty span tags that were only used for styling
-        $cleanHtml = preg_replace('/<span\s*>\s*(.*?)\s*<\/span>/', '$1', $cleanHtml);
-        $cleanHtml = preg_replace('/<span\s*\/?>/', '', $cleanHtml);
-
-        // Clean up any malformed tags after removing attributes
-        $cleanHtml = preg_replace('/<(\w+)\s+>/', '<$1>', $cleanHtml);
-
-        // Remove any remaining empty attributes
-        $cleanHtml = preg_replace('/\s+>/', '>', $cleanHtml);
-
-        return $cleanHtml;
-    }
-
-    /**
-     * Enhance semantic HTML tags for better Word export formatting
-     */
-    private function enhanceSemanticTags(string $html): string
-    {
-        // Wrap all heading content in <strong> tags for better Word formatting
-        $html = preg_replace_callback('/<h([1-6])([^>]*)>(.*?)<\/h([1-6])>/is', function ($matches) {
-            $level = $matches[1];
-            $attributes = $matches[2];
-            $content = $matches[3];
-            $closingLevel = $matches[4];
-
-            // Only process if opening and closing levels match
-            if ($level === $closingLevel) {
-                // If content doesn't already have strong tags, add them
-                if (strpos($content, '<strong>') === false) {
-                    return "<h{$level}{$attributes}><strong>{$content}</strong></h{$level}>";
-                }
-
-                return $matches[0]; // Already has strong tags
-            }
-
-            // Return original if mismatch
-            return $matches[0];
-        }, $html);
-
-        // Convert <b> tags to <strong> (properly handle opening/closing)
-        $html = preg_replace('/<b\b[^>]*>/i', '<strong>', $html);
-        $html = preg_replace('/<\/b>/i', '</strong>', $html);
-
-        // Convert <i> tags to <em> (properly handle opening/closing)
-        $html = preg_replace('/<i\b[^>]*>/i', '<em>', $html);
-        $html = preg_replace('/<\/i>/i', '</em>', $html);
-
-        // Clean up any doubled tags
-        $html = preg_replace('/<\/strong><\/strong>/i', '</strong>', $html);
-        $html = preg_replace('/<strong><strong>/i', '<strong>', $html);
-        $html = preg_replace('/<\/em><\/em>/i', '</em>', $html);
-        $html = preg_replace('/<em><em>/i', '<em>', $html);
-
-        return $html;
-    }
-
-    /**
      * Convert chapter number to words (ONE, TWO, THREE, etc.)
      */
     private function numberToWords(int $number): string
@@ -1276,103 +1521,4 @@ HTML;
         return $words[$number] ?? (string) $number;
     }
 
-    /**
-     * Add references section
-     */
-    private function addReferences(PhpWord $phpWord, Project $project): void
-    {
-        $section = $phpWord->addSection();
-
-        $section->addText(
-            'REFERENCES',
-            ['size' => 14, 'bold' => true],
-            ['alignment' => 'center', 'spaceAfter' => 300]
-        );
-
-        $references = json_decode($project->references, true) ?? [];
-
-        if (empty($references)) {
-            $section->addText(
-                '[No references available]',
-                ['italic' => true],
-                ['alignment' => 'center']
-            );
-
-            return;
-        }
-
-        $refNumber = 1;
-        foreach ($references as $reference) {
-            // Extract reference text
-            $refText = $reference['citation'] ??
-                $reference['text'] ??
-                $reference['title'] ??
-                'Unknown reference';
-
-            $section->addText(
-                $refNumber.'. '.$refText,
-                [],
-                ['alignment' => 'both', 'lineHeight' => 1.5, 'spaceAfter' => 150, 'indentation' => ['left' => 360, 'hanging' => 360]]
-            );
-
-            $refNumber++;
-        }
-    }
-
-    /**
-     * Save document to file
-     */
-    private function saveDocument(PhpWord $phpWord, string $filename): string
-    {
-        // Ensure exports directory exists
-        $exportDir = storage_path('app/exports');
-        if (! is_dir($exportDir)) {
-            mkdir($exportDir, 0755, true);
-        }
-
-        // Clean up old exports (older than 1 hour)
-        $this->cleanupOldExports($exportDir);
-
-        // Generate unique filename
-        $fullPath = $exportDir.'/'.$filename.'_'.time().'.docx';
-
-        try {
-            // Create writer and save
-            $writer = IOFactory::createWriter($phpWord, 'Word2007');
-            $writer->save($fullPath);
-
-            Log::info('Document saved successfully', [
-                'filename' => $fullPath,
-                'size' => filesize($fullPath),
-            ]);
-
-            return $fullPath;
-        } catch (\Exception $e) {
-            Log::error('Failed to save document', [
-                'filename' => $fullPath,
-                'error' => $e->getMessage(),
-            ]);
-            throw new \Exception('Failed to save document: '.$e->getMessage());
-        }
-    }
-
-    /**
-     * Clean up old export files
-     */
-    private function cleanupOldExports(string $exportDir): void
-    {
-        try {
-            $files = glob($exportDir.'/*.docx');
-            $now = time();
-
-            foreach ($files as $file) {
-                // Delete files older than 1 hour
-                if (is_file($file) && ($now - filemtime($file) > 3600)) {
-                    unlink($file);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::warning('Failed to cleanup old exports', ['error' => $e->getMessage()]);
-        }
-    }
 }

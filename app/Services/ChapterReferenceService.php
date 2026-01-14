@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Chapter;
 use App\Models\Project;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class ChapterReferenceService
 {
@@ -40,8 +41,8 @@ class ChapterReferenceService
      */
     public function formatChapterReferencesSection(Chapter $chapter, string $style = 'APA'): string
     {
-        // First try to get citations from database
-        $citations = $this->getChapterCitations($chapter, $style);
+        // First try to get citations from database whitelist
+        $citations = $this->getChapterReferencesFromDatabase($chapter, $style);
 
         if ($citations->isEmpty()) {
             // If no database citations, try extracting from chapter HTML content
@@ -74,6 +75,102 @@ class ChapterReferenceService
         $html .= '<h2 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h2>';
 
         foreach ($sortedRefs as $ref) {
+            $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+                htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
+                '</p>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    /**
+     * Get whitelisted, verified references for a chapter from the database.
+     *
+     * @return Collection<int, array{reference: string, inline_text: string|null}>
+     */
+    public function getChapterReferencesFromDatabase(Chapter $chapter, string $style = 'APA'): Collection
+    {
+        Log::info('getChapterReferencesFromDatabase called', [
+            'chapter_id' => $chapter->id,
+            'chapter_number' => $chapter->chapter_number,
+            'style' => $style,
+        ]);
+
+        $citations = $chapter->documentCitations()
+            ->with('citation')
+            ->where('is_whitelisted', true)
+            ->where('source', '!=', 'suggested')
+            ->whereHas('citation', fn ($query) => $query->where('verification_status', 'verified'))
+            ->get();
+
+        Log::info('Retrieved document citations', [
+            'chapter_id' => $chapter->id,
+            'citations_count' => $citations->count(),
+        ]);
+
+        $formatted = $citations->map(function ($docCitation) use ($style) {
+            return [
+                'reference' => $docCitation->citation?->getFormattedCitation(strtolower($style)) ?? '',
+                'inline_text' => $docCitation->inline_text,
+            ];
+        })
+            ->filter(fn ($entry) => ! empty($entry['reference']))
+            ->unique('reference')
+            ->sortBy('reference')
+            ->values();
+
+        Log::info('Formatted references', [
+            'chapter_id' => $chapter->id,
+            'formatted_count' => $formatted->count(),
+        ]);
+
+        return $formatted;
+    }
+
+    /**
+     * Get references strictly from citations detected in the chapter content (ai_generated rows).
+     * This is the safest source to use when appending a References section after generation.
+     *
+     * @return Collection<int, array{reference: string, inline_text: string|null}>
+     */
+    public function getChapterReferencesFromDetectedCitations(Chapter $chapter, string $style = 'APA'): Collection
+    {
+        return $chapter->documentCitations()
+            ->with('citation')
+            ->where('source', 'ai_generated')
+            ->where('is_whitelisted', true)
+            ->whereNotNull('position')
+            ->whereHas('citation', fn ($query) => $query->where('verification_status', 'verified'))
+            ->get()
+            ->map(function ($docCitation) use ($style) {
+                return [
+                    'reference' => $docCitation->citation?->getFormattedCitation(strtolower($style)) ?? '',
+                    'inline_text' => $docCitation->inline_text,
+                ];
+            })
+            ->filter(fn ($entry) => ! empty($entry['reference']))
+            ->unique('reference')
+            ->sortBy('reference')
+            ->values();
+    }
+
+    /**
+     * Build a references section from database citations only (no HTML fallback).
+     */
+    public function formatChapterReferencesFromDatabase(Chapter $chapter, string $style = 'APA'): string
+    {
+        $citations = $this->getChapterReferencesFromDetectedCitations($chapter, $style);
+
+        if ($citations->isEmpty()) {
+            return '';
+        }
+
+        $html = '<div class="references-section" style="margin-top: 2em; page-break-before: always; font-size: 14px;">';
+        $html .= '<h2 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h2>';
+
+        foreach ($citations as $ref) {
             $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
                 htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
                 '</p>';
@@ -131,6 +228,44 @@ class ChapterReferenceService
         }
 
         // Sort alphabetically by reference text
+        return $allReferences->values()->sortBy('reference')->values();
+    }
+
+    /**
+     * Collect all whitelisted references from all chapters of a project.
+     *
+     * @return Collection<int, array{reference: string, chapters: array<int>}>
+     */
+    public function collectProjectReferencesFromDatabase(Project $project, string $style = 'APA'): Collection
+    {
+        $chapters = $project->chapters()
+            ->whereNotNull('content')
+            ->where('content', '!=', '')
+            ->orderBy('chapter_number')
+            ->get();
+
+        $allReferences = collect();
+
+        foreach ($chapters as $chapter) {
+            $chapterRefs = $this->getChapterReferencesFromDatabase($chapter, $style);
+
+            foreach ($chapterRefs as $citation) {
+                $refKey = $citation['reference'];
+                if ($allReferences->has($refKey)) {
+                    $existing = $allReferences->get($refKey);
+                    if (! in_array($chapter->chapter_number, $existing['chapters'])) {
+                        $existing['chapters'][] = $chapter->chapter_number;
+                        $allReferences->put($refKey, $existing);
+                    }
+                } else {
+                    $allReferences->put($refKey, [
+                        'reference' => $citation['reference'],
+                        'chapters' => [$chapter->chapter_number],
+                    ]);
+                }
+            }
+        }
+
         return $allReferences->values()->sortBy('reference')->values();
     }
 
@@ -206,7 +341,7 @@ class ChapterReferenceService
         foreach ($chapters as $chapter) {
             $chapterRefs = $this->extractReferencesFromHtml($chapter->content);
 
-            \Log::info('Extracted references from chapter HTML', [
+            Log::info('Extracted references from chapter HTML', [
                 'chapter_id' => $chapter->id,
                 'chapter_number' => $chapter->chapter_number,
                 'references_count' => count($chapterRefs),
@@ -233,7 +368,7 @@ class ChapterReferenceService
             }
         }
 
-        \Log::info('Total references collected from HTML', [
+        Log::info('Total references collected from HTML', [
             'project_id' => $project->id,
             'total_references' => $allReferences->count(),
         ]);
@@ -249,29 +384,59 @@ class ChapterReferenceService
     public function formatProjectReferencesSection(Project $project, string $style = 'APA'): string
     {
         // First try to collect from database citations
-        $references = $this->collectProjectReferences($project, $style);
+        $references = $this->collectProjectReferencesFromDatabase($project, $style);
 
-        \Log::info('Formatting project references section', [
+        Log::info('Formatting project references section', [
             'project_id' => $project->id,
             'database_citations_count' => $references->count(),
         ]);
 
         // If no database citations, parse from chapter HTML content
         if ($references->isEmpty()) {
-            \Log::info('No database citations found, parsing from chapter HTML');
+            Log::info('No database citations found, parsing from chapter HTML');
             $references = $this->collectReferencesFromChapterHtml($project);
         }
 
         // If still empty, fall back to project-level references
         if ($references->isEmpty()) {
-            \Log::info('No HTML references found, using project-level references fallback');
+            Log::info('No HTML references found, using project-level references fallback');
 
             return $this->formatProjectLevelReferences($project);
         }
 
-        \Log::info('Building consolidated references HTML', [
+        Log::info('Building consolidated references HTML', [
             'total_references' => $references->count(),
         ]);
+
+        $html = '<div class="references-section" style="margin-top: 2em; font-size: 14px;">';
+        $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h1>';
+
+        foreach ($references as $ref) {
+            $html .= '<p style="font-size: 14px; text-indent: -0.5in; margin-left: 0.5in; margin-bottom: 0.5em; text-align: justify;">'.
+                htmlspecialchars($ref['reference'], ENT_QUOTES | ENT_HTML5, 'UTF-8').
+                '</p>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    /**
+     * Format project references strictly from database citations.
+     */
+    public function formatProjectReferencesFromDatabase(Project $project, string $style = 'APA'): string
+    {
+        $references = $this->collectProjectReferencesFromDatabase($project, $style);
+
+        Log::info('Formatting project references section (database only)', [
+            'project_id' => $project->id,
+            'database_citations_count' => $references->count(),
+        ]);
+
+        if ($references->isEmpty()) {
+            return '';
+        }
 
         $html = '<div class="references-section" style="margin-top: 2em; font-size: 14px;">';
         $html .= '<h1 style="text-align: center; font-weight: bold; margin-bottom: 1em; font-size: 16px;">REFERENCES</h1>';
@@ -369,6 +534,6 @@ class ChapterReferenceService
      */
     public function countProjectReferences(Project $project, string $style = 'APA'): int
     {
-        return $this->collectProjectReferences($project, $style)->count();
+        return $this->collectProjectReferencesFromDatabase($project, $style)->count();
     }
 }

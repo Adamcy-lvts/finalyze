@@ -57,6 +57,11 @@ class ExportController extends Controller
                 throw new \Exception('Export file could not be created or is not readable');
             }
 
+            $sig = @file_get_contents($filename, false, null, 0, 4) ?: '';
+            if (! str_starts_with($sig, 'PK')) {
+                throw new \Exception('Export file is not a valid DOCX (zip signature missing)');
+            }
+
             // Check file size
             $filesize = filesize($filename);
             if ($filesize === 0) {
@@ -146,6 +151,11 @@ class ExportController extends Controller
             // Verify file
             if (! file_exists($filename) || ! is_readable($filename)) {
                 throw new \Exception('Export file could not be created');
+            }
+
+            $sig = @file_get_contents($filename, false, null, 0, 4) ?: '';
+            if (! str_starts_with($sig, 'PK')) {
+                throw new \Exception('Export file is not a valid DOCX (zip signature missing)');
             }
 
             $filesize = filesize($filename);
