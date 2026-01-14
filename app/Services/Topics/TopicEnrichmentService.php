@@ -14,6 +14,7 @@ class TopicEnrichmentService
         private TopicPromptBuilder $promptBuilder,
         private TopicCacheService $cacheService,
         private TopicTextService $textService,
+        private LiteratureAvailabilityService $literatureService,
     ) {
         //
     }
@@ -22,12 +23,16 @@ class TopicEnrichmentService
     {
         $geographicFocus = $geographicFocus ?: 'balanced';
         $enrichedTopics = [];
+        $field = $project->field_of_study ?? null;
 
         foreach ($topics as $index => $topic) {
             $titleHtml = $this->textService->convertMarkdownToHtml($topic);
 
             $metadata = $this->analyzeTopicMetadata($topic, $project);
             $description = $this->generateTopicDescription($topic, $project);
+            
+            // Check literature availability for this topic
+            $literatureData = $this->literatureService->checkAvailability($topic, $field);
 
             $enrichedTopics[] = [
                 'id' => $index + 1,
@@ -39,12 +44,16 @@ class TopicEnrichmentService
                 'feasibility_score' => $metadata['feasibility_score'],
                 'keywords' => $metadata['keywords'],
                 'research_type' => $metadata['research_type'],
+                'literature_score' => $literatureData['score'],
+                'literature_count' => $literatureData['count'],
+                'literature_quality' => $literatureData['quality'],
             ];
 
             if ($progressCallback) {
                 $progressCallback([
                     'current' => $index + 1,
                     'title' => $topic,
+                    'literature_score' => $literatureData['score'],
                 ]);
             }
         }

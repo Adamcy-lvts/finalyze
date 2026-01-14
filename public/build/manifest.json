@@ -553,7 +553,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-CT0vCygp.js",
+    "file": "assets/app-EhQDgfwN.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -623,7 +623,7 @@
       "resources/js/pages/settings/Profile.vue"
     ],
     "css": [
-      "assets/app-Ccs4yY-w.css"
+      "assets/app-C9C-czkE.css"
     ]
   },
   "resources/js/components/chapter-editor/ChapterNavigation.vue": {
@@ -1964,7 +1964,7 @@
     ]
   },
   "resources/js/pages/projects/TopicSelection.vue": {
-    "file": "assets/TopicSelection-BUpRKoTT.js",
+    "file": "assets/TopicSelection-Dy4B2UNw.js",
     "name": "TopicSelection",
     "src": "resources/js/pages/projects/TopicSelection.vue",
     "isDynamicEntry": true,
@@ -2003,7 +2003,7 @@
       "_DialogTitle.vue_vue_type_script_setup_true_lang-vwptL7Il.js"
     ],
     "css": [
-      "assets/TopicSelection-C72LOgHo.css"
+      "assets/TopicSelection-Dm-tuIMc.css"
     ]
   },
   "resources/js/pages/projects/TopicsIndex.vue": {

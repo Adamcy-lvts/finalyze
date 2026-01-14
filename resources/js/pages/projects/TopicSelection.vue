@@ -55,6 +55,9 @@ interface Topic {
     feasibility_score: number;
     keywords: string[];
     research_type: string;
+    literature_score?: number;
+    literature_count?: number;
+    literature_quality?: string;
 }
 
 const activeTab = ref('existing');
@@ -534,6 +537,27 @@ const getResourceVariant = (level: string) => {
         default:
             return 'secondary';
     }
+};
+
+const getLiteratureVariant = (quality: string | undefined) => {
+    switch (quality?.toLowerCase()) {
+        case 'good':
+            return 'default'; // green-ish with default theme
+        case 'moderate':
+            return 'secondary'; // yellow-ish
+        case 'low':
+            return 'destructive'; // red
+        case 'none':
+            return 'outline';
+        default:
+            return 'outline';
+    }
+};
+
+const getLiteratureLabel = (count: number | undefined, quality: string | undefined) => {
+    if (count === undefined || count === null) return 'Checking...';
+    if (count === 0) return 'No papers';
+    return `${count} paper${count !== 1 ? 's' : ''}`;
 };
 
 const toggleDescription = (topicId: number) => {
@@ -1152,6 +1176,37 @@ const goBackToWizard = () => {
                                                 </div>
                                                 <span class="text-xs font-bold">{{ topic.feasibility_score }}%</span>
                                             </div>
+                                        </div>
+
+                                        <!-- Literature Availability -->
+                                        <div class="space-y-1" v-if="topic.literature_count !== undefined">
+                                            <div
+                                                class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                                                Literature</div>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <div class="flex items-center gap-2">
+                                                            <Badge :variant="getLiteratureVariant(topic.literature_quality)"
+                                                                class="rounded-md px-2 py-0.5 text-[10px] font-bold flex items-center gap-1">
+                                                                <BookOpen class="h-3 w-3" />
+                                                                {{ getLiteratureLabel(topic.literature_count, topic.literature_quality) }}
+                                                            </Badge>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" class="max-w-xs">
+                                                        <div class="space-y-1">
+                                                            <p class="font-semibold">Literature Availability: {{ topic.literature_score }}/100</p>
+                                                            <p class="text-xs text-muted-foreground">
+                                                                {{ topic.literature_quality === 'good' ? 'Excellent coverage - strong topic choice' :
+                                                                   topic.literature_quality === 'moderate' ? 'Moderate coverage - viable topic' :
+                                                                   topic.literature_quality === 'low' ? 'Limited coverage - may need refinement' :
+                                                                   'No papers found - consider alternative phrasing' }}
+                                                            </p>
+                                                        </div>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
                                         </div>
 
                                         <div class="mt-auto pt-4 md:pt-0 grid grid-cols-2 md:grid-cols-1 gap-2">

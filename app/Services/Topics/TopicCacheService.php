@@ -43,6 +43,9 @@ class TopicCacheService
                     'feasibility_score' => $topic->feasibility_score,
                     'keywords' => $topic->keywords ?? [],
                     'research_type' => $topic->research_type,
+                    'literature_score' => $topic->literature_score,
+                    'literature_count' => $topic->literature_count,
+                    'literature_quality' => $topic->literature_quality,
                 ];
             })
             ->values();
@@ -135,6 +138,11 @@ class TopicCacheService
                 $descriptionHtml = $this->textService->convertMarkdownToHtml($description);
 
                 if (! $existingTopic) {
+                    // Extract literature fields if available
+                    $literatureScore = $topicData['literature_score'] ?? null;
+                    $literatureCount = $topicData['literature_count'] ?? null;
+                    $literatureQuality = $topicData['literature_quality'] ?? null;
+
                     ProjectTopic::create([
                         'user_id' => $project->user_id,
                         'project_id' => $project->id,
@@ -153,6 +161,9 @@ class TopicCacheService
                         'feasibility_score' => $feasibilityScore,
                         'keywords' => $keywords,
                         'research_type' => $researchType,
+                        'literature_score' => $literatureScore,
+                        'literature_count' => $literatureCount,
+                        'literature_quality' => $literatureQuality,
                         'selection_count' => 0,
                         'last_selected_at' => null,
                     ]);
@@ -170,7 +181,7 @@ class TopicCacheService
 
                     if ($shouldUpdateDescription) {
                         // Update placeholder/empty records with richer data when available.
-                        $existingTopic->update([
+                        $updateData = [
                             'description' => $descriptionHtml,
                             'difficulty' => $difficulty,
                             'timeline' => $timeline,
@@ -178,7 +189,20 @@ class TopicCacheService
                             'feasibility_score' => $feasibilityScore,
                             'keywords' => $keywords,
                             'research_type' => $researchType,
-                        ]);
+                        ];
+
+                        // Also update literature fields if provided
+                        if (isset($topicData['literature_score'])) {
+                            $updateData['literature_score'] = $topicData['literature_score'];
+                        }
+                        if (isset($topicData['literature_count'])) {
+                            $updateData['literature_count'] = $topicData['literature_count'];
+                        }
+                        if (isset($topicData['literature_quality'])) {
+                            $updateData['literature_quality'] = $topicData['literature_quality'];
+                        }
+
+                        $existingTopic->update($updateData);
                     }
                 }
             }

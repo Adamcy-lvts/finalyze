@@ -25,6 +25,9 @@ class ProjectTopic extends Model
         'timeline',
         'resource_level',
         'feasibility_score',
+        'literature_score',
+        'literature_count',
+        'literature_quality',
         'keywords',
         'research_type',
         'selection_count',
@@ -36,6 +39,8 @@ class ProjectTopic extends Model
         'last_selected_at' => 'timestamp',
         'selection_count' => 'integer',
         'feasibility_score' => 'integer',
+        'literature_score' => 'integer',
+        'literature_count' => 'integer',
     ];
 
     public function user()
