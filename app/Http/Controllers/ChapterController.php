@@ -222,8 +222,6 @@ class ChapterController extends Controller
                 'user_id' => auth()->id(),
             ]);
 
-            ]);
-
             $style = $request->input('style');
             if ($style === 'Auto') { $style = null; }
             $prompt = $this->buildExpandPrompt($project, $selectedText, $chapter, $style);
