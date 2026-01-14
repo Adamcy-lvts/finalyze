@@ -1500,25 +1500,60 @@ defineExpose({
     <div class="relative flex-1 min-h-0">
       <EditorContent :editor="editor" class="h-full w-full outline-none" />
 
-      <!-- AI Generation Overlay -->
-      <div v-if="isGenerating"
-        class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/50 backdrop-blur-[2px] transition-all duration-500">
-        <div
-          class="flex flex-col items-center gap-4 rounded-2xl border border-border/50 bg-background/90 p-8 shadow-xl backdrop-blur-xl">
-          <div class="relative h-16 w-16">
-            <div class="absolute inset-0 animate-ping rounded-full bg-primary/20"></div>
-            <div
-              class="relative flex h-full w-full items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20">
-              <Loader2 class="h-8 w-8 animate-spin text-primary" />
+      <!-- AI Generation Dynamic Island -->
+      <Transition
+        enter-active-class="transition-all duration-300 cubic-bezier(0.34, 1.56, 0.64, 1)"
+        enter-from-class="opacity-0 -translate-y-4 scale-95"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
+        leave-active-class="transition-all duration-200 cubic-bezier(0.4, 0, 0.2, 1)"
+        leave-from-class="opacity-100 translate-y-0 scale-100"
+        leave-to-class="opacity-0 -translate-y-4 scale-95"
+      >
+        <div v-if="isGenerating" 
+             class="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div class="flex items-center gap-3 pl-3 pr-4 py-2 bg-indigo-950/90 text-white dark:bg-indigo-500/10 dark:text-indigo-100 dark:border-indigo-400/20 backdrop-blur-md border border-indigo-200/20 rounded-full shadow-[0_8px_32px_rgba(79,70,229,0.25)] pointer-events-auto ring-1 ring-white/10">
+            
+            <!-- Animated Icon -->
+            <div class="relative flex items-center justify-center w-5 h-5">
+              <div class="absolute inset-0 rounded-full bg-indigo-400/30 animate-ping"></div>
+              <Sparkles class="w-4 h-4 text-indigo-300 animate-pulse relative z-10" />
             </div>
+
+            <div class="flex flex-col gap-0.5 min-w-[140px]">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-[11px] font-semibold tracking-wide uppercase text-indigo-100/90 dark:text-indigo-200">
+                  {{ generationPhase || 'Writing...' }}
+                </span>
+                <span class="text-[10px] font-mono tabular-nums opacity-80">
+                  {{ generationPercentage }}%
+                </span>
+              </div>
+              
+              <!-- Mini Progress Bar -->
+              <div class="h-1 w-full bg-indigo-900/50 dark:bg-indigo-950/50 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-purple-400 transition-all duration-300 ease-out"
+                     :style="{ width: `${generationPercentage}%` }">
+                   <div class="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Vertical Separator -->
+            <div class="w-px h-6 bg-white/10 mx-1"></div>
+
+            <!-- Word Count Badge -->
+            <div class="flex flex-col items-end">
+               <span class="text-[10px] font-medium text-indigo-200/80">
+                 Word Count
+               </span>
+               <span class="text-xs font-bold font-mono tracking-tight leading-none text-white dark:text-indigo-50">
+                 {{ generationProgress?.match(/\d+/)?.[0] || '...' }}
+               </span>
+            </div>
+            
           </div>
-          <div class="text-center">
-            <h3 class="text-lg font-semibold tracking-tight">{{ generationPhase || 'Generating...' }}</h3>
-            <p class="text-sm text-muted-foreground">{{ generationProgress || 'AI is writing your chapter...' }}</p>
-          </div>
-          <Progress :model-value="generationPercentage" class="h-2 w-64" />
         </div>
-      </div>
+      </Transition>
     </div>
 
     <!-- Dialogs -->

@@ -67,6 +67,9 @@ interface Props {
     defenseProgressPercentage?: number;
     defenseWordsRemaining?: number;
     hasTriggeredGeneration?: boolean;
+    // Chapter navigation props for unified chapters
+    outlines?: any[];
+    facultyChapters?: any[];
 }
 
 const props = defineProps<Props>();
@@ -153,6 +156,8 @@ const handleHideQuestion = (questionId: number) => emit('hide-question', questio
                         :all-chapters="allChapters"
                         :current-chapter="currentChapter"
                         :project="project"
+                        :outlines="outlines || []"
+                        :faculty-chapters="facultyChapters || []"
                         :current-word-count="currentWordCount"
                         :target-word-count="targetWordCount"
                         :writing-quality-score="writingQualityScore"
