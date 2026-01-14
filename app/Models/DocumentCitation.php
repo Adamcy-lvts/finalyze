@@ -11,6 +11,7 @@ class DocumentCitation extends Model
         'document_id',
         'chapter_id',
         'citation_id',
+        'collected_paper_id',
         'user_id',
         'inline_text',
         'format_style',
@@ -18,6 +19,8 @@ class DocumentCitation extends Model
         'source',
         'user_approved',
         'needs_review',
+        'is_whitelisted',
+        'whitelist_key',
         'raw_citation',
         'placeholder_data',
     ];
@@ -25,6 +28,7 @@ class DocumentCitation extends Model
     protected $casts = [
         'user_approved' => 'boolean',
         'needs_review' => 'boolean',
+        'is_whitelisted' => 'boolean',
         'placeholder_data' => 'array',
     ];
 
@@ -41,6 +45,11 @@ class DocumentCitation extends Model
     public function citation(): BelongsTo
     {
         return $this->belongsTo(Citation::class);
+    }
+
+    public function collectedPaper(): BelongsTo
+    {
+        return $this->belongsTo(CollectedPaper::class);
     }
 
     public function user(): BelongsTo

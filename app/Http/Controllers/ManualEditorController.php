@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\UserChapterSuggestion;
 use App\Services\AIContentGenerator;
 use App\Services\ChatService;
+use App\Services\ChapterContentAnalysisService;
 use App\Services\FacultyStructureService;
 use App\Services\ProgressiveGuidanceService;
 use App\Services\SmartSuggestionService;
@@ -148,7 +149,7 @@ class ManualEditorController extends Controller
 
         $chapter->update([
             'content' => $validated['content'],
-            'word_count' => str_word_count(strip_tags($validated['content'])),
+            'word_count' => app(ChapterContentAnalysisService::class)->getWordCount($validated['content']),
         ]);
 
         return response()->json([

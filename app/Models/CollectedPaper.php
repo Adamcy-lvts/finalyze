@@ -22,6 +22,7 @@ class CollectedPaper extends Model
         'quality_score',
         'source_api',
         'paper_id',
+        'citation_id',
         'is_open_access',
         'collected_at',
     ];
@@ -42,6 +43,11 @@ class CollectedPaper extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function citation(): BelongsTo
+    {
+        return $this->belongsTo(Citation::class);
     }
 
     /**

@@ -7,10 +7,13 @@ use App\Jobs\CollectPapersForProject;
 use App\Models\Chapter;
 use App\Models\ChatConversation;
 use App\Models\ChatFileUpload;
+use App\Models\DocumentCitation;
 use App\Models\Project;
 use App\Services\AI\SystemPromptService;
 use App\Services\AIContentGenerator;
 use App\Services\ChapterReviewService;
+use App\Services\ChapterContentAnalysisService;
+use App\Services\CitationWhitelistService;
 use App\Services\DocumentAnalysisService;
 use App\Services\FacultyStructureService;
 use App\Services\PaperCollectionService;
@@ -362,7 +365,7 @@ class ChapterController extends Controller
                     ]);
 
                     $fullContent = $this->generateStreamingContentSimplified($project, $prompt, $chapterType, $targetWordCount, $maxWordCount);
-                    $wordCount = str_word_count($fullContent);
+                    $wordCount = $this->computeWordCount($fullContent);
                 } else {
                     // Use regular streaming generation for other types
                     $chunkCount = 0;
@@ -385,7 +388,7 @@ class ChapterController extends Controller
                             $fullContent .= $chunk;
                         }
 
-                        $wordCount = str_word_count($fullContent);
+                        $wordCount = $this->computeWordCount($fullContent);
 
                         // PERIODIC AUTO-SAVE: Save every 500 words or 30 seconds
                         $currentTime = time();
@@ -476,6 +479,16 @@ class ChapterController extends Controller
                     'generation_last_saved_words' => 0,
                 ]);
 
+                Log::info('Generation output preview', [
+                    'chapter_id' => $chapter->id,
+                    'chapter_number' => $chapterNumber,
+                    'generation_type' => $request->input('generation_type'),
+                    'starts_with_html' => str_starts_with(trim($fullContent), '<'),
+                    'preview' => substr($fullContent, 0, 200),
+                ]);
+
+                $this->validateGeneratedCitations($chapter);
+
                 // Update section progress if this was section generation
                 if ($isSecondGeneration) {
                     $this->outlineService->updateSectionProgress($project, $chapterNumber, $fullContent);
@@ -531,11 +544,11 @@ class ChapterController extends Controller
             } catch (\Exception $e) {
                 // RESILIENCE: Try to save any partial content that was generated
                 $savedWords = 0;
-                $hasPartialContent = isset($fullContent) && ! empty($fullContent) && str_word_count($fullContent) > 100;
+                $hasPartialContent = isset($fullContent) && ! empty($fullContent) && $this->computeWordCount($fullContent) > 100;
 
                 if ($hasPartialContent && isset($shouldTrackGeneration) && $shouldTrackGeneration) {
                     try {
-                        $savedWords = str_word_count($fullContent);
+                        $savedWords = $this->computeWordCount($fullContent);
                         $chapter->update([
                             'content' => $fullContent,
                             'word_count' => $savedWords,
@@ -1044,7 +1057,7 @@ class ChapterController extends Controller
         ], [
             'title' => $validated['title'],
             'content' => $validated['content'],
-            'word_count' => str_word_count(strip_tags($validated['content'])),
+            'word_count' => $this->computeWordCount($validated['content']),
             'target_word_count' => $this->getChapterWordCount($project, $validated['chapter_number']),
             'status' => $validated['auto_save'] ? 'draft' : 'in_review',
             'updated_at' => now(),
@@ -1129,10 +1142,12 @@ class ChapterController extends Controller
         ], [
             'title' => $this->getDefaultChapterTitle($chapterNumber),
             'content' => $aiContent,
-            'word_count' => str_word_count(strip_tags($aiContent)),
+            'word_count' => $this->computeWordCount($aiContent),
             'target_word_count' => $this->getChapterWordCount($project, $chapterNumber),
             'status' => 'draft',
         ]);
+
+        $this->validateGeneratedCitations($chapter);
 
         return $chapter;
     }
@@ -1166,10 +1181,12 @@ class ChapterController extends Controller
         ], [
             'title' => $chapterTitle ?? $this->getDefaultChapterTitle($chapterNumber),
             'content' => $aiContent,
-            'word_count' => str_word_count(strip_tags($aiContent)),
+            'word_count' => $this->computeWordCount($aiContent),
             'target_word_count' => $targetWordCount ?? $this->getChapterWordCount($project, $chapterNumber),
             'status' => 'draft',
         ]);
+
+        $this->validateGeneratedCitations($chapter);
 
         return $chapter;
     }
@@ -1248,6 +1265,7 @@ Project Details:
      */
     private function buildProgressiveChapterPrompt(Project $project, int $chapterNumber, $previousChapters, $collectedPapers = null): string
     {
+        $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
         $basePrompt = $this->buildChapterPrompt($project, $chapterNumber);
 
         // Add previous chapters context
@@ -1263,6 +1281,8 @@ Project Details:
 
         // Add collected papers for citations
         if ($collectedPapers && $collectedPapers->count() > 0) {
+            app(CitationWhitelistService::class)->prepareWhitelistForChapter($chapter, $collectedPapers->take(10));
+
             $citationContext = "\n\nREFERENCE SOURCES FOR CITATIONS:\n";
             $citationContext .= "Use ONLY the following verified research papers for citations in this chapter:\n\n";
 
@@ -1762,6 +1782,8 @@ ORIGINAL PROMPT CONTEXT:
 
     public function buildProgressivePrompt($project, $chapterNumber)
     {
+        $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
+
         // Get previous chapters for context
         $previousChapters = Chapter::where('project_id', $project->id)
             ->where('chapter_number', '<', $chapterNumber)
@@ -1774,7 +1796,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Academic Level: {$project->type}\n\n";
 
         // Add collected papers for citation constraint
-        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber, null, $chapter);
 
         if ($previousChapters->isNotEmpty()) {
             $prompt .= "Previous Chapters Context:\n";
@@ -1805,6 +1827,8 @@ ORIGINAL PROMPT CONTEXT:
 
     private function buildSinglePrompt($project, $chapterNumber)
     {
+        $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
+
         $prompt = "You are writing Chapter {$chapterNumber} of an academic thesis.\n\n";
         $prompt .= "Project Topic: {$project->topic}\n";
         $prompt .= "Field of Study: {$project->field_of_study}\n";
@@ -1813,7 +1837,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "Course: {$project->course}\n\n";
 
         // Add collected papers for citation constraint
-        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber, null, $chapter);
 
         $prompt .= $this->getChapterSpecificInstructions($chapterNumber);
 
@@ -3370,10 +3394,88 @@ ORIGINAL PROMPT CONTEXT:
         Log::info("Paper collection completed successfully for project: {$project->title}. Found {$project->paper_collection_count} papers.");
     }
 
+    private function ensureChapterForPrompt(Project $project, int $chapterNumber): Chapter
+    {
+        return Chapter::firstOrCreate(
+            [
+                'project_id' => $project->id,
+                'chapter_number' => $chapterNumber,
+            ],
+            [
+                'title' => $this->getDefaultChapterTitle($chapterNumber),
+                'content' => null,
+                'word_count' => 0,
+                'target_word_count' => $this->getChapterWordCount($project, $chapterNumber),
+                'status' => 'draft',
+            ]
+        );
+    }
+
+    private function validateGeneratedCitations(Chapter $chapter): void
+    {
+        try {
+            DocumentCitation::where('chapter_id', $chapter->id)
+                ->where('source', 'ai_generated')
+                ->delete();
+
+            app(CitationWhitelistService::class)->validateChapterCitations(
+                $chapter,
+                $chapter->content ?? ''
+            );
+            $this->appendReferencesIfMissing($chapter);
+        } catch (\Exception $e) {
+            Log::error('Citation validation failed', [
+                'chapter_id' => $chapter->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function computeWordCount(string $content): int
+    {
+        return app(ChapterContentAnalysisService::class)->getWordCount($content);
+    }
+
+    private function appendReferencesIfMissing(Chapter $chapter): void
+    {
+        $content = (string) ($chapter->content ?? '');
+        if ($content === '') {
+            return;
+        }
+
+        if ($this->chapterHasReferencesSection($content)) {
+            return;
+        }
+
+        $referencesHtml = app(\App\Services\ChapterReferenceService::class)
+            ->formatChapterReferencesFromDatabase($chapter);
+
+        if ($referencesHtml === '') {
+            return;
+        }
+
+        $chapter->update([
+            'content' => $content."\n\n".$referencesHtml,
+        ]);
+    }
+
+    private function chapterHasReferencesSection(string $html): bool
+    {
+        if (preg_match('/<div[^>]*class="references-section"[^>]*>/i', $html)) {
+            return true;
+        }
+
+        if (preg_match('/<h[12][^>]*>\\s*REFERENCES?\\s*<\\/h[12]>/i', $html)) {
+            return true;
+        }
+
+        return preg_match('/<p[^>]*>\\s*(?:<strong[^>]*>|<b[^>]*>)?\\s*REFERENCES?\\s*(?:<\\/strong>|<\\/b>)?\\s*<\\/p>/i', $html) === 1;
+    }
+
     /**
      * Get collected papers formatted for AI consumption
      */
-    private function getCollectedPapersForAI(Project $project, ?int $chapterNumber = null, ?string $sectionType = null): string
+    private function getCollectedPapersForAI(Project $project, ?int $chapterNumber = null, ?string $sectionType = null, ?Chapter $chapter = null): string
     {
         $papers = $project->collectedPapers()
             ->recent()
@@ -3430,15 +3532,19 @@ ORIGINAL PROMPT CONTEXT:
             $quality = (float) ($paper->quality_score ?? 0.0);
             $score = ($overlapScore * 0.7) + ($quality * 0.3);
 
-            $paper->_prompt_relevance_score = $score;
-            $paper->_prompt_overlap_score = $overlapScore;
-            $paper->_prompt_overlap_count = $overlap;
-
-            return $paper;
+            return [
+                'paper' => $paper,
+                'score' => $score,
+            ];
         })
-            ->sortByDesc(fn ($paper) => (float) ($paper->_prompt_relevance_score ?? 0.0))
+            ->sortByDesc('score')
             ->take($maxPapers)
-            ->values();
+            ->values()
+            ->map(fn ($item) => $item['paper']);
+
+        if ($chapter) {
+            app(CitationWhitelistService::class)->prepareWhitelistForChapter($chapter, $ranked);
+        }
 
         $papersText = "\n## VERIFIED SOURCES (CITATION WHITELIST):\n";
         $papersText .= "Citations are allowed ONLY from the list below (selected for relevance to this chapter/section).\n";
@@ -3569,6 +3675,7 @@ ORIGINAL PROMPT CONTEXT:
         string $currentContent,
         int $targetWords = 500
     ): string {
+        $chapter = $this->ensureChapterForPrompt($project, $chapterNumber);
         $currentWordCount = str_word_count(strip_tags($currentContent));
         $chapterTitle = $this->getDefaultChapterTitle($chapterNumber);
 
@@ -3601,7 +3708,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= "- Do not add chapter titles, headings, or structural elements unless contextually appropriate\n\n";
 
         // Add collected papers for citation constraint
-        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber, null, $chapter);
 
         $prompt .= "CRITICAL REQUIREMENTS:\n";
         $prompt .= "- Never use the & symbol - always write 'and'\n";
@@ -3639,6 +3746,7 @@ ORIGINAL PROMPT CONTEXT:
         $existingChapter = Chapter::where('project_id', $project->id)
             ->where('chapter_number', $chapterNumber)
             ->first();
+        $chapter = $existingChapter ?: $this->ensureChapterForPrompt($project, $chapterNumber);
 
         if ($existingChapter && $existingChapter->content) {
             $prompt .= "EXISTING CHAPTER CONTENT (for context and flow):\n";
@@ -3650,7 +3758,7 @@ ORIGINAL PROMPT CONTEXT:
         $prompt .= $this->getChapterSectionInstructions($chapterNumber, $sectionType);
 
         // Add collected papers for citation constraint - CRITICAL FOR ACCURACY
-        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber, $sectionType);
+        $prompt .= $this->getCollectedPapersForAI($project, $chapterNumber, $sectionType, $chapter);
 
         $prompt .= "WRITING REQUIREMENTS:\n";
         $prompt .= "- Write this as section {$sectionNumber} {$sectionTitle}\n";
@@ -5010,7 +5118,7 @@ ORIGINAL PROMPT CONTEXT:
         foreach ($this->aiGenerator->generateOptimizedMessages($messages, $chapterType) as $chunk) {
             $chunkCount++;
             $fullContent .= $chunk;
-            $wordCount = str_word_count($fullContent);
+            $wordCount = $this->computeWordCount($fullContent);
 
             // Stop if we've reached target word count (allow completion)
             if ($wordCount >= $targetWordCount) { // Changed from 90% to 100% to ensure chapters are complete
@@ -5067,7 +5175,7 @@ ORIGINAL PROMPT CONTEXT:
             }
         }
 
-        $finalWordCount = str_word_count($fullContent);
+        $finalWordCount = $this->computeWordCount($fullContent);
 
         Log::info('PROGRESSIVE STREAM - Generation completed', [
             'final_word_count' => $finalWordCount,

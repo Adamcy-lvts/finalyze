@@ -15,11 +15,15 @@ class Chapter extends Model
         'project_id', 'chapter_number', 'title', 'slug', 'content',
         'status', 'word_count', 'target_word_count', 'order',
         'outline', 'summary', 'version',
+        'injected_paper_ids', 'citation_whitelist', 'citations_validated_at', 'citation_violations_count',
     ];
 
     protected $casts = [
         'outline' => 'array',
         'status' => ChapterStatus::class,
+        'injected_paper_ids' => 'array',
+        'citation_whitelist' => 'array',
+        'citations_validated_at' => 'datetime',
     ];
 
     public function project()
@@ -63,7 +67,7 @@ class Chapter extends Model
 
     public function updateWordCount()
     {
-        $this->word_count = str_word_count(strip_tags($this->content));
+        $this->word_count = app(\App\Services\ChapterContentAnalysisService::class)->getWordCount($this->content ?? '');
         $this->save();
     }
 
