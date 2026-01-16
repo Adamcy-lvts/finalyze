@@ -3,6 +3,7 @@ import AppContent from '@/components/AppContent.vue';
 import AppShell from '@/components/AppShell.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
+import MobileBottomNav from '@/components/MobileBottomNav.vue';
 import { Toaster } from '@/components/ui/sonner';
 import OfflineIndicator from '@/components/OfflineIndicator.vue';
 import PWAUpdatePrompt from '@/components/PWAUpdatePrompt.vue';
@@ -36,4 +37,5 @@ withDefaults(defineProps<Props>(), {
     <!-- PWA Prompts -->
     <PWAUpdatePrompt />
     <PWAInstallPrompt />
+    <MobileBottomNav />
 </template>

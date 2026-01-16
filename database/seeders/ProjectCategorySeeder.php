@@ -88,7 +88,7 @@ class ProjectCategorySeeder extends Seeder
             [
                 'name' => 'Seminar',
                 'slug' => 'seminar',
-                'academic_levels' => ['undergraduate'],
+                'academic_levels' => [],
                 'description' => 'A literature-based research paper that synthesizes existing knowledge on a specific topic without original empirical research.',
                 'default_chapter_count' => 3,
                 'chapter_structure' => [
@@ -134,7 +134,7 @@ class ProjectCategorySeeder extends Seeder
             [
                 'name' => 'Research Proposal',
                 'slug' => 'research-proposal',
-                'academic_levels' => ['undergraduate', 'postgraduate'],
+                'academic_levels' => [],
                 'description' => 'A detailed plan for a proposed research project, outlining the research problem, methodology, and expected outcomes.',
                 'default_chapter_count' => 3,
                 'chapter_structure' => [

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { useForm } from 'vee-validate';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -13,7 +14,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/vue3';
 import { toTypedSchema } from '@vee-validate/zod';
-import { BookOpen, Check, ChevronsUpDown, FileText, GraduationCap, School } from 'lucide-vue-next';
+import { BookOpen, Check, ChevronsUpDown, FileText, GraduationCap, Lightbulb, School } from 'lucide-vue-next';
 import { computed, defineComponent, nextTick, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -738,11 +739,22 @@ const FormWatcher = defineComponent({
         },
     },
     setup(props) {
+        const { setFieldValue } = useForm();
+
         watch(
             () => props.values,
             (values) => {
                 currentFormValues.value = values as Record<string, any>;
                 autoSaveFormValues(values as Record<string, any>);
+                
+                // Auto-selection logic: if only one category is available for the selected type, select it
+                if (values.projectType) {
+                    const categories = getAvailableCategories(values.projectType);
+                    if (categories.length === 1 && values.projectCategoryId !== categories[0].id) {
+                        console.log('✨ Auto-selecting single available category:', categories[0].name);
+                        setFieldValue('projectCategoryId', categories[0].id);
+                    }
+                }
             },
             { deep: true, immediate: true },
         );
@@ -829,10 +841,12 @@ function onSubmit(values: any) {
                         Create Your Project</h1>
                     <p class="text-muted-foreground mt-2 text-lg">Set up your final year project in just a few steps</p>
                     <div v-if="currentStep > 1"
-                        class="mt-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4 text-sm text-blue-600 backdrop-blur-sm flex items-start gap-3 shadow-sm">
-                        <span class="text-lg">💡</span>
-                        <div>
-                            <strong>Tip:</strong> You can click on any previous step to go back and make changes. Your
+                        class="mt-4 animate-in fade-in slide-in-from-top-2 duration-500 rounded-xl border border-blue-200/30 bg-blue-500/5 p-4 text-sm backdrop-blur-md flex items-start gap-3 shadow-sm group hover:border-blue-200/50 transition-colors">
+                        <div class="rounded-full bg-blue-500/10 p-1.5 transition-transform group-hover:scale-110 duration-300">
+                            <Lightbulb class="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div class="text-blue-700/90 leading-relaxed font-medium">
+                            <span class="font-bold text-blue-800 mr-1">Pro Tip:</span> You can click on any previous step to go back and make changes. Your
                             progress is automatically saved!
                         </div>
                     </div>

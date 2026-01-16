@@ -8,46 +8,7 @@ import { Link } from '@inertiajs/vue3';
 import { BookOpen, Coins, Folder, FolderOpen, Home, Plus, Library } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/dashboard',
-        icon: Home,
-    },
-    {
-        title: 'My Projects',
-        href: '/projects',
-        icon: FolderOpen,
-    },
-    {
-        title: 'Topic Library',
-        href: '/projects/topics',
-        icon: Library,
-    },
-    {
-        title: 'New Project',
-        href: '/projects/create',
-        icon: Plus,
-    },
-    {
-        title: 'Buy Credits',
-        href: '/pricing',
-        icon: Coins,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    // {
-    //     title: 'Github Repo',
-    //     href: 'https://github.com/Adamcy-lvts/finalyze',
-    //     icon: Folder,
-    // },
-    {
-        title: 'Documentation',
-        href: '#',
-        icon: BookOpen,
-    },
-];
+import { footerNavItems, mainNavItems } from '@/config/nav';
 </script>
 
 <template>

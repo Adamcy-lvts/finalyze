@@ -25,7 +25,7 @@ import 'driver.js/dist/driver.css';
 // SafeHtmlText DISABLED - causes dark mode issues
 // import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Brain, CheckCircle, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle, RefreshCw, XCircle } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Brain, CheckCircle, ChevronLeft, ChevronRight, Eye, Maximize2, Menu, MessageSquare, PenTool, Save, Target, BookCheck, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Minimize2, Moon, Sun, Edit2, Search, HelpCircle, RefreshCw, XCircle } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { route } from 'ziggy-js';
@@ -458,6 +458,81 @@ const memoizedProject = computed(() => props.project);
 const memoizedChapter = computed(() => props.chapter);
 const memoizedAllChapters = computed(() => props.allChapters);
 const currentChapter = computed(() => props.chapter);
+
+// Unified Chapters Logic (merged from faculty, outlines, and existing chapters)
+const unifiedChapters = computed(() => {
+    // Priority 1: Use faculty chapters
+    if (props.facultyChapters && props.facultyChapters.length > 0) {
+        return props.facultyChapters.map(facultyChapter => {
+            const existingChapter = props.allChapters.find(ch => ch.chapter_number === facultyChapter.number);
+            return {
+                chapter_number: facultyChapter.number,
+                title: facultyChapter.title,
+                exists: !!existingChapter,
+                content: existingChapter?.content || null,
+                status: existingChapter ? existingChapter.status : 'not_started',
+            };
+        });
+    }
+
+    // Priority 2: Use outlines
+    if (props.project.outlines && props.project.outlines.length > 0) {
+        return props.project.outlines.map(outline => {
+            const existingChapter = props.allChapters.find(ch => ch.chapter_number === outline.chapter_number);
+            return {
+                chapter_number: outline.chapter_number,
+                title: outline.chapter_title,
+                exists: !!existingChapter,
+                content: existingChapter?.content || null,
+                status: existingChapter ? existingChapter.status : 'not_started',
+            };
+        });
+    }
+
+    // Priority 3: Fallback
+    return props.allChapters.map(ch => ({
+        chapter_number: ch.chapter_number,
+        title: ch.title,
+        exists: true,
+        content: ch.content,
+        status: ch.status,
+    }));
+});
+
+// Next Chapter Logic
+const nextChapterInStructure = computed(() => {
+    const currentNum = props.chapter.chapter_number;
+    return unifiedChapters.value.find(ch => ch.chapter_number === currentNum + 1) || null;
+});
+
+const prevChapterInStructure = computed(() => {
+    const currentNum = props.chapter.chapter_number;
+    return unifiedChapters.value.find(ch => ch.chapter_number === currentNum - 1) || null;
+});
+
+const shouldShowStartWritingNext = computed(() => {
+    if (!nextChapterInStructure.value || isGenerating.value) return false;
+    
+    // Show if it doesn't exist yet OR if it's relatively empty
+    const isNextEmpty = !nextChapterInStructure.value.content || nextChapterInStructure.value.content.trim().length < 10;
+    return isNextEmpty;
+});
+
+const handleNextChapterAction = () => {
+    if (!nextChapterInStructure.value) return;
+
+    if (nextChapterInStructure.value.exists) {
+        goToChapter(nextChapterInStructure.value.chapter_number);
+    } else {
+        generateNextChapter();
+    }
+};
+
+const handlePrevChapterAction = () => {
+    if (prevChapterInStructure.value && prevChapterInStructure.value.exists) {
+        goToChapter(prevChapterInStructure.value.chapter_number);
+    }
+};
 
 // Auto-save functionality
 async function saveChapter(autoSave = false) {
@@ -1653,6 +1728,16 @@ watch(globalIsDark, () => {
                                     </div>
 
                                     <div class="flex items-center gap-2">
+                                        <Tooltip v-if="shouldShowStartWritingNext">
+                                            <TooltipTrigger asChild>
+                                                <Button @click="handleNextChapterAction" size="icon" variant="ghost"
+                                                    class="h-9 w-9 rounded-full hover:bg-muted/50 transition-all active:scale-90">
+                                                    <ArrowRight class="h-4.5 w-4.5 text-foreground/70" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Start writing next chapter</TooltipContent>
+                                        </Tooltip>
+
                                         <Button @click="save(false)" :disabled="isSaving"
                                             :variant="isValid ? 'default' : 'secondary'" size="sm"
                                             class="h-8 px-3 text-xs shadow-sm gap-2 rounded-full min-w-[32px]">
@@ -1813,6 +1898,16 @@ watch(globalIsDark, () => {
                                     </div>
 
                                     <div class="flex items-center gap-2 pl-2 border-l border-border/50">
+                                        <Tooltip v-if="shouldShowStartWritingNext">
+                                            <TooltipTrigger asChild>
+                                                <Button @click="handleNextChapterAction" size="icon" variant="ghost"
+                                                    class="h-9 w-9 rounded-full hover:bg-muted/50 transition-all active:scale-90">
+                                                    <ArrowRight class="h-5 w-5 text-foreground/70" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Start writing next chapter</TooltipContent>
+                                        </Tooltip>
+
                                         <Button id="save-button" @click="save(false)" :disabled="isSaving"
                                             :variant="isValid ? 'default' : 'secondary'" size="sm"
                                             class="h-9 px-4 text-xs shadow-sm gap-2 rounded-full min-w-[32px]">
@@ -1963,17 +2058,33 @@ watch(globalIsDark, () => {
 
                         <!-- Footer Info -->
                         <div id="editor-footer"
-                            class="h-7 border-t border-border/30 bg-background/40 backdrop-blur-sm flex items-center justify-between px-4 text-[10px] text-muted-foreground shrink-0">
+                            class="h-10 border-t border-border/30 bg-background/40 backdrop-blur-sm flex items-center justify-between px-4 text-[10px] text-muted-foreground shrink-0 relative">
                             <div class="flex items-center gap-3">
                                 <span>Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
-                                <span class="hidden sm:inline">Last saved: {{ isSaving ? 'Saving...' : `Just
-                                    now`
-                                }}</span>
+                                <span class="hidden sm:inline">Last saved: {{ isSaving ? 'Saving...' : `Just now` }}</span>
                             </div>
+
+                            <!-- Centered Chapter Navigation -->
+                            <div class="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/50 rounded-full border border-border/40 p-0.5 shadow-sm">
+                                <Button :disabled="!prevChapterInStructure?.exists"
+                                    @click="handlePrevChapterAction"
+                                    variant="ghost" size="icon" class="h-8 w-8 rounded-full hover:bg-muted/50 disabled:opacity-30">
+                                    <ChevronLeft class="h-4 w-4" />
+                                </Button>
+                                
+                                <div class="px-3 font-bold text-[10px] min-w-[70px] text-center border-l border-r border-border/40">
+                                    Chapter {{ props.chapter.chapter_number }}
+                                </div>
+
+                                <Button :disabled="!nextChapterInStructure"
+                                    @click="handleNextChapterAction"
+                                    variant="ghost" size="icon" class="h-8 w-8 rounded-full hover:bg-muted/50 disabled:opacity-30">
+                                    <ChevronRight class="h-4 w-4" />
+                                </Button>
+                            </div>
+
                             <div class="flex items-center gap-2">
-                                <span>Quality: <span
-                                        :class="writingQualityScore > 70 ? 'text-green-500' : 'text-amber-500'">{{
-                                            writingQualityScore }}%</span></span>
+                                <span>Quality: <span :class="writingQualityScore > 70 ? 'text-green-500' : 'text-amber-500'">{{ writingQualityScore }}%</span></span>
                                 <span v-if="isValid" class="text-green-500 flex items-center gap-1 ml-2">
                                     <CheckCircle class="h-3 w-3" /> Ready
                                 </span>
