@@ -13,10 +13,10 @@ const page = usePage();
                 <Link 
                     v-if="item.title === 'New Project'"
                     :href="item.href"
-                    class="group relative flex flex-col items-center justify-center gap-1 rounded-xl bg-zinc-900 px-5 py-2 text-white shadow-lg transition-all active:scale-95 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 min-w-[70px]"
+                    class="group relative flex flex-col items-center justify-center gap-0.5 rounded-xl bg-zinc-900 px-4 py-1.5 text-white shadow-lg transition-all active:scale-95 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 min-w-[75px] -mt-1"
                 >
                     <component :is="item.icon" class="h-5 w-5 stroke-[2.5px]" />
-                    <span class="font-semibold text-[10px]">{{ item.title }}</span>
+                    <span class="font-bold text-[9px] leading-tight text-center">{{ item.title }}</span>
                     <!-- Subtle glow effect -->
                     <div class="absolute inset-0 -z-10 bg-white/5 opacity-0 blur-lg transition-opacity group-hover:opacity-100" />
                 </Link>

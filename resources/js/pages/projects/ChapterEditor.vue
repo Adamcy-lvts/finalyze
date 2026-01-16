@@ -2059,9 +2059,9 @@ watch(globalIsDark, () => {
                         <!-- Footer Info -->
                         <div id="editor-footer"
                             class="h-10 border-t border-border/30 bg-background/40 backdrop-blur-sm flex items-center justify-between px-4 text-[10px] text-muted-foreground shrink-0 relative">
-                            <div class="flex items-center gap-3">
+                            <div class="hidden sm:flex items-center gap-3">
                                 <span>Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
-                                <span class="hidden sm:inline">Last saved: {{ isSaving ? 'Saving...' : `Just now` }}</span>
+                                <span class="hidden md:inline">Last saved: {{ isSaving ? 'Saving...' : `Just now` }}</span>
                             </div>
 
                             <!-- Centered Chapter Navigation -->
@@ -2069,21 +2069,21 @@ watch(globalIsDark, () => {
                                 <Button :disabled="!prevChapterInStructure?.exists"
                                     @click="handlePrevChapterAction"
                                     variant="ghost" size="icon" class="h-8 w-8 rounded-full hover:bg-muted/50 disabled:opacity-30">
-                                    <ChevronLeft class="h-4 w-4" />
+                                    <ChevronLeft class="h-4 w-4 text-foreground/60" />
                                 </Button>
                                 
-                                <div class="px-3 font-bold text-[10px] min-w-[70px] text-center border-l border-r border-border/40">
+                                <div class="px-3 font-bold text-[11px] min-w-[80px] text-center border-l border-r border-border/40 text-foreground/80">
                                     Chapter {{ props.chapter.chapter_number }}
                                 </div>
 
                                 <Button :disabled="!nextChapterInStructure"
                                     @click="handleNextChapterAction"
                                     variant="ghost" size="icon" class="h-8 w-8 rounded-full hover:bg-muted/50 disabled:opacity-30">
-                                    <ChevronRight class="h-4 w-4" />
+                                    <ChevronRight class="h-4 w-4 text-foreground/60" />
                                 </Button>
                             </div>
 
-                            <div class="flex items-center gap-2">
+                            <div class="hidden sm:flex items-center gap-2">
                                 <span>Quality: <span :class="writingQualityScore > 70 ? 'text-green-500' : 'text-amber-500'">{{ writingQualityScore }}%</span></span>
                                 <span v-if="isValid" class="text-green-500 flex items-center gap-1 ml-2">
                                     <CheckCircle class="h-3 w-3" /> Ready
