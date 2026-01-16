@@ -7,13 +7,13 @@ const page = usePage();
 
 <template>
     <nav class="fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-background/80 backdrop-blur-xl md:hidden pb-safe">
-        <div class="flex h-16 items-center justify-around px-2">
+        <div class="grid grid-cols-5 h-16 items-center px-1">
             <template v-for="item in bottomNavItems" :key="item.title">
                 <!-- Special styling for 'New Project' (Create) button -->
                 <Link 
                     v-if="item.title === 'New Project'"
                     :href="item.href"
-                    class="group relative flex flex-col items-center justify-center gap-0.5 rounded-xl bg-zinc-900 px-4 py-1.5 text-white shadow-lg transition-all active:scale-95 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 min-w-[75px] -mt-1"
+                    class="group relative flex flex-col items-center justify-center gap-0.5 rounded-xl bg-zinc-900 px-2 py-1.5 text-white shadow-lg transition-all active:scale-95 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 w-[75px] -mt-1 justify-self-center"
                 >
                     <component :is="item.icon" class="h-5 w-5 stroke-[2.5px]" />
                     <span class="font-bold text-[9px] leading-tight text-center">{{ item.title }}</span>
@@ -25,7 +25,7 @@ const page = usePage();
                 <Link 
                     v-else
                     :href="item.href"
-                    class="group relative flex flex-col items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-all active:scale-95 min-w-[60px]"
+                    class="group relative flex flex-col items-center justify-center gap-1.5 rounded-lg py-2 text-xs transition-all active:scale-95 w-full justify-self-center"
                     :class="[
                         item.href === page.url || (item.href !== '/dashboard' && page.url.startsWith(item.href))
                             ? 'text-primary' 
@@ -46,7 +46,7 @@ const page = usePage();
                             class="absolute -top-1 -right-1 h-1 w-1 rounded-full bg-primary animate-in fade-in zoom-in duration-500"
                         />
                     </div>
-                    <span class="font-medium text-[10px] transition-colors duration-300">{{ item.title }}</span>
+                    <span class="font-medium text-[10px] transition-colors duration-300 text-center leading-none">{{ item.title }}</span>
                 </Link>
             </template>
         </div>
