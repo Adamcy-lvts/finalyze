@@ -41,6 +41,7 @@ import ChapterEditorPaperCard from '@/components/chapter-editor/ChapterEditorPap
 import ChapterEditorRightSidebar from '@/components/chapter-editor/ChapterEditorRightSidebar.vue';
 import type { ChapterEditorPaperCardContext } from '@/types/chapter-editor-layout';
 import type { ChapterEditorProps } from '@/types/chapter-editor';
+import FeedbackPromptModal from '@/components/FeedbackPromptModal.vue';
 
 // Import extracted components with lazy loading for performance
 import RichTextEditor from '@/components/ui/rich-text-editor/RichTextEditor.vue';
@@ -75,9 +76,174 @@ const richTextEditor = ref<{ editor?: any } | null>(null);
 const richTextEditorFullscreen = ref<{ editor?: any } | null>(null);
 const showRegenerateDialog = ref(false);
 
+const showFeedbackPrompt = ref(false);
+const feedbackRequestId = ref<number | null>(null);
+const feedbackRating = ref<number | null>(null);
+const feedbackComment = ref('');
+const feedbackCommentError = ref('');
+const feedbackSubmitting = ref(false);
+const feedbackDismissing = ref(false);
+const feedbackSource = 'chapter_editor';
+
+const isFeedbackBusy = computed(() => feedbackSubmitting.value || feedbackDismissing.value);
+const feedbackCanSubmit = computed(() => {
+    if (feedbackRating.value === null) return false;
+    if (feedbackRating.value < 3) {
+        return feedbackComment.value.trim().length > 0;
+    }
+    return true;
+});
+
+const feedbackContext = computed(() => ({
+    page: 'chapter_editor',
+    project_id: props.project?.id,
+    chapter_id: props.chapter?.id,
+    path: typeof window !== 'undefined' ? window.location.pathname : null,
+}));
+
 // Navigation guard during generation
 const showNavigationGuardDialog = ref(false);
 const pendingNavigation = ref<{ url: string; event: any } | null>(null);
+
+const getCsrfToken = () =>
+    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+const resetFeedbackState = () => {
+    showFeedbackPrompt.value = false;
+    feedbackRequestId.value = null;
+    feedbackRating.value = null;
+    feedbackComment.value = '';
+    feedbackCommentError.value = '';
+};
+
+const fetchFeedbackEligibility = async () => {
+    if (!page.props.auth?.user || !props.project?.id) return;
+
+    try {
+        const response = await fetch(
+            route('api.feedback.eligibility', {
+                project_id: props.project.id,
+                source: feedbackSource,
+            }),
+        );
+
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.eligible) return;
+
+        if (data.existing_request_id) {
+            feedbackRequestId.value = data.existing_request_id;
+            showFeedbackPrompt.value = true;
+            return;
+        }
+
+        const createResponse = await fetch(route('api.feedback.requests.store'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+            },
+            body: JSON.stringify({
+                project_id: props.project.id,
+                source: feedbackSource,
+                context: feedbackContext.value,
+            }),
+        });
+
+        if (!createResponse.ok) return;
+        const created = await createResponse.json();
+        feedbackRequestId.value = created.id;
+        showFeedbackPrompt.value = true;
+    } catch (error) {
+        console.error('Failed to check feedback eligibility:', error);
+    }
+};
+
+const submitFeedback = async () => {
+    if (!feedbackRequestId.value || !feedbackCanSubmit.value) {
+        feedbackCommentError.value = feedbackRating.value && feedbackRating.value < 3
+            ? 'Please add a short comment.'
+            : '';
+        return;
+    }
+
+    feedbackSubmitting.value = true;
+    feedbackCommentError.value = '';
+
+    try {
+        const response = await fetch(
+            route('api.feedback.requests.submit', { feedbackRequest: feedbackRequestId.value }),
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    rating: feedbackRating.value,
+                    comment: feedbackComment.value.trim() || null,
+                }),
+            },
+        );
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            feedbackCommentError.value = data?.errors?.comment?.[0] ?? '';
+            return;
+        }
+
+        resetFeedbackState();
+        toast.success('Thanks for the feedback!');
+    } catch (error) {
+        console.error('Failed to submit feedback:', error);
+    } finally {
+        feedbackSubmitting.value = false;
+    }
+};
+
+const dismissFeedback = async () => {
+    if (!feedbackRequestId.value) {
+        resetFeedbackState();
+        return;
+    }
+
+    feedbackDismissing.value = true;
+
+    try {
+        await fetch(route('api.feedback.requests.dismiss', { feedbackRequest: feedbackRequestId.value }), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+            },
+        });
+    } catch (error) {
+        console.error('Failed to dismiss feedback prompt:', error);
+    } finally {
+        feedbackDismissing.value = false;
+        resetFeedbackState();
+    }
+};
+
+const handleFeedbackOpenChange = (open: boolean) => {
+    if (open) {
+        showFeedbackPrompt.value = true;
+        return;
+    }
+
+    if (feedbackSubmitting.value || feedbackDismissing.value) {
+        showFeedbackPrompt.value = open;
+        return;
+    }
+
+    dismissFeedback();
+};
+
+watch([feedbackRating, feedbackComment], () => {
+    if (feedbackCommentError.value) {
+        feedbackCommentError.value = '';
+    }
+});
 const isUserConfirmedLeave = ref(false); // Flag to bypass interceptor after user confirms
 
 const isThemeSandbox = ref(false);
@@ -800,6 +966,8 @@ onMounted(() => {
     // Initialize custom theme
     initChapterTheme();
 
+    fetchFeedbackEligibility();
+
     // Navigation guard: intercept Inertia navigation during generation
     router.on('before', (event) => {
         // Skip if user already confirmed they want to leave
@@ -1143,6 +1311,19 @@ watch(globalIsDark, () => {
 </script>
 <template>
     <TooltipProvider>
+        <FeedbackPromptModal
+            :open="showFeedbackPrompt"
+            :rating="feedbackRating"
+            :comment="feedbackComment"
+            :is-submitting="isFeedbackBusy"
+            :comment-error="feedbackCommentError"
+            :can-submit="feedbackCanSubmit"
+            @update:open="handleFeedbackOpenChange"
+            @update:rating="feedbackRating = $event"
+            @update:comment="feedbackComment = $event"
+            @submit="submitFeedback"
+            @dismiss="dismissFeedback"
+        />
         <template v-if="isThemeSandbox">
             <div v-if="isThemeSandboxNoLayout" class="min-h-screen bg-background text-foreground">
                 <div class="mx-auto max-w-5xl p-6">

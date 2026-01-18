@@ -30,6 +30,7 @@ import { useManualEditorSuggestions } from '@/composables/useManualEditorSuggest
 import { useTextHistory } from '@/composables/useTextHistory'
 import PurchaseModal from '@/components/PurchaseModal.vue'
 import { recordWordUsage, useWordBalance } from '@/composables/useWordBalance'
+import FeedbackPromptModal from '@/components/FeedbackPromptModal.vue'
 // ChatModeLayout DISABLED - causes dark mode issues
 // import ChatModeLayout from '@/components/chapter-editor/ChatModeLayout.vue'
 import { useAppearance } from '@/composables/useAppearance'
@@ -58,6 +59,171 @@ const props = defineProps<{
 
 // Get page instance for flash messages
 const page = usePage()
+
+const showFeedbackPrompt = ref(false)
+const feedbackRequestId = ref<number | null>(null)
+const feedbackRating = ref<number | null>(null)
+const feedbackComment = ref('')
+const feedbackCommentError = ref('')
+const feedbackSubmitting = ref(false)
+const feedbackDismissing = ref(false)
+const feedbackSource = 'manual_editor'
+
+const isFeedbackBusy = computed(() => feedbackSubmitting.value || feedbackDismissing.value)
+const feedbackCanSubmit = computed(() => {
+  if (feedbackRating.value === null) return false
+  if (feedbackRating.value < 3) {
+    return feedbackComment.value.trim().length > 0
+  }
+  return true
+})
+
+const feedbackContext = computed(() => ({
+  page: 'manual_editor',
+  project_id: props.project?.id,
+  chapter_id: props.chapter?.id,
+  path: typeof window !== 'undefined' ? window.location.pathname : null,
+}))
+
+const getCsrfToken = () =>
+  document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+
+const resetFeedbackState = () => {
+  showFeedbackPrompt.value = false
+  feedbackRequestId.value = null
+  feedbackRating.value = null
+  feedbackComment.value = ''
+  feedbackCommentError.value = ''
+}
+
+const fetchFeedbackEligibility = async () => {
+  if (!page.props.auth?.user || !props.project?.id) return
+
+  try {
+    const response = await fetch(
+      route('api.feedback.eligibility', {
+        project_id: props.project.id,
+        source: feedbackSource,
+      }),
+    )
+
+    if (!response.ok) return
+    const data = await response.json()
+    if (!data.eligible) return
+
+    if (data.existing_request_id) {
+      feedbackRequestId.value = data.existing_request_id
+      showFeedbackPrompt.value = true
+      return
+    }
+
+    const createResponse = await fetch(route('api.feedback.requests.store'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+      },
+      body: JSON.stringify({
+        project_id: props.project.id,
+        source: feedbackSource,
+        context: feedbackContext.value,
+      }),
+    })
+
+    if (!createResponse.ok) return
+    const created = await createResponse.json()
+    feedbackRequestId.value = created.id
+    showFeedbackPrompt.value = true
+  } catch (error) {
+    console.error('Failed to check feedback eligibility:', error)
+  }
+}
+
+const submitFeedback = async () => {
+  if (!feedbackRequestId.value || !feedbackCanSubmit.value) {
+    feedbackCommentError.value = feedbackRating.value && feedbackRating.value < 3
+      ? 'Please add a short comment.'
+      : ''
+    return
+  }
+
+  feedbackSubmitting.value = true
+  feedbackCommentError.value = ''
+
+  try {
+    const response = await fetch(
+      route('api.feedback.requests.submit', { feedbackRequest: feedbackRequestId.value }),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        body: JSON.stringify({
+          rating: feedbackRating.value,
+          comment: feedbackComment.value.trim() || null,
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      feedbackCommentError.value = data?.errors?.comment?.[0] ?? ''
+      return
+    }
+
+    resetFeedbackState()
+    toast.success('Thanks for the feedback!')
+  } catch (error) {
+    console.error('Failed to submit feedback:', error)
+  } finally {
+    feedbackSubmitting.value = false
+  }
+}
+
+const dismissFeedback = async () => {
+  if (!feedbackRequestId.value) {
+    resetFeedbackState()
+    return
+  }
+
+  feedbackDismissing.value = true
+
+  try {
+    await fetch(route('api.feedback.requests.dismiss', { feedbackRequest: feedbackRequestId.value }), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': getCsrfToken(),
+      },
+    })
+  } catch (error) {
+    console.error('Failed to dismiss feedback prompt:', error)
+  } finally {
+    feedbackDismissing.value = false
+    resetFeedbackState()
+  }
+}
+
+const handleFeedbackOpenChange = (open: boolean) => {
+  if (open) {
+    showFeedbackPrompt.value = true
+    return
+  }
+
+  if (feedbackSubmitting.value || feedbackDismissing.value) {
+    showFeedbackPrompt.value = open
+    return
+  }
+
+  dismissFeedback()
+}
+
+watch([feedbackRating, feedbackComment], () => {
+  if (feedbackCommentError.value) {
+    feedbackCommentError.value = ''
+  }
+})
 
 // Watch for flash messages and show toasts
 // Watch for flash messages and show toasts
@@ -499,6 +665,8 @@ onMounted(() => {
 
   window.addEventListener('resize', checkMobile)
   window.addEventListener('keydown', handleKeyboardShortcut)
+
+  fetchFeedbackEligibility()
 
   onUnmounted(() => {
     window.removeEventListener('resize', checkMobile)
@@ -947,6 +1115,20 @@ onMounted(() => {
 <template>
 
   <Head :title="`${chapter.title} - Manual Editor`" />
+
+  <FeedbackPromptModal
+    :open="showFeedbackPrompt"
+    :rating="feedbackRating"
+    :comment="feedbackComment"
+    :is-submitting="isFeedbackBusy"
+    :comment-error="feedbackCommentError"
+    :can-submit="feedbackCanSubmit"
+    @update:open="handleFeedbackOpenChange"
+    @update:rating="feedbackRating = $event"
+    @update:comment="feedbackComment = $event"
+    @submit="submitFeedback"
+    @dismiss="dismissFeedback"
+  />
 
   <!-- ChatModeLayout TEMPORARILY DISABLED - causes dark mode issues
   <Transition name="chat-glide">
