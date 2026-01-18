@@ -149,35 +149,82 @@ class DefenseDeckController extends Controller
             ->where('id', $deck)
             ->firstOrFail();
 
-        $data = $request->validate([
-            'slides' => ['required', 'array'],
-            'slides.*.title' => ['nullable', 'string'],
-            'slides.*.content_type' => ['nullable', 'string', 'in:bullets,paragraphs,mixed'],
-            'slides.*.bullets' => ['nullable', 'array'],
-            'slides.*.bullets.*' => ['nullable', 'string'],
-            'slides.*.paragraphs' => ['nullable', 'array'],
-            'slides.*.paragraphs.*' => ['nullable', 'string'],
-            'slides.*.headings' => ['nullable', 'array'],
-            'slides.*.headings.*.heading' => ['nullable', 'string'],
-            'slides.*.headings.*.content' => ['nullable', 'string'],
-            'slides.*.layout' => ['nullable', 'string'],
-            'slides.*.visuals' => ['nullable', 'string'],
-            'slides.*.speaker_notes' => ['nullable', 'string'],
-            'slides.*.image_url' => ['nullable', 'string'],
-            'slides.*.image_fit' => ['nullable', 'string'],
-            'slides.*.image_scale' => ['nullable', 'numeric'],
-            'slides.*.image_position_x' => ['nullable', 'numeric'],
-            'slides.*.image_position_y' => ['nullable', 'numeric'],
-            'slides.*.charts' => ['nullable', 'array'],
-            'slides.*.tables' => ['nullable', 'array'],
-        ]);
+        // Check if this is a WYSIWYG update (has elements in slides)
+        $isWysiwyg = $request->boolean('is_wysiwyg') ||
+            (is_array($request->input('slides')) &&
+                isset($request->input('slides')[0]['elements']));
 
-        $deck->update([
-            'slides_json' => $data['slides'],
-            'status' => in_array($deck->status, ['queued', 'extracting', 'extracted', 'generating'], true)
-                ? 'outlined'
-                : $deck->status,
-        ]);
+        if ($isWysiwyg) {
+            // WYSIWYG slide validation
+            $data = $request->validate([
+                'slides' => ['required', 'array'],
+                'slides.*.id' => ['nullable', 'string'],
+                'slides.*.title' => ['nullable', 'string'],
+                'slides.*.elements' => ['nullable', 'array'],
+                'slides.*.elements.*.id' => ['nullable', 'string'],
+                'slides.*.elements.*.type' => ['nullable', 'string', 'in:text,shape,image,chart,table'],
+                'slides.*.elements.*.x' => ['nullable', 'numeric'],
+                'slides.*.elements.*.y' => ['nullable', 'numeric'],
+                'slides.*.elements.*.width' => ['nullable', 'numeric'],
+                'slides.*.elements.*.height' => ['nullable', 'numeric'],
+                'slides.*.elements.*.rotation' => ['nullable', 'numeric'],
+                'slides.*.elements.*.zIndex' => ['nullable', 'integer'],
+                'slides.*.elements.*.opacity' => ['nullable', 'numeric'],
+                'slides.*.elements.*.fill' => ['nullable', 'string'],
+                'slides.*.elements.*.stroke' => ['nullable', 'string'],
+                'slides.*.elements.*.strokeWidth' => ['nullable', 'numeric'],
+                'slides.*.elements.*.text' => ['nullable', 'array'],
+                'slides.*.elements.*.shape' => ['nullable', 'array'],
+                'slides.*.elements.*.image' => ['nullable', 'array'],
+                'slides.*.elements.*.chart' => ['nullable', 'array'],
+                'slides.*.elements.*.table' => ['nullable', 'array'],
+                'slides.*.backgroundColor' => ['nullable', 'string'],
+                'slides.*.speaker_notes' => ['nullable', 'string'],
+                'slides.*.themeId' => ['nullable', 'string'],
+                'theme_config' => ['nullable', 'array'],
+            ]);
+
+            $deck->update([
+                'slides_json' => $data['slides'],
+                'is_wysiwyg' => true,
+                'editor_version' => '1.0.0',
+                'theme_config' => $data['theme_config'] ?? $deck->theme_config,
+                'status' => in_array($deck->status, ['queued', 'extracting', 'extracted', 'generating'], true)
+                    ? 'outlined'
+                    : $deck->status,
+            ]);
+        } else {
+            // Legacy slide validation
+            $data = $request->validate([
+                'slides' => ['required', 'array'],
+                'slides.*.title' => ['nullable', 'string'],
+                'slides.*.content_type' => ['nullable', 'string', 'in:bullets,paragraphs,mixed'],
+                'slides.*.bullets' => ['nullable', 'array'],
+                'slides.*.bullets.*' => ['nullable', 'string'],
+                'slides.*.paragraphs' => ['nullable', 'array'],
+                'slides.*.paragraphs.*' => ['nullable', 'string'],
+                'slides.*.headings' => ['nullable', 'array'],
+                'slides.*.headings.*.heading' => ['nullable', 'string'],
+                'slides.*.headings.*.content' => ['nullable', 'string'],
+                'slides.*.layout' => ['nullable', 'string'],
+                'slides.*.visuals' => ['nullable', 'string'],
+                'slides.*.speaker_notes' => ['nullable', 'string'],
+                'slides.*.image_url' => ['nullable', 'string'],
+                'slides.*.image_fit' => ['nullable', 'string'],
+                'slides.*.image_scale' => ['nullable', 'numeric'],
+                'slides.*.image_position_x' => ['nullable', 'numeric'],
+                'slides.*.image_position_y' => ['nullable', 'numeric'],
+                'slides.*.charts' => ['nullable', 'array'],
+                'slides.*.tables' => ['nullable', 'array'],
+            ]);
+
+            $deck->update([
+                'slides_json' => $data['slides'],
+                'status' => in_array($deck->status, ['queued', 'extracting', 'extracted', 'generating'], true)
+                    ? 'outlined'
+                    : $deck->status,
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -263,6 +310,9 @@ class DefenseDeckController extends Controller
             'status' => $deck->status,
             'error_message' => $deck->error_message,
             'slides' => $deck->slides_json ?? [],
+            'is_wysiwyg' => $deck->is_wysiwyg ?? false,
+            'editor_version' => $deck->editor_version,
+            'theme_config' => $deck->theme_config,
             'pptx_url' => $deck->status === 'ready'
                 ? route('api.defense.deck.download', [
                     'project_id' => $project->id,

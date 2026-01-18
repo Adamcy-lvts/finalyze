@@ -4,6 +4,7 @@ namespace App\Services\Defense;
 
 use App\Models\Project;
 use App\Services\ChapterContentAnalysisService;
+use Illuminate\Support\Str;
 
 class DefenseSlideDeckService
 {
@@ -248,6 +249,112 @@ PROMPT;
                 )),
             ];
         }, $slides);
+    }
+
+    public function toWysiwygSlides(array $legacySlides): array
+    {
+        return array_map(function (array $slide, int $index) {
+            $title = (string) ($slide['title'] ?? 'Slide '.($index + 1));
+            $contentType = (string) ($slide['content_type'] ?? 'bullets');
+            $bullets = array_values((array) ($slide['bullets'] ?? []));
+            $paragraphs = array_values((array) ($slide['paragraphs'] ?? []));
+            $headings = array_values((array) ($slide['headings'] ?? []));
+
+            $elements = [];
+            $zIndex = 0;
+
+            $elements[] = $this->makeTextElement([
+                'id' => (string) Str::uuid(),
+                'content' => $title,
+                'x' => 12,
+                'y' => 12,
+                'width' => 76,
+                'height' => 10,
+                'fontSize' => 32,
+                'fontWeight' => 'bold',
+                'textAlign' => 'center',
+                'color' => '#111827',
+                'zIndex' => $zIndex++,
+            ]);
+
+            $bodyText = '';
+            if ($contentType === 'paragraphs' && $paragraphs !== []) {
+                $bodyText = implode("\n\n", array_map('trim', $paragraphs));
+            } elseif ($contentType === 'mixed') {
+                $parts = [];
+                foreach ($headings as $item) {
+                    $heading = trim((string) ($item['heading'] ?? ''));
+                    $content = trim((string) ($item['content'] ?? ''));
+                    if ($heading !== '') {
+                        $parts[] = $heading;
+                    }
+                    if ($content !== '') {
+                        $parts[] = $content;
+                    }
+                }
+                if ($bullets !== []) {
+                    $parts[] = implode("\n", array_map(fn ($b) => '• '.trim((string) $b), $bullets));
+                }
+                $bodyText = implode("\n\n", array_filter($parts, fn ($p) => $p !== ''));
+            } else {
+                if ($bullets !== []) {
+                    $bodyText = implode("\n", array_map(fn ($b) => '• '.trim((string) $b), $bullets));
+                } elseif ($paragraphs !== []) {
+                    $bodyText = implode("\n\n", array_map('trim', $paragraphs));
+                }
+            }
+
+            if ($bodyText !== '') {
+                $elements[] = $this->makeTextElement([
+                    'id' => (string) Str::uuid(),
+                    'content' => $bodyText,
+                    'x' => 12,
+                    'y' => 30,
+                    'width' => 76,
+                    'height' => 60,
+                    'fontSize' => 18,
+                    'fontWeight' => 'normal',
+                    'textAlign' => 'center',
+                    'color' => '#374151',
+                    'zIndex' => $zIndex++,
+                ]);
+            }
+
+            return [
+                'id' => (string) Str::uuid(),
+                'title' => $title,
+                'elements' => $elements,
+                'backgroundColor' => '#FFFFFF',
+                'speaker_notes' => (string) ($slide['speaker_notes'] ?? ''),
+                'legacy' => $slide,
+            ];
+        }, $legacySlides, array_keys($legacySlides));
+    }
+
+    private function makeTextElement(array $data): array
+    {
+        return [
+            'id' => $data['id'],
+            'type' => 'text',
+            'x' => $data['x'],
+            'y' => $data['y'],
+            'width' => $data['width'],
+            'height' => $data['height'],
+            'rotation' => 0,
+            'zIndex' => $data['zIndex'],
+            'opacity' => 1,
+            'text' => [
+                'content' => $data['content'],
+                'fontFamily' => 'Arial',
+                'fontSize' => $data['fontSize'],
+                'fontWeight' => $data['fontWeight'],
+                'fontStyle' => 'normal',
+                'textAlign' => $data['textAlign'],
+                'color' => $data['color'],
+                'lineHeight' => 1.4,
+                'letterSpacing' => 0,
+            ],
+        ];
     }
 
     private function buildProjectContext(Project $project): string

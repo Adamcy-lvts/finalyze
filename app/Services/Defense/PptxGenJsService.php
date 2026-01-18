@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Log;
 
 class PptxGenJsService
 {
-    public function export(array $slides, string $title, string $filename): string
+    public function export(array $slides, string $title, string $filename, bool $isWysiwyg = false): string
     {
         $tempDir = storage_path('app/temp');
         if (! is_dir($tempDir)) {
@@ -16,6 +16,7 @@ class PptxGenJsService
         $payload = [
             'title' => $title,
             'slides' => $slides,
+            'is_wysiwyg' => $isWysiwyg,
         ];
 
         $inputPath = $tempDir.'/deck_'.uniqid().'.json';

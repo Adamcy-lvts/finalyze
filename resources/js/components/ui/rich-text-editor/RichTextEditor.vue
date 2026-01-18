@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import 'katex/dist/katex.min.css'
 import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Typography from '@tiptap/extension-typography'
+import { Mathematics } from '@tiptap/extension-mathematics'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { Highlight } from '@tiptap/extension-highlight'
@@ -482,6 +484,29 @@ const baseExtensions = [
   TableHeader,
   TableCell,
   // Underline, // Commented out - StarterKit might include this
+  Mathematics.configure({
+    inlineOptions: {
+      onClick: (node, pos) => {
+        const currentEditor = editor.value
+        if (!currentEditor) return
+        const nextLatex = window.prompt('Edit inline math (LaTeX):', node.attrs.latex)
+        if (!nextLatex) return
+        currentEditor.chain().setNodeSelection(pos).updateInlineMath({ latex: nextLatex }).focus().run()
+      },
+    },
+    blockOptions: {
+      onClick: (node, pos) => {
+        const currentEditor = editor.value
+        if (!currentEditor) return
+        const nextLatex = window.prompt('Edit block math (LaTeX):', node.attrs.latex)
+        if (!nextLatex) return
+        currentEditor.chain().setNodeSelection(pos).updateBlockMath({ latex: nextLatex }).focus().run()
+      },
+    },
+    katexOptions: {
+      throwOnError: false,
+    },
+  }),
   Citation,
   Mermaid,
   ResizableImage.configure({
@@ -745,6 +770,30 @@ const toggleBold = () => editor.value?.chain().focus().toggleBold().run()
 const toggleItalic = () => editor.value?.chain().focus().toggleItalic().run()
 const toggleStrike = () => editor.value?.chain().focus().toggleStrike().run()
 const toggleCode = () => editor.value?.chain().focus().toggleCode().run()
+
+const insertInlineMath = () => {
+  const currentEditor = editor.value
+  if (!currentEditor) return
+  if (!currentEditor.state.selection.empty) {
+    currentEditor.chain().focus().setInlineMath().run()
+    return
+  }
+  const latex = window.prompt('Enter inline math (LaTeX):', '')
+  if (!latex) return
+  currentEditor.chain().focus().insertInlineMath({ latex }).run()
+}
+
+const insertBlockMath = () => {
+  const currentEditor = editor.value
+  if (!currentEditor) return
+  if (!currentEditor.state.selection.empty) {
+    currentEditor.chain().focus().setBlockMath().run()
+    return
+  }
+  const latex = window.prompt('Enter block math (LaTeX):', '')
+  if (!latex) return
+  currentEditor.chain().focus().insertBlockMath({ latex }).run()
+}
 const insertMermaidDiagram = () => {
   editor.value?.chain().focus().insertMermaid().run()
 }
@@ -1446,6 +1495,18 @@ defineExpose({
 
           <Button variant="ghost" size="icon"
             class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            title="Insert inline math" @click="insertInlineMath">
+            <span class="text-[11px] font-semibold">fx</span>
+          </Button>
+
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
+            title="Insert block math" @click="insertBlockMath">
+            <span class="text-[11px] font-semibold">FX</span>
+          </Button>
+
+          <Button variant="ghost" size="icon"
+            class="h-8 w-8 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-foreground hover:bg-muted/80"
             :class="{ 'bg-primary/10 text-primary': editor?.isActive('link') }" @click="openLinkDialog">
             <LinkIcon class="h-4 w-4" />
           </Button>
@@ -1763,5 +1824,21 @@ defineExpose({
   pointer-events: none;
   user-select: none;
   white-space: pre-wrap;
+}
+
+:deep(.tiptap-mathematics-render) {
+  @apply rounded-md bg-muted/30 px-1 py-0.5;
+}
+
+:deep(.tiptap-mathematics-render--editable) {
+  @apply cursor-pointer transition-colors;
+}
+
+:deep(.tiptap-mathematics-render--editable:hover) {
+  @apply bg-muted/60;
+}
+
+:deep(.tiptap-mathematics-render[data-type='block-math']) {
+  @apply block my-4 px-4 py-3 text-center;
 }
 </style>

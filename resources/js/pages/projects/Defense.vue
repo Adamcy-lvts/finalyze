@@ -33,10 +33,13 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import RichTextViewer from '@/components/ui/rich-text-editor/RichTextViewer.vue';
 import DeckViewer from '@/components/defense/DeckViewer.vue';
+import WysiwygSlideEditor from '@/components/defense/editor/WysiwygSlideEditor.vue';
 import ExecutiveBriefingDeck from '@/components/defense/ExecutiveBriefingDeck.vue';
 import PredictedQuestionsDeck from '@/components/defense/PredictedQuestionsDeck.vue';
 import { useDefenseSession } from '@/composables/useDefenseSession';
+import { ensureWysiwygFormat, wysiwygToLegacy } from '@/utils/editor/migration';
 import type { DefenseMessage } from '@/types/defense';
+import type { WysiwygSlide } from '@/types/wysiwyg';
 
 interface Chapter {
     id: number;
@@ -125,6 +128,7 @@ const isDeckGenerating = ref(false);
 const deckPollInterval = ref<ReturnType<typeof setInterval> | null>(null);
 const deckId = ref<number | null>(null);
 const deckSlides = ref<DefenseDeckSlide[]>([]);
+const wysiwygSlides = ref<WysiwygSlide[]>([]);
 const activeDeckSlideIndex = ref(0);
 const isDeckSaving = ref(false);
 const openingStatement = ref('');
@@ -133,6 +137,7 @@ const isOpeningAnalyzing = ref(false);
 const isOpeningGenerating = ref(false);
 const isFetchingQuestion = ref(false);
 const thinkingPersonaId = ref<string | null>(null);
+const isProduction = import.meta.env.PROD;
 
 const {
     session,
@@ -427,13 +432,14 @@ const generateOpeningStatement = async () => {
     }
 };
 
-const setDeckState = (deck: { id: number; status: string; slides?: DefenseDeckSlide[]; pptx_url?: string | null; error_message?: string | null } | null) => {
+const setDeckState = (deck: { id: number; status: string; slides?: DefenseDeckSlide[]; pptx_url?: string | null; error_message?: string | null; is_wysiwyg?: boolean } | null) => {
     if (!deck) {
         deckStatus.value = 'idle';
         deckDownloadUrl.value = null;
         deckError.value = null;
         deckId.value = null;
         deckSlides.value = [];
+        wysiwygSlides.value = [];
         return;
     }
 
@@ -441,8 +447,15 @@ const setDeckState = (deck: { id: number; status: string; slides?: DefenseDeckSl
     deckDownloadUrl.value = deck.pptx_url ?? null;
     deckError.value = deck.error_message ?? null;
     deckId.value = deck.id ?? null;
-    deckSlides.value = normalizeDeckSlides(deck.slides);
-    if (deckSlides.value.length && activeDeckSlideIndex.value >= deckSlides.value.length) {
+    if (deck.is_wysiwyg) {
+        wysiwygSlides.value = ensureWysiwygFormat(deck.slides || []);
+        deckSlides.value = wysiwygToLegacy(wysiwygSlides.value);
+    } else {
+        deckSlides.value = normalizeDeckSlides(deck.slides);
+        // Convert to WYSIWYG format for the new editor
+        wysiwygSlides.value = ensureWysiwygFormat(deckSlides.value);
+    }
+    if (wysiwygSlides.value.length && activeDeckSlideIndex.value >= wysiwygSlides.value.length) {
         activeDeckSlideIndex.value = 0;
     }
 };
@@ -585,6 +598,38 @@ const handleDeckSlidesChange = (slides: DefenseDeckSlide[]) => {
     deckSlides.value = slides;
     debouncedPersistDeckSlides(slides);
 };
+
+const handleWysiwygSlidesChange = (slides: WysiwygSlide[]) => {
+    wysiwygSlides.value = slides;
+    // Persist WYSIWYG slides directly (server should accept this format now)
+    debouncedPersistWysiwygSlides(slides);
+};
+
+const persistWysiwygSlides = async (slides: WysiwygSlide[]) => {
+    if (!deckId.value) return;
+    isDeckSaving.value = true;
+
+    try {
+        const response = await axios.patch(`/api/projects/${props.project.id}/defense/deck/${deckId.value}`, {
+            slides,
+            is_wysiwyg: true,
+        });
+        // Don't call setDeckState here to avoid infinite loop, just update status
+        if (response.data.deck) {
+            deckStatus.value = response.data.deck.status;
+            deckDownloadUrl.value = response.data.deck.pptx_url ?? null;
+        }
+    } catch (error) {
+        if (notifyLowBalance(error)) return;
+        console.error('Failed to save WYSIWYG slides:', error);
+    } finally {
+        isDeckSaving.value = false;
+    }
+};
+
+const debouncedPersistWysiwygSlides = debounce((slides: WysiwygSlide[]) => {
+    void persistWysiwygSlides(slides);
+}, 800);
 
 const downloadDefenseDeck = () => {
     if (!deckDownloadUrl.value) return;
@@ -1219,23 +1264,36 @@ onBeforeUnmount(() => {
                             </CardContent>
                         </Card>
 
-                        <!-- Expanded Presentation Guide Dialog -->
+                        <!-- Expanded WYSIWYG Editor Dialog -->
                         <Dialog v-model:open="isGuideExpanded">
                             <DialogContent
-                                class="max-w-[98vw] w-full lg:max-w-[98vw] h-[95vh] flex flex-col p-6 bg-zinc-950 border-white/10 shadow-2xl overflow-hidden rounded-3xl">
-                                <div class="flex items-center justify-between mb-2 shrink-0">
-                                    <h3 class="text-xl font-display font-bold text-white flex items-center gap-2">
-                                        <Presentation class="h-5 w-5 text-indigo-400" />
-                                        Defense Deck
-                                    </h3>
+                                class="max-w-[98vw] w-full lg:max-w-[98vw] h-[95vh] flex flex-col p-0 bg-zinc-100 dark:bg-zinc-950 border-white/10 shadow-2xl overflow-hidden rounded-3xl">
+                                <div v-if="isProduction" class="flex-1 flex items-center justify-center">
+                                    <div class="max-w-2xl text-center px-6">
+                                        <div
+                                            class="mx-auto mb-4 inline-flex items-center rounded-full border border-zinc-200/70 bg-white px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 dark:border-white/10 dark:bg-white/5 dark:text-white/70">
+                                            Coming Soon
+                                        </div>
+                                        <h3 class="text-2xl md:text-3xl font-display font-bold text-zinc-900 dark:text-white">
+                                            Defense Slide Deck Editor
+                                        </h3>
+                                        <p class="mt-3 text-sm text-zinc-600 dark:text-white/70">
+                                            We are polishing the slide deck editor before release. Once ready, you will
+                                            be able to edit layouts, drag-and-drop elements, theme slides, and export
+                                            a presentation-ready deck in minutes.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div class="flex-1 min-h-0 overflow-hidden">
-                                    <DeckViewer :project="project" :slides="deckSlides"
-                                        v-model:active-index="activeDeckSlideIndex" :is-saving="isDeckSaving"
-                                        :show-pptx="!!deckId" :pptx-url="deckDownloadUrl" :pptx-busy="isDeckGenerating"
-                                        @update:slides="handleDeckSlidesChange" @download-pptx="downloadDefenseDeck"
-                                        @export-pptx="exportDefenseDeck" />
-                                </div>
+                                <WysiwygSlideEditor
+                                    v-else
+                                    :slides="wysiwygSlides"
+                                    :active-index="activeDeckSlideIndex"
+                                    :is-saving="isDeckSaving"
+                                    :project-title="project.title"
+                                    @update:slides="handleWysiwygSlidesChange"
+                                    @update:active-index="activeDeckSlideIndex = $event"
+                                    @export="downloadPptx"
+                                />
                             </DialogContent>
                         </Dialog>
 

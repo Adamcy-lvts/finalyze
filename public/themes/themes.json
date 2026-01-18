@@ -1,0 +1,285 @@
+{
+  "themes": [
+    {
+      "id": "academic",
+      "name": "Academic",
+      "description": "Classic, scholarly design perfect for thesis defenses and academic presentations",
+      "colors": {
+        "primary": "#1E3A5F",
+        "secondary": "#2C5282",
+        "accent": "#C4A000",
+        "background": "#FFFFFF",
+        "surface": "#F7FAFC",
+        "text": "#1A202C",
+        "textSecondary": "#4A5568",
+        "textInverse": "#FFFFFF"
+      },
+      "fonts": {
+        "heading": {
+          "family": "Georgia",
+          "weight": 700,
+          "sizes": {
+            "title": 44,
+            "h1": 36,
+            "h2": 28,
+            "h3": 22
+          }
+        },
+        "body": {
+          "family": "Calibri",
+          "weight": 400,
+          "sizes": {
+            "large": 18,
+            "normal": 16,
+            "small": 14
+          }
+        }
+      },
+      "elements": {
+        "titleSlide": {
+          "titleColor": "#1E3A5F",
+          "subtitleColor": "#4A5568",
+          "backgroundColor": "#FFFFFF"
+        },
+        "contentSlide": {
+          "headingColor": "#1E3A5F",
+          "bodyColor": "#1A202C",
+          "backgroundColor": "#FFFFFF"
+        },
+        "shapes": {
+          "defaultFill": "#E2E8F0",
+          "defaultStroke": "#1E3A5F",
+          "accentFill": "#C4A000"
+        },
+        "charts": {
+          "colors": ["#1E3A5F", "#2C5282", "#4299E1", "#63B3ED", "#C4A000", "#D69E2E"]
+        }
+      }
+    },
+    {
+      "id": "modern",
+      "name": "Modern",
+      "description": "Clean, contemporary design with vibrant accents and bold typography",
+      "colors": {
+        "primary": "#6366F1",
+        "secondary": "#8B5CF6",
+        "accent": "#EC4899",
+        "background": "#FFFFFF",
+        "surface": "#F8FAFC",
+        "text": "#0F172A",
+        "textSecondary": "#64748B",
+        "textInverse": "#FFFFFF"
+      },
+      "fonts": {
+        "heading": {
+          "family": "Inter",
+          "weight": 700,
+          "sizes": {
+            "title": 48,
+            "h1": 40,
+            "h2": 32,
+            "h3": 24
+          }
+        },
+        "body": {
+          "family": "Inter",
+          "weight": 400,
+          "sizes": {
+            "large": 18,
+            "normal": 16,
+            "small": 14
+          }
+        }
+      },
+      "elements": {
+        "titleSlide": {
+          "titleColor": "#6366F1",
+          "subtitleColor": "#64748B",
+          "backgroundColor": "#FFFFFF"
+        },
+        "contentSlide": {
+          "headingColor": "#6366F1",
+          "bodyColor": "#0F172A",
+          "backgroundColor": "#FFFFFF"
+        },
+        "shapes": {
+          "defaultFill": "#EEF2FF",
+          "defaultStroke": "#6366F1",
+          "accentFill": "#EC4899"
+        },
+        "charts": {
+          "colors": ["#6366F1", "#8B5CF6", "#A855F7", "#EC4899", "#F43F5E", "#10B981"]
+        }
+      }
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal",
+      "description": "Elegant simplicity with focus on content and generous whitespace",
+      "colors": {
+        "primary": "#18181B",
+        "secondary": "#3F3F46",
+        "accent": "#EF4444",
+        "background": "#FAFAFA",
+        "surface": "#FFFFFF",
+        "text": "#18181B",
+        "textSecondary": "#71717A",
+        "textInverse": "#FAFAFA"
+      },
+      "fonts": {
+        "heading": {
+          "family": "Helvetica",
+          "weight": 600,
+          "sizes": {
+            "title": 42,
+            "h1": 36,
+            "h2": 28,
+            "h3": 22
+          }
+        },
+        "body": {
+          "family": "Helvetica",
+          "weight": 400,
+          "sizes": {
+            "large": 18,
+            "normal": 16,
+            "small": 14
+          }
+        }
+      },
+      "elements": {
+        "titleSlide": {
+          "titleColor": "#18181B",
+          "subtitleColor": "#71717A",
+          "backgroundColor": "#FAFAFA"
+        },
+        "contentSlide": {
+          "headingColor": "#18181B",
+          "bodyColor": "#3F3F46",
+          "backgroundColor": "#FAFAFA"
+        },
+        "shapes": {
+          "defaultFill": "#F4F4F5",
+          "defaultStroke": "#18181B",
+          "accentFill": "#EF4444"
+        },
+        "charts": {
+          "colors": ["#18181B", "#3F3F46", "#52525B", "#71717A", "#EF4444", "#F87171"]
+        }
+      }
+    },
+    {
+      "id": "bold",
+      "name": "Bold",
+      "description": "High-impact design with strong colors and confident typography",
+      "colors": {
+        "primary": "#DC2626",
+        "secondary": "#7C2D12",
+        "accent": "#F97316",
+        "background": "#0F172A",
+        "surface": "#1E293B",
+        "text": "#F8FAFC",
+        "textSecondary": "#CBD5E1",
+        "textInverse": "#0F172A"
+      },
+      "fonts": {
+        "heading": {
+          "family": "Arial Black",
+          "weight": 900,
+          "sizes": {
+            "title": 52,
+            "h1": 42,
+            "h2": 32,
+            "h3": 24
+          }
+        },
+        "body": {
+          "family": "Arial",
+          "weight": 400,
+          "sizes": {
+            "large": 18,
+            "normal": 16,
+            "small": 14
+          }
+        }
+      },
+      "elements": {
+        "titleSlide": {
+          "titleColor": "#F8FAFC",
+          "subtitleColor": "#CBD5E1",
+          "backgroundColor": "#0F172A"
+        },
+        "contentSlide": {
+          "headingColor": "#DC2626",
+          "bodyColor": "#F8FAFC",
+          "backgroundColor": "#0F172A"
+        },
+        "shapes": {
+          "defaultFill": "#1E293B",
+          "defaultStroke": "#DC2626",
+          "accentFill": "#F97316"
+        },
+        "charts": {
+          "colors": ["#DC2626", "#EF4444", "#F97316", "#FB923C", "#FBBF24", "#F8FAFC"]
+        }
+      }
+    },
+    {
+      "id": "professional",
+      "name": "Professional",
+      "description": "Corporate-ready design with trustworthy colors and polished aesthetics",
+      "colors": {
+        "primary": "#0369A1",
+        "secondary": "#0284C7",
+        "accent": "#059669",
+        "background": "#FFFFFF",
+        "surface": "#F0F9FF",
+        "text": "#0C4A6E",
+        "textSecondary": "#475569",
+        "textInverse": "#FFFFFF"
+      },
+      "fonts": {
+        "heading": {
+          "family": "Segoe UI",
+          "weight": 600,
+          "sizes": {
+            "title": 44,
+            "h1": 36,
+            "h2": 28,
+            "h3": 22
+          }
+        },
+        "body": {
+          "family": "Segoe UI",
+          "weight": 400,
+          "sizes": {
+            "large": 18,
+            "normal": 16,
+            "small": 14
+          }
+        }
+      },
+      "elements": {
+        "titleSlide": {
+          "titleColor": "#0369A1",
+          "subtitleColor": "#475569",
+          "backgroundColor": "#FFFFFF"
+        },
+        "contentSlide": {
+          "headingColor": "#0369A1",
+          "bodyColor": "#0C4A6E",
+          "backgroundColor": "#FFFFFF"
+        },
+        "shapes": {
+          "defaultFill": "#E0F2FE",
+          "defaultStroke": "#0369A1",
+          "accentFill": "#059669"
+        },
+        "charts": {
+          "colors": ["#0369A1", "#0284C7", "#0EA5E9", "#059669", "#10B981", "#34D399"]
+        }
+      }
+    }
+  ],
+  "defaultThemeId": "modern"
+}

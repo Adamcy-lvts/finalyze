@@ -6,7 +6,7 @@ use App\Listeners\CreditSignupBonus;
 use App\Listeners\LogUserRegistered;
 use App\Listeners\NotifyAdminsOfNewUserSignup;
 use Illuminate\Auth\Events\Registered;
-use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
+use App\Listeners\SendEmailVerificationIfEnabled;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -18,7 +18,7 @@ class EventServiceProvider extends ServiceProvider
      */
     protected $listen = [
         Registered::class => [
-            SendEmailVerificationNotification::class,
+            SendEmailVerificationIfEnabled::class,
             CreditSignupBonus::class,
             NotifyAdminsOfNewUserSignup::class,
             LogUserRegistered::class,

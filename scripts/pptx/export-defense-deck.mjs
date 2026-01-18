@@ -18,11 +18,16 @@ if (!inputPath || !outputPath) {
 const payload = JSON.parse(await fs.readFile(inputPath, 'utf8'));
 const slides = Array.isArray(payload.slides) ? payload.slides : [];
 const title = payload.title || 'Defense Deck';
+const isWysiwyg = payload.is_wysiwyg === true;
 
 const pptx = new pptxgen();
 pptx.layout = 'LAYOUT_WIDE';
 pptx.author = 'Finalyze';
 pptx.title = title;
+
+// Slide dimensions in inches (LAYOUT_WIDE = 13.333" x 7.5")
+const SLIDE_WIDTH = 13.333;
+const SLIDE_HEIGHT = 7.5;
 
 const chartTypeMap = {
   bar: pptx.ChartType.bar,
@@ -30,6 +35,7 @@ const chartTypeMap = {
   pie: pptx.ChartType.pie,
   scatter: pptx.ChartType.scatter,
   area: pptx.ChartType.area,
+  doughnut: pptx.ChartType.doughnut,
 };
 
 const stripMarkup = (value) => {
@@ -222,60 +228,404 @@ const addSlideImage = async (slide, slideData, x, y, w, h) => {
   return true;
 };
 
+// ============================================================================
+// WYSIWYG Element Rendering Functions
+// ============================================================================
+
+/**
+ * Convert percentage position to inches
+ */
+const percentToInches = (percent, dimension) => {
+  return (percent / 100) * dimension;
+};
+
+/**
+ * Convert hex color to PPTX color format (without #)
+ */
+const formatColor = (color) => {
+  if (!color) return '111827';
+  return color.replace('#', '');
+};
+
+/**
+ * Map text alignment to PPTX alignment
+ */
+const mapTextAlign = (align) => {
+  const alignMap = {
+    left: 'left',
+    center: 'center',
+    right: 'right',
+    justify: 'justify',
+  };
+  return alignMap[align] || 'left';
+};
+
+/**
+ * Render a text element to PPTX
+ */
+const renderTextElement = (slide, element) => {
+  if (!element.text?.content) return;
+
+  const x = percentToInches(element.x, SLIDE_WIDTH);
+  const y = percentToInches(element.y, SLIDE_HEIGHT);
+  const w = percentToInches(element.width, SLIDE_WIDTH);
+  const h = percentToInches(element.height, SLIDE_HEIGHT);
+
+  const textOptions = {
+    x,
+    y,
+    w,
+    h,
+    fontSize: element.text.fontSize || 18,
+    fontFace: element.text.fontFamily || 'Arial',
+    color: formatColor(element.text.color),
+    bold: element.text.fontWeight === 'bold',
+    italic: element.text.fontStyle === 'italic',
+    underline: element.text.textDecoration === 'underline' ? { style: 'sng' } : undefined,
+    align: mapTextAlign(element.text.textAlign),
+    valign: 'top',
+    lineSpacing: element.text.lineHeight ? element.text.lineHeight * element.text.fontSize : undefined,
+    rotate: element.rotation || 0,
+  };
+
+  // Handle opacity
+  if (element.opacity !== undefined && element.opacity < 1) {
+    textOptions.transparency = Math.round((1 - element.opacity) * 100);
+  }
+
+  slide.addText(element.text.content, textOptions);
+};
+
+/**
+ * Render a shape element to PPTX
+ */
+const renderShapeElement = (slide, element) => {
+  const x = percentToInches(element.x, SLIDE_WIDTH);
+  const y = percentToInches(element.y, SLIDE_HEIGHT);
+  const w = percentToInches(element.width, SLIDE_WIDTH);
+  const h = percentToInches(element.height, SLIDE_HEIGHT);
+
+  const shapeType = element.shape?.shapeType || 'rectangle';
+
+  // Map shape types to PPTX shapes
+  const shapeMap = {
+    rectangle: pptx.ShapeType.rect,
+    'rounded-rectangle': pptx.ShapeType.roundRect,
+    circle: pptx.ShapeType.ellipse,
+    ellipse: pptx.ShapeType.ellipse,
+    triangle: pptx.ShapeType.triangle,
+    arrow: pptx.ShapeType.rightArrow,
+    line: pptx.ShapeType.line,
+    star: pptx.ShapeType.star5,
+    diamond: pptx.ShapeType.diamond,
+    pentagon: pptx.ShapeType.pentagon,
+    hexagon: pptx.ShapeType.hexagon,
+  };
+
+  const pptxShape = shapeMap[shapeType] || pptx.ShapeType.rect;
+
+  const shapeOptions = {
+    x,
+    y,
+    w,
+    h,
+    fill: { color: formatColor(element.fill || '#E5E7EB') },
+    line: element.stroke
+      ? { color: formatColor(element.stroke), width: element.strokeWidth || 1 }
+      : undefined,
+    rotate: element.rotation || 0,
+  };
+
+  // Handle opacity
+  if (element.opacity !== undefined && element.opacity < 1) {
+    shapeOptions.fill.transparency = Math.round((1 - element.opacity) * 100);
+  }
+
+  slide.addShape(pptxShape, shapeOptions);
+};
+
+/**
+ * Render an image element to PPTX
+ */
+const renderImageElement = async (slide, element) => {
+  if (!element.image?.url) return;
+
+  const x = percentToInches(element.x, SLIDE_WIDTH);
+  const y = percentToInches(element.y, SLIDE_HEIGHT);
+  const w = percentToInches(element.width, SLIDE_WIDTH);
+  const h = percentToInches(element.height, SLIDE_HEIGHT);
+
+  const imagePath = await resolveImagePath(element.image.url);
+
+  const imageOptions = {
+    x,
+    y,
+    w,
+    h,
+    rotate: element.rotation || 0,
+  };
+
+  if (imagePath) {
+    imageOptions.path = imagePath;
+    if (element.image.fit) {
+      imageOptions.sizing = {
+        type: element.image.fit === 'contain' ? 'contain' : 'cover',
+        x,
+        y,
+        w,
+        h,
+      };
+    }
+  } else if (element.image.url.startsWith('http')) {
+    // Try to use URL directly for remote images
+    imageOptions.path = element.image.url;
+  } else {
+    // Placeholder for missing images
+    slide.addShape(pptx.ShapeType.rect, {
+      x,
+      y,
+      w,
+      h,
+      fill: { color: 'F3F4F6' },
+      line: { color: 'D1D5DB', width: 1, dashType: 'dash' },
+    });
+    slide.addText('Image not found', {
+      x,
+      y: y + h / 2 - 0.15,
+      w,
+      h: 0.3,
+      fontSize: 10,
+      color: '9CA3AF',
+      align: 'center',
+    });
+    return;
+  }
+
+  try {
+    slide.addImage(imageOptions);
+  } catch (e) {
+    console.warn(`Failed to add image: ${element.image.url}`, e.message);
+  }
+};
+
+/**
+ * Render a chart element to PPTX
+ */
+const renderChartElement = (slide, element) => {
+  if (!element.chart) return;
+
+  const x = percentToInches(element.x, SLIDE_WIDTH);
+  const y = percentToInches(element.y, SLIDE_HEIGHT);
+  const w = percentToInches(element.width, SLIDE_WIDTH);
+  const h = percentToInches(element.height, SLIDE_HEIGHT);
+
+  const chartData = element.chart;
+  const chartType = chartTypeMap[chartData.chartType] || pptx.ChartType.bar;
+
+  // Build chart data series
+  const data = (chartData.datasets || []).map((dataset) => ({
+    name: dataset.label || 'Series',
+    labels: chartData.labels || [],
+    values: dataset.data || [],
+  }));
+
+  if (data.length === 0 || data[0].values.length === 0) return;
+
+  const chartOptions = {
+    x,
+    y,
+    w,
+    h,
+    showTitle: !!chartData.title,
+    title: chartData.title || '',
+    showLegend: chartData.showLegend !== false,
+    legendPos: 'b',
+  };
+
+  // Add chart colors
+  if (chartData.datasets?.[0]?.backgroundColor) {
+    const colors = Array.isArray(chartData.datasets[0].backgroundColor)
+      ? chartData.datasets[0].backgroundColor.map(formatColor)
+      : [formatColor(chartData.datasets[0].backgroundColor)];
+    chartOptions.chartColors = colors;
+  }
+
+  slide.addChart(chartType, data, chartOptions);
+};
+
+/**
+ * Render a table element to PPTX
+ */
+const renderTableElement = (slide, element) => {
+  if (!element.table) return;
+
+  const x = percentToInches(element.x, SLIDE_WIDTH);
+  const y = percentToInches(element.y, SLIDE_HEIGHT);
+  const w = percentToInches(element.width, SLIDE_WIDTH);
+  const h = percentToInches(element.height, SLIDE_HEIGHT);
+
+  const tableData = element.table;
+
+  // Add title if present
+  if (tableData.title) {
+    slide.addText(tableData.title, {
+      x,
+      y: y - 0.4,
+      w,
+      h: 0.35,
+      fontSize: 14,
+      bold: true,
+      color: formatColor(tableData.headerColor || '#111827'),
+    });
+  }
+
+  // Build table rows
+  const columns = tableData.columns || [];
+  const headerRow = columns.map((col) => ({
+    text: col.label,
+    options: {
+      bold: true,
+      fill: { color: formatColor(tableData.headerBackground || '#F3F4F6') },
+      color: formatColor(tableData.headerColor || '#111827'),
+    },
+  }));
+
+  const dataRows = (tableData.rows || []).map((row, rowIndex) =>
+    columns.map((col) => ({
+      text: String(row[col.key] || ''),
+      options: {
+        fill:
+          tableData.alternateRowColors && rowIndex % 2 === 1
+            ? { color: 'F9FAFB' }
+            : undefined,
+      },
+    }))
+  );
+
+  const tableRows = [headerRow, ...dataRows];
+
+  if (tableRows.length > 0) {
+    slide.addTable(tableRows, {
+      x,
+      y: tableData.title ? y : y,
+      w,
+      autoPage: false,
+      fontSize: 11,
+      border: { type: 'solid', color: 'E5E7EB', pt: 0.5 },
+      colW: columns.map(() => w / columns.length),
+    });
+  }
+};
+
+/**
+ * Render all elements of a WYSIWYG slide
+ */
+const renderWysiwygSlide = async (pptxSlide, slideData) => {
+  // Set background color
+  if (slideData.backgroundColor) {
+    pptxSlide.background = { color: formatColor(slideData.backgroundColor) };
+  }
+
+  // Sort elements by z-index
+  const elements = [...(slideData.elements || [])].sort(
+    (a, b) => (a.zIndex || 0) - (b.zIndex || 0)
+  );
+
+  // Render each element
+  for (const element of elements) {
+    switch (element.type) {
+      case 'text':
+        renderTextElement(pptxSlide, element);
+        break;
+      case 'shape':
+        renderShapeElement(pptxSlide, element);
+        break;
+      case 'image':
+        await renderImageElement(pptxSlide, element);
+        break;
+      case 'chart':
+        renderChartElement(pptxSlide, element);
+        break;
+      case 'table':
+        renderTableElement(pptxSlide, element);
+        break;
+    }
+  }
+
+  // Add speaker notes
+  if (slideData.speaker_notes) {
+    pptxSlide.addNotes(slideData.speaker_notes);
+  }
+};
+
+// ============================================================================
+// Main Slide Generation
+// ============================================================================
+
 for (let index = 0; index < slides.length; index += 1) {
   const slideData = slides[index];
   const slide = pptx.addSlide();
-  slide.addText(slideData?.title || `Slide ${index + 1}`, {
-    x: 0.6,
-    y: 0.3,
-    w: 12.5,
-    h: 0.6,
-    fontSize: 28,
-    bold: true,
-    color: '111827',
-  });
 
-  const layout = slideData?.layout || 'bullets';
-  const contentX = 0.7;
-  const contentY = 1.1;
-  const contentW = 12.0;
+  // Check if this is a WYSIWYG slide (has elements array)
+  const isElementBased = isWysiwyg || Array.isArray(slideData?.elements);
 
-  const contentType = slideData?.content_type || 'bullets';
-
-  if (layout === 'two_column') {
-    const half = Math.ceil((slideData?.bullets || []).length / 2);
-    const left = (slideData?.bullets || []).slice(0, half);
-    const right = (slideData?.bullets || []).slice(half);
-    addBullets(slide, left, contentX, contentY, 5.8, 4.5);
-    addBullets(slide, right, contentX + 6.2, contentY, 5.8, 4.5);
-  } else if (layout === 'image_left' || layout === 'image_right') {
-    const imageBoxX = layout === 'image_left' ? contentX : contentX + 6.2;
-    const textBoxX = layout === 'image_left' ? contentX + 6.2 : contentX;
-    const imageAdded = await addSlideImage(slide, slideData, imageBoxX, contentY, 5.8, 4.5);
-    addBullets(slide, slideData?.bullets || [], textBoxX, contentY, 5.8, 4.5);
-    if (!imageAdded) {
-      addVisualHint(slide, slideData?.visuals, imageBoxX, contentY + 4.6, 5.8);
-    }
+  if (isElementBased) {
+    // WYSIWYG element-based rendering
+    await renderWysiwygSlide(slide, slideData);
   } else {
-    let cursor = contentY;
+    // Legacy bullet/paragraph rendering
+    slide.addText(slideData?.title || `Slide ${index + 1}`, {
+      x: 0.6,
+      y: 0.3,
+      w: 12.5,
+      h: 0.6,
+      fontSize: 28,
+      bold: true,
+      color: '111827',
+    });
 
-    if (contentType === 'paragraphs') {
-      cursor = addParagraphs(slide, slideData?.paragraphs || [], contentX, cursor, contentW);
-    } else if (contentType === 'mixed') {
-      cursor = addParagraphs(slide, slideData?.paragraphs || [], contentX, cursor, contentW);
-      cursor = addHeadings(slide, slideData?.headings || [], contentX, cursor, contentW);
-      cursor = addBullets(slide, slideData?.bullets || [], contentX, cursor, contentW, 2.0);
+    const layout = slideData?.layout || 'bullets';
+    const contentX = 0.7;
+    const contentY = 1.1;
+    const contentW = 12.0;
+
+    const contentType = slideData?.content_type || 'bullets';
+
+    if (layout === 'two_column') {
+      const half = Math.ceil((slideData?.bullets || []).length / 2);
+      const left = (slideData?.bullets || []).slice(0, half);
+      const right = (slideData?.bullets || []).slice(half);
+      addBullets(slide, left, contentX, contentY, 5.8, 4.5);
+      addBullets(slide, right, contentX + 6.2, contentY, 5.8, 4.5);
+    } else if (layout === 'image_left' || layout === 'image_right') {
+      const imageBoxX = layout === 'image_left' ? contentX : contentX + 6.2;
+      const textBoxX = layout === 'image_left' ? contentX + 6.2 : contentX;
+      const imageAdded = await addSlideImage(slide, slideData, imageBoxX, contentY, 5.8, 4.5);
+      addBullets(slide, slideData?.bullets || [], textBoxX, contentY, 5.8, 4.5);
+      if (!imageAdded) {
+        addVisualHint(slide, slideData?.visuals, imageBoxX, contentY + 4.6, 5.8);
+      }
     } else {
-      cursor = addBullets(slide, slideData?.bullets || [], contentX, cursor, contentW, 2.8);
+      let cursor = contentY;
+
+      if (contentType === 'paragraphs') {
+        cursor = addParagraphs(slide, slideData?.paragraphs || [], contentX, cursor, contentW);
+      } else if (contentType === 'mixed') {
+        cursor = addParagraphs(slide, slideData?.paragraphs || [], contentX, cursor, contentW);
+        cursor = addHeadings(slide, slideData?.headings || [], contentX, cursor, contentW);
+        cursor = addBullets(slide, slideData?.bullets || [], contentX, cursor, contentW, 2.0);
+      } else {
+        cursor = addBullets(slide, slideData?.bullets || [], contentX, cursor, contentW, 2.8);
+      }
+
+      cursor = addVisualHint(slide, slideData?.visuals, contentX, cursor, contentW);
+      cursor = addCharts(slide, slideData?.charts || [], contentX, cursor, contentW);
+      cursor = addTables(slide, slideData?.tables || [], contentX, cursor, contentW);
     }
 
-    cursor = addVisualHint(slide, slideData?.visuals, contentX, cursor, contentW);
-    cursor = addCharts(slide, slideData?.charts || [], contentX, cursor, contentW);
-    cursor = addTables(slide, slideData?.tables || [], contentX, cursor, contentW);
-  }
-
-  if (slideData?.speaker_notes) {
-    slide.addNotes(slideData.speaker_notes);
+    if (slideData?.speaker_notes) {
+      slide.addNotes(slideData.speaker_notes);
+    }
   }
 }
 

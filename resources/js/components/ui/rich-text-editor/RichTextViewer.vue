@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import 'katex/dist/katex.min.css'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Typography from '@tiptap/extension-typography'
@@ -7,6 +8,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table'
 import { TableHeader } from '@tiptap/extension-table'
 import { TableCell } from '@tiptap/extension-table'
+import { Mathematics } from '@tiptap/extension-mathematics'
 import { watch, onBeforeUnmount, ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -328,6 +330,11 @@ const editor = useEditor({
     TableRow,
     TableHeader,
     TableCell,
+    Mathematics.configure({
+      katexOptions: {
+        throwOnError: false,
+      },
+    }),
     Mermaid,
   ],
   editorProps: {
@@ -391,6 +398,19 @@ onBeforeUnmount(() => {
   padding: 0;
   background-color: var(--background);
   color: var(--foreground);
+}
+
+:deep(.tiptap-mathematics-render) {
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  padding: 0.125rem 0.375rem;
+}
+
+:deep(.tiptap-mathematics-render[data-type='block-math']) {
+  display: block;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  text-align: center;
 }
 
 :deep(.ProseMirror h1) {

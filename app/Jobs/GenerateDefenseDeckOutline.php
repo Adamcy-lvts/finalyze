@@ -90,13 +90,16 @@ class GenerateDefenseDeckOutline implements ShouldQueue
 
             $payload = $deckService->extractSlidesPayload($raw);
             $slides = $payload ? $deckService->normalizeSlides($payload, 30) : [];
+            $wysiwygSlides = $slides ? $deckService->toWysiwygSlides($slides) : [];
 
-            if (empty($slides)) {
+            if (empty($wysiwygSlides)) {
                 throw new \RuntimeException('Failed to parse slide outline JSON.');
             }
 
             $deck->update([
-                'slides_json' => $slides,
+                'slides_json' => $wysiwygSlides,
+                'is_wysiwyg' => true,
+                'editor_version' => '1.0.0',
                 'status' => 'outlined',
                 'ai_models' => array_merge($deck->ai_models ?? [], [
                     'outline' => 'gpt-4o',

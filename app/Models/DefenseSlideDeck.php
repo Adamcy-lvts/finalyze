@@ -14,6 +14,9 @@ class DefenseSlideDeck extends Model
         'user_id',
         'project_id',
         'slides_json',
+        'is_wysiwyg',
+        'editor_version',
+        'theme_config',
         'status',
         'extraction_data',
         'extraction_status',
@@ -24,9 +27,29 @@ class DefenseSlideDeck extends Model
 
     protected $casts = [
         'slides_json' => 'array',
+        'is_wysiwyg' => 'boolean',
+        'theme_config' => 'array',
         'ai_models' => 'array',
         'extraction_data' => 'array',
     ];
+
+    /**
+     * Check if this deck uses the WYSIWYG editor format.
+     */
+    public function usesWysiwygEditor(): bool
+    {
+        return $this->is_wysiwyg === true;
+    }
+
+    /**
+     * Get slides in a normalized format.
+     * For WYSIWYG slides, returns element-based structure.
+     * For legacy slides, returns bullet/paragraph structure.
+     */
+    public function getNormalizedSlides(): array
+    {
+        return $this->slides_json ?? [];
+    }
 
     public function user(): BelongsTo
     {

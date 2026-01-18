@@ -57,7 +57,8 @@ class RenderDefenseDeckPptx implements ShouldQueue
             $filename = "{$safeTitle}-{$deck->id}.pptx";
             $storagePath = "defense-slides/{$deck->project_id}/{$filename}";
 
-            $tempPath = $pptxGenJsService->export($slides, $deck->project->title, $filename);
+            $isWysiwyg = $deck->is_wysiwyg ?? false;
+            $tempPath = $pptxGenJsService->export($slides, $deck->project->title, $filename, $isWysiwyg);
             $fileContent = file_get_contents($tempPath);
 
             Storage::disk('public')->put($storagePath, $fileContent);
