@@ -7,6 +7,7 @@ use App\Models\WordPackage;
 use App\Notifications\PaymentFailed;
 use App\Notifications\PaymentSuccessful;
 use App\Services\PaystackService;
+use App\Services\ReferralService;
 use App\Services\WordBalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,8 @@ class PaymentController extends Controller
 {
     public function __construct(
         private PaystackService $paystackService,
-        private WordBalanceService $wordBalanceService
+        private WordBalanceService $wordBalanceService,
+        private ReferralService $referralService
     ) {}
 
     /**
@@ -91,19 +93,51 @@ class PaymentController extends Controller
         // Create pending payment record
         $payment = Payment::createPending($user, $package, $reference);
 
-        // Initialize with Paystack
-        $result = $this->paystackService->initializeTransaction(
-            email: $user->email,
-            amount: $package->price,
-            reference: $reference,
-            metadata: [
-                'user_id' => $user->id,
-                'package_id' => $package->id,
-                'package_name' => $package->name,
-                'words' => $package->words,
-            ],
-            callbackUrl: route('payments.callback')
-        );
+        $metadata = [
+            'user_id' => $user->id,
+            'package_id' => $package->id,
+            'package_name' => $package->name,
+            'words' => $package->words,
+        ];
+
+        // Check if payment qualifies for referral commission
+        $referralData = $this->checkReferralEligibility($user, $package->price);
+
+        if ($referralData) {
+            // Initialize with split payment for referral commission
+            $result = $this->paystackService->initializeTransactionWithSplit(
+                email: $user->email,
+                amount: $package->price,
+                reference: $reference,
+                subaccountCode: $referralData['subaccount_code'],
+                commissionAmount: $referralData['commission_amount'],
+                metadata: array_merge($metadata, [
+                    'referrer_id' => $referralData['referrer_id'],
+                    'commission_amount' => $referralData['commission_amount'],
+                    'commission_rate' => $referralData['commission_rate'],
+                ]),
+                callbackUrl: route('payments.callback'),
+                bearer: $this->referralService->getFeeBearer()
+            );
+
+            // Store referral info in payment metadata
+            $payment->update([
+                'metadata' => [
+                    'referrer_id' => $referralData['referrer_id'],
+                    'commission_amount' => $referralData['commission_amount'],
+                    'commission_rate' => $referralData['commission_rate'],
+                ],
+            ]);
+        } else {
+            // Initialize normal payment (no referral)
+            $result = $this->paystackService->initializeTransaction(
+                email: $user->email,
+                amount: $package->price,
+                reference: $reference,
+                metadata: $metadata,
+                callbackUrl: route('payments.callback')
+            );
+        }
 
         if (! $result['status']) {
             $payment->markAsFailed();
@@ -383,6 +417,9 @@ class PaymentController extends Controller
         // Credit words to user
         $this->wordBalanceService->creditFromPayment($payment->user, $payment);
 
+        // Process referral earning if applicable
+        $this->processReferralEarning($payment, $paystackData);
+
         // Send success notification
         $payment->user->notify(new PaymentSuccessful($payment));
 
@@ -480,5 +517,83 @@ class PaymentController extends Controller
         }
 
         return ['valid' => true, 'reason' => null];
+    }
+
+    /**
+     * Check if payment qualifies for referral commission
+     *
+     * @return array{referrer_id: int, subaccount_code: string, commission_amount: int, commission_rate: float}|null
+     */
+    private function checkReferralEligibility($user, int $amount): ?array
+    {
+        // Check if referral system is enabled
+        if (! $this->referralService->isEnabled()) {
+            return null;
+        }
+
+        // Check minimum payment amount
+        if ($amount < $this->referralService->getMinimumPaymentAmount()) {
+            return null;
+        }
+
+        // Check if user was referred
+        if (! $user->wasReferred()) {
+            return null;
+        }
+
+        // Get referrer and check if they can receive commissions
+        $referrer = $user->referrer;
+        if (! $referrer || ! $referrer->canReceiveCommissions()) {
+            return null;
+        }
+
+        // Get referrer's subaccount code
+        $subaccountCode = $referrer->paystack_subaccount_code;
+        if (! $subaccountCode) {
+            Log::warning('Referrer missing subaccount code', [
+                'referrer_id' => $referrer->id,
+                'referee_id' => $user->id,
+            ]);
+
+            return null;
+        }
+
+        // Calculate commission
+        $commissionRate = $this->referralService->getCommissionRateForUser($referrer);
+        $commissionAmount = $this->referralService->calculateCommission($amount, $referrer);
+
+        return [
+            'referrer_id' => $referrer->id,
+            'subaccount_code' => $subaccountCode,
+            'commission_amount' => $commissionAmount,
+            'commission_rate' => $commissionRate,
+        ];
+    }
+
+    /**
+     * Process referral earning for a successful payment
+     */
+    private function processReferralEarning(Payment $payment, array $paystackData): void
+    {
+        // Check if this payment has referral metadata
+        $metadata = $payment->metadata ?? [];
+        if (! isset($metadata['referrer_id'])) {
+            return;
+        }
+
+        // Create the referral earning record
+        $earning = $this->referralService->createEarningForPayment($payment);
+
+        if ($earning) {
+            // Mark as paid immediately since split payment was used
+            $this->referralService->markEarningAsPaid($earning, $paystackData);
+
+            Log::info('Referral earning processed', [
+                'earning_id' => $earning->id,
+                'payment_id' => $payment->id,
+                'referrer_id' => $earning->referrer_id,
+                'commission' => $earning->commission_amount,
+            ]);
+        }
     }
 }

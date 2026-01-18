@@ -2,15 +2,18 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Events\WordBalanceUpdated;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Lab404\Impersonate\Models\Impersonate;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
@@ -39,6 +42,19 @@ class User extends Authenticatable implements MustVerifyEmail
         'ban_reason',
         'banned_by',
         'last_active_at',
+        // Referral fields
+        'referral_code',
+        'referred_by',
+        'referral_commission_rate',
+        'paystack_subaccount_code',
+        'referral_bank_setup_complete',
+        'referred_at',
+        'affiliate_status',
+        'affiliate_requested_at',
+        'affiliate_approved_at',
+        'affiliate_notes',
+        'affiliate_is_pure',
+        'affiliate_promo_dismissed_at',
     ];
 
     /**
@@ -69,6 +85,15 @@ class User extends Authenticatable implements MustVerifyEmail
             'is_banned' => 'boolean',
             'banned_at' => 'datetime',
             'last_active_at' => 'datetime',
+            // Referral casts
+            'referral_commission_rate' => 'decimal:2',
+            'referral_bank_setup_complete' => 'boolean',
+            'referred_at' => 'datetime',
+            // Affiliate casts
+            'affiliate_requested_at' => 'datetime',
+            'affiliate_approved_at' => 'datetime',
+            'affiliate_is_pure' => 'boolean',
+            'affiliate_promo_dismissed_at' => 'datetime',
         ];
     }
 
@@ -104,6 +129,46 @@ class User extends Authenticatable implements MustVerifyEmail
     public function successfulPayments(): HasMany
     {
         return $this->payments()->where('status', Payment::STATUS_SUCCESS);
+    }
+
+    /**
+     * The user who referred this user
+     */
+    public function referrer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'referred_by');
+    }
+
+    /**
+     * Users referred by this user
+     */
+    public function referrals(): HasMany
+    {
+        return $this->hasMany(User::class, 'referred_by');
+    }
+
+    /**
+     * Earnings from referrals
+     */
+    public function referralEarnings(): HasMany
+    {
+        return $this->hasMany(ReferralEarning::class, 'referrer_id');
+    }
+
+    /**
+     * Bank account for referral payouts (active one)
+     */
+    public function referralBankAccount(): HasOne
+    {
+        return $this->hasOne(ReferralBankAccount::class)->where('is_active', true);
+    }
+
+    /**
+     * All bank accounts for referral payouts
+     */
+    public function referralBankAccounts(): HasMany
+    {
+        return $this->hasMany(ReferralBankAccount::class);
     }
 
     // =========================================================================
@@ -288,5 +353,119 @@ class User extends Authenticatable implements MustVerifyEmail
     public function getTotalSpentAttribute(): float
     {
         return $this->successfulPayments()->sum('amount') / 100;
+    }
+
+    // =========================================================================
+    // AFFILIATE METHODS
+    // =========================================================================
+
+    public function isAffiliate(): bool
+    {
+        return $this->hasRole('affiliate');
+    }
+
+    public function isPureAffiliate(): bool
+    {
+        return $this->isAffiliate() && $this->affiliate_is_pure;
+    }
+
+    public function hasDualAccess(): bool
+    {
+        return $this->isAffiliate() && ! $this->affiliate_is_pure;
+    }
+
+    public function canRequestAffiliateAccess(): bool
+    {
+        if ($this->isAffiliate()) {
+            return false;
+        }
+
+        return $this->affiliate_status !== 'pending';
+    }
+
+    public function hasPendingAffiliateRequest(): bool
+    {
+        return $this->affiliate_status === 'pending';
+    }
+
+    // =========================================================================
+    // REFERRAL METHODS
+    // =========================================================================
+
+    /**
+     * Generate unique referral code for user
+     */
+    public function generateReferralCode(): string
+    {
+        if ($this->referral_code) {
+            return $this->referral_code;
+        }
+
+        do {
+            // Format: 2 letters from name + 6 random alphanumeric
+            $namePrefix = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $this->name), 0, 2));
+            if (strlen($namePrefix) < 2) {
+                $namePrefix = str_pad($namePrefix, 2, 'X');
+            }
+            $code = $namePrefix.strtoupper(Str::random(6));
+        } while (User::where('referral_code', $code)->exists());
+
+        $this->update(['referral_code' => $code]);
+
+        return $code;
+    }
+
+    /**
+     * Check if user can receive referral commissions
+     */
+    public function canReceiveCommissions(): bool
+    {
+        return $this->isAffiliate()
+            && $this->referral_bank_setup_complete
+            && $this->paystack_subaccount_code
+            && $this->referralBankAccount()->exists();
+    }
+
+    /**
+     * Check if user has a custom commission rate
+     */
+    public function hasCustomCommissionRate(): bool
+    {
+        return $this->referral_commission_rate !== null;
+    }
+
+    /**
+     * Get effective commission rate (custom or null for default)
+     */
+    public function getEffectiveCommissionRate(): ?float
+    {
+        return $this->referral_commission_rate;
+    }
+
+    /**
+     * Get referral stats for dashboard
+     */
+    public function getReferralStats(): array
+    {
+        $earnings = $this->referralEarnings();
+
+        return [
+            'total_referrals' => $this->referrals()->count(),
+            'active_referrals' => $this->referrals()->whereHas('successfulPayments')->count(),
+            'total_earned' => $earnings->clone()->where('status', ReferralEarning::STATUS_PAID)->sum('commission_amount'),
+            'pending_earnings' => $earnings->clone()->where('status', ReferralEarning::STATUS_PENDING)->sum('commission_amount'),
+            'referral_code' => $this->referral_code,
+            'bank_setup_complete' => $this->referral_bank_setup_complete,
+            'has_custom_rate' => $this->hasCustomCommissionRate(),
+            'commission_rate' => $this->referral_commission_rate,
+        ];
+    }
+
+    /**
+     * Check if this user was referred
+     */
+    public function wasReferred(): bool
+    {
+        return $this->referred_by !== null;
     }
 }

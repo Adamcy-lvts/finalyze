@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { bottomNavItems } from '@/config/nav';
+import { computed } from 'vue';
+import { getBottomNavItems } from '@/config/nav';
 import { Link, usePage } from '@inertiajs/vue3';
 
 const page = usePage();
+const userAffiliate = page.props.auth?.user?.affiliate;
+const bottomNavItems = computed(() => getBottomNavItems({
+    isAffiliate: Boolean(userAffiliate?.is_affiliate),
+    isPureAffiliate: Boolean(userAffiliate?.is_pure),
+    isAffiliateRoute: page.url.startsWith('/affiliate'),
+}));
 </script>
 
 <template>

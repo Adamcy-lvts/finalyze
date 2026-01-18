@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Middleware\CheckWordBalance;
+use App\Http\Middleware\EnsureEmailIsVerifiedIfEnabled;
+use App\Http\Middleware\EnsureUserHasProjectAccess;
+use App\Http\Middleware\EnsureUserIsAffiliate;
 use App\Http\Middleware\EnsureRegistrationInvite;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -44,6 +47,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.words' => CheckWordBalance::class,
             'prevent.duplicate' => PreventDuplicateRequests::class,
             'registration.invite' => EnsureRegistrationInvite::class,
+            'affiliate' => EnsureUserIsAffiliate::class,
+            'project.access' => EnsureUserHasProjectAccess::class,
+            'verified' => EnsureEmailIsVerifiedIfEnabled::class,
         ]);
 
         // Add session and Sanctum middleware to API routes for SPA compatibility

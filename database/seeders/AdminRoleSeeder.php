@@ -31,6 +31,9 @@ class AdminRoleSeeder extends Seeder
 
             // Audit
             'audit.view',
+
+            // Affiliate
+            'affiliate.dashboard', 'affiliate.earnings', 'affiliate.bank',
         ];
 
         foreach ($permissions as $permission) {
@@ -40,6 +43,7 @@ class AdminRoleSeeder extends Seeder
         $superAdmin = Role::firstOrCreate(['name' => 'super_admin', 'guard_name' => 'web']);
         $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $support = Role::firstOrCreate(['name' => 'support', 'guard_name' => 'web']);
+        $affiliate = Role::firstOrCreate(['name' => 'affiliate', 'guard_name' => 'web']);
 
         $superAdmin->givePermissionTo($permissions);
 
@@ -51,6 +55,12 @@ class AdminRoleSeeder extends Seeder
             'projects.view',
             'payments.view',
             'analytics.view',
+        ]);
+
+        $affiliate->givePermissionTo([
+            'affiliate.dashboard',
+            'affiliate.earnings',
+            'affiliate.bank',
         ]);
 
         $adminUser = User::where('email', 'devcentric.studio@gmail.com')->first();

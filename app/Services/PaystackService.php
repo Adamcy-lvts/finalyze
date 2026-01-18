@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\Bank;
 
 /**
  * Service for interacting with Paystack API
@@ -203,24 +204,59 @@ class PaystackService
      */
     public function getBanks(): array
     {
+        $banks = Bank::query()
+            ->where('active', true)
+            ->where('is_deleted', false)
+            ->orderBy('name')
+            ->get(['name', 'code']);
+
+        if ($banks->isNotEmpty()) {
+            return $banks->map(fn ($bank) => [
+                'name' => $bank->name,
+                'code' => $bank->code,
+            ])->toArray();
+        }
+
+        return $this->fetchBanksFromApi();
+    }
+
+    /**
+     * Fetch banks directly from Paystack API.
+     */
+    public function fetchBanksFromApi(array $params = []): array
+    {
         $this->ensureConfigured();
 
         try {
-            $response = Http::withToken($this->secretKey)
-                ->timeout(30)
-                ->get("{$this->baseUrl}/bank", [
-                    'country' => 'nigeria',
-                    'use_cursor' => true,
-                    'perPage' => 100,
-                ]);
+            $query = array_merge([
+                'country' => 'nigeria',
+                'use_cursor' => true,
+                'perPage' => 100,
+            ], $params);
 
-            $data = $response->json();
+            $banks = [];
+            $next = null;
 
-            if ($response->successful() && ($data['status'] ?? false)) {
-                return $data['data'] ?? [];
-            }
+            do {
+                if ($next) {
+                    $query['next'] = $next;
+                }
 
-            return [];
+                $response = Http::withToken($this->secretKey)
+                    ->timeout(30)
+                    ->get("{$this->baseUrl}/bank", $query);
+
+                $data = $response->json();
+
+                if ($response->successful() && ($data['status'] ?? false)) {
+                    $banks = array_merge($banks, $data['data'] ?? []);
+                    $next = $data['meta']['next'] ?? null;
+                } else {
+                    return [];
+                }
+            } while ($next);
+
+            return $banks;
 
         } catch (\Exception $e) {
             Log::error('Failed to fetch banks', ['error' => $e->getMessage()]);
@@ -322,5 +358,220 @@ class PaystackService
     public function getPublicKey(): ?string
     {
         return $this->publicKey;
+    }
+
+    // =========================================================================
+    // REFERRAL / SPLIT PAYMENT METHODS
+    // =========================================================================
+
+    /**
+     * Resolve/verify bank account details
+     *
+     * @param  string  $accountNumber  10-digit account number
+     * @param  string  $bankCode  Paystack bank code
+     * @return array{status: bool, message?: string, data?: array}
+     */
+    public function resolveAccountNumber(string $accountNumber, string $bankCode): array
+    {
+        $this->ensureConfigured();
+
+        try {
+            $response = Http::withToken($this->secretKey)
+                ->timeout(30)
+                ->get("{$this->baseUrl}/bank/resolve", [
+                    'account_number' => $accountNumber,
+                    'bank_code' => $bankCode,
+                ]);
+
+            $data = $response->json();
+
+            if ($response->successful() && ($data['status'] ?? false)) {
+                Log::info('Bank account resolved', [
+                    'account_number' => substr($accountNumber, 0, 3).'****'.substr($accountNumber, -3),
+                    'bank_code' => $bankCode,
+                    'account_name' => $data['data']['account_name'] ?? null,
+                ]);
+
+                return [
+                    'status' => true,
+                    'data' => $data['data'],
+                ];
+            }
+
+            Log::warning('Bank account resolution failed', [
+                'bank_code' => $bankCode,
+                'response' => $data,
+            ]);
+
+            return [
+                'status' => false,
+                'message' => $data['message'] ?? 'Could not verify bank account',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Bank account resolution error', ['error' => $e->getMessage()]);
+
+            return [
+                'status' => false,
+                'message' => 'Could not verify bank account',
+            ];
+        }
+    }
+
+    /**
+     * Create a subaccount for split payments
+     *
+     * @param  string  $businessName  Name for the subaccount
+     * @param  string  $bankCode  Paystack bank code
+     * @param  string  $accountNumber  10-digit account number
+     * @param  float  $percentageCharge  Percentage to charge (0 = we handle split in transaction)
+     * @param  string  $description  Description for the subaccount
+     * @return array{status: bool, message?: string, data?: array}
+     */
+    public function createSubaccount(
+        string $businessName,
+        string $bankCode,
+        string $accountNumber,
+        float $percentageCharge = 0,
+        string $description = 'Referral Partner'
+    ): array {
+        $this->ensureConfigured();
+
+        try {
+            $response = Http::withToken($this->secretKey)
+                ->timeout(30)
+                ->post("{$this->baseUrl}/subaccount", [
+                    'business_name' => $businessName,
+                    'bank_code' => $bankCode,
+                    'account_number' => $accountNumber,
+                    'percentage_charge' => $percentageCharge,
+                    'description' => $description,
+                ]);
+
+            $data = $response->json();
+
+            if ($response->successful() && ($data['status'] ?? false)) {
+                Log::info('Paystack subaccount created', [
+                    'business_name' => $businessName,
+                    'subaccount_code' => $data['data']['subaccount_code'] ?? null,
+                ]);
+
+                return [
+                    'status' => true,
+                    'data' => $data['data'],
+                ];
+            }
+
+            Log::error('Failed to create Paystack subaccount', [
+                'business_name' => $businessName,
+                'response' => $data,
+            ]);
+
+            return [
+                'status' => false,
+                'message' => $data['message'] ?? 'Failed to create subaccount',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Paystack subaccount creation error', [
+                'business_name' => $businessName,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => false,
+                'message' => 'Could not create subaccount',
+            ];
+        }
+    }
+
+    /**
+     * Initialize a transaction with split payment to a subaccount
+     *
+     * @param  string  $email  Customer email
+     * @param  int  $amount  Total amount in kobo
+     * @param  string  $reference  Unique transaction reference
+     * @param  string  $subaccountCode  Paystack subaccount code for the referrer
+     * @param  int  $commissionAmount  Amount to send to subaccount (in kobo)
+     * @param  array  $metadata  Additional data to store
+     * @param  string|null  $callbackUrl  URL to redirect after payment
+     * @param  string  $bearer  Who pays Paystack fees (account, subaccount, all, all-proportional)
+     * @return array{status: bool, message: string, data?: array}
+     */
+    public function initializeTransactionWithSplit(
+        string $email,
+        int $amount,
+        string $reference,
+        string $subaccountCode,
+        int $commissionAmount,
+        array $metadata = [],
+        ?string $callbackUrl = null,
+        string $bearer = 'account'
+    ): array {
+        $this->ensureConfigured();
+
+        try {
+            // Calculate the amount that goes to the main account
+            // transaction_charge is what the main account keeps
+            $mainAccountAmount = $amount - $commissionAmount;
+
+            $payload = [
+                'email' => $email,
+                'amount' => $amount,
+                'reference' => $reference,
+                'metadata' => $metadata,
+                'currency' => 'NGN',
+                'subaccount' => $subaccountCode,
+                'transaction_charge' => $mainAccountAmount,
+                'bearer' => $bearer,
+            ];
+
+            if ($callbackUrl) {
+                $payload['callback_url'] = $callbackUrl;
+            }
+
+            $response = Http::withToken($this->secretKey)
+                ->timeout(30)
+                ->post("{$this->baseUrl}/transaction/initialize", $payload);
+
+            $data = $response->json();
+
+            if ($response->successful() && ($data['status'] ?? false)) {
+                Log::info('Paystack split transaction initialized', [
+                    'reference' => $reference,
+                    'amount' => $amount,
+                    'subaccount' => $subaccountCode,
+                    'commission' => $commissionAmount,
+                    'main_account' => $mainAccountAmount,
+                ]);
+
+                return [
+                    'status' => true,
+                    'message' => $data['message'] ?? 'Transaction initialized',
+                    'data' => $data['data'],
+                ];
+            }
+
+            Log::error('Paystack split initialization failed', [
+                'reference' => $reference,
+                'response' => $data,
+            ]);
+
+            return [
+                'status' => false,
+                'message' => $data['message'] ?? 'Failed to initialize payment',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Paystack split initialization error', [
+                'reference' => $reference,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => false,
+                'message' => 'Payment service temporarily unavailable',
+            ];
+        }
     }
 }

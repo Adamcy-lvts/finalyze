@@ -4,11 +4,20 @@ import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/vue3';
-import { BookOpen, Coins, Folder, FolderOpen, Home, Plus, Library } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { Link, usePage } from '@inertiajs/vue3';
 import AppLogo from './AppLogo.vue';
 
-import { footerNavItems, mainNavItems } from '@/config/nav';
+import { footerNavItems, getMainNavItems } from '@/config/nav';
+
+const page = usePage();
+const userAffiliate = page.props.auth?.user?.affiliate;
+
+const mainNavItems = computed(() => getMainNavItems({
+    isAffiliate: Boolean(userAffiliate?.is_affiliate),
+    isPureAffiliate: Boolean(userAffiliate?.is_pure),
+    isAffiliateRoute: page.url.startsWith('/affiliate'),
+}));
 </script>
 
 <template>

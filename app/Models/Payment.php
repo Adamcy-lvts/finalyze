@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class Payment extends Model
@@ -63,6 +64,11 @@ class Payment extends Model
     public function wordPackage(): BelongsTo
     {
         return $this->belongsTo(WordPackage::class, 'package_id');
+    }
+
+    public function referralEarning(): HasOne
+    {
+        return $this->hasOne(ReferralEarning::class);
     }
 
     // =========================================================================

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Tighten\Ziggy\Ziggy;
+use App\Services\AffiliateService;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -47,8 +48,19 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user() ? [
                     ...$request->user()->toArray(),
                     'word_balance_data' => $request->user()->getWordBalanceData(),
+                    'affiliate' => $request->user() ? [
+                        'status' => $request->user()->affiliate_status,
+                        'is_affiliate' => $request->user()->isAffiliate(),
+                        'is_pure' => $request->user()->isPureAffiliate(),
+                        'has_dual_access' => $request->user()->hasDualAccess(),
+                        'can_request' => $request->user()->canRequestAffiliateAccess(),
+                    ] : null,
                 ] : null,
             ],
+            'affiliate' => $request->user() ? [
+                'enabled' => app(AffiliateService::class)->isEnabled(),
+                'show_promo' => app(AffiliateService::class)->shouldShowPromoPopup($request->user()),
+            ] : null,
             'csrf_token' => csrf_token(),
             'ziggy' => [
                 ...(new Ziggy)->toArray(),

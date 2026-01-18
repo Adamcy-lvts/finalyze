@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\RegistrationInvite;
 use App\Models\RegistrationInviteRedemption;
 use App\Models\User;
+use App\Services\ReferralService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,12 +19,34 @@ use Inertia\Response;
 
 class RegisteredUserController extends Controller
 {
+    public function __construct(
+        private ReferralService $referralService
+    ) {}
+
     /**
      * Show the registration page.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
-        return Inertia::render('auth/Register');
+        // Capture referral code from URL if present
+        $referralCode = $request->query('ref');
+        $validReferrer = null;
+
+        if ($referralCode) {
+            // Validate the referral code
+            $referrer = $this->referralService->validateReferralCode($referralCode);
+
+            if ($referrer) {
+                // Store valid referral code in session
+                $request->session()->put('referral_code', strtoupper(trim($referralCode)));
+                $validReferrer = $referrer->name;
+            }
+        }
+
+        return Inertia::render('auth/Register', [
+            'referralCode' => $request->session()->get('referral_code'),
+            'referrerName' => $validReferrer,
+        ]);
     }
 
     /**
@@ -82,6 +105,12 @@ class RegisteredUserController extends Controller
                         'redeemed_at' => now(),
                     ]);
                 }
+
+                // Link referral if present in session
+                $referralCode = $request->session()->get('referral_code');
+                if ($referralCode) {
+                    $this->referralService->linkReferral($user, $referralCode);
+                }
             });
         } catch (\RuntimeException $e) {
             if ($e->getMessage() !== 'registration_invite_invalid') {
@@ -98,6 +127,9 @@ class RegisteredUserController extends Controller
         if ($inviteId) {
             $request->session()->forget('registration_invite_id');
         }
+
+        // Clear referral code from session
+        $request->session()->forget('referral_code');
 
         event(new Registered($user));
 

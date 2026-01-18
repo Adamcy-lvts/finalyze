@@ -6,12 +6,14 @@ import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SafeHtmlText from '@/components/SafeHtmlText.vue';
-import { router, Link } from '@inertiajs/vue3';
+import { router, Link, usePage } from '@inertiajs/vue3';
 import { route } from 'ziggy-js';
-import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info, HelpCircle } from 'lucide-vue-next';
+import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info, HelpCircle, X } from 'lucide-vue-next';
 import { computed, onMounted } from 'vue';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
+import AffiliatePromoPopup from '@/components/AffiliatePromoPopup.vue';
+import { toast } from 'vue-sonner';
 
 interface Props {
     user: {
@@ -59,6 +61,10 @@ import CreditBalanceCard from '@/components/CreditBalanceCard.vue';
 import { useWordBalance } from '@/composables/useWordBalance';
 
 const props = defineProps<Props>();
+const page = usePage();
+const affiliate = computed(() => page.props.auth?.user?.affiliate);
+const canRequestAffiliate = computed(() => Boolean(affiliate.value?.can_request));
+const affiliateStatus = computed(() => affiliate.value?.status);
 
 // Use composable for real-time balance updates
 const { wordBalance } = useWordBalance();
@@ -192,6 +198,42 @@ const startTour = () => {
     localStorage.setItem(`dashboard_tour_seen_${props.user.email}`, 'true');
 };
 
+const applyForAffiliate = async () => {
+    try {
+        const response = await fetch(route('affiliate.request'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            toast.success('Affiliate request submitted!');
+        } else {
+            toast.error(data.message || 'Could not submit request');
+        }
+    } catch (error) {
+        toast.error('Could not submit request');
+    }
+};
+
+const dismissAffiliateBanner = async () => {
+    try {
+        await fetch(route('affiliate.promo.dismiss'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+        });
+    } catch (error) {
+        // ignore
+    }
+};
+
 onMounted(() => {
     // Small delay to ensure DOM is ready and animations are settled
     setTimeout(() => {
@@ -208,6 +250,7 @@ onMounted(() => {
             <div class="container mx-auto px-4 py-8 sm:px-6 lg:px-8 max-w-7xl">
                 <TooltipProvider>
                     <div class="space-y-8">
+                        <AffiliatePromoPopup />
                         <!-- Header Section -->
                         <div id="dashboard-header"
                             class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -255,6 +298,34 @@ onMounted(() => {
                                 </Button>
                             </div>
                         </div>
+
+                        <!-- Affiliate CTA -->
+                        <Card v-if="affiliateStatus !== 'approved'" class="border-border/60 bg-muted/30">
+                            <CardContent class="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-6">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                                    @click="dismissAffiliateBanner"
+                                    aria-label="Dismiss affiliate banner"
+                                >
+                                    <X class="h-4 w-4" />
+                                </Button>
+                                <div>
+                                    <p class="text-sm text-muted-foreground">Affiliate Program</p>
+                                    <h3 class="text-lg font-semibold">Earn commission on every referral</h3>
+                                    <p class="text-sm text-muted-foreground">
+                                        Share your link and receive automatic payouts for qualifying purchases.
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <Badge v-if="affiliateStatus === 'pending'" variant="secondary">Pending review</Badge>
+                                    <Button v-else :disabled="!canRequestAffiliate" @click="applyForAffiliate">
+                                        Become an Affiliate
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
 
 
 

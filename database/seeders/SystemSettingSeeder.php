@@ -59,6 +59,85 @@ class SystemSettingSeeder extends Seeder
                 'group' => 'ai',
                 'description' => 'Analysis system prompt used for scoring/evaluation (merged with the global system prompt).',
             ],
+            // Referral system settings
+            [
+                'key' => 'referral.enabled',
+                'value' => ['enabled' => true],
+                'type' => 'boolean',
+                'group' => 'referral',
+                'description' => 'Enable or disable the referral system',
+            ],
+            [
+                'key' => 'referral.commission_percentage',
+                'value' => ['percentage' => 10],
+                'type' => 'integer',
+                'group' => 'referral',
+                'description' => 'Default commission percentage for referrers (e.g., 10 = 10%)',
+            ],
+            [
+                'key' => 'referral.minimum_payment_amount',
+                'value' => ['amount' => 100000],
+                'type' => 'integer',
+                'group' => 'referral',
+                'description' => 'Minimum payment amount in kobo to qualify for referral commission (default: 1000 NGN)',
+            ],
+            [
+                'key' => 'referral.fee_bearer',
+                'value' => ['bearer' => 'account'],
+                'type' => 'string',
+                'group' => 'referral',
+                'description' => 'Who pays Paystack transaction fees (account, subaccount, all, all-proportional)',
+            ],
+            // Affiliate system settings
+            [
+                'key' => 'affiliate.enabled',
+                'value' => ['enabled' => true],
+                'type' => 'boolean',
+                'group' => 'affiliate',
+                'description' => 'Enable or disable the affiliate system',
+            ],
+            [
+                'key' => 'affiliate.registration_open',
+                'value' => ['enabled' => false],
+                'type' => 'boolean',
+                'group' => 'affiliate',
+                'description' => 'Allow public affiliate registration',
+            ],
+            [
+                'key' => 'affiliate.commission_percentage',
+                'value' => ['percentage' => 10],
+                'type' => 'integer',
+                'group' => 'affiliate',
+                'description' => 'Default commission percentage for affiliates',
+            ],
+            [
+                'key' => 'affiliate.minimum_payment_amount',
+                'value' => ['amount' => 100000],
+                'type' => 'integer',
+                'group' => 'affiliate',
+                'description' => 'Minimum payment amount in kobo to qualify for affiliate commission',
+            ],
+            [
+                'key' => 'affiliate.fee_bearer',
+                'value' => ['bearer' => 'account'],
+                'type' => 'string',
+                'group' => 'affiliate',
+                'description' => 'Who pays Paystack transaction fees for affiliate split payments',
+            ],
+            [
+                'key' => 'affiliate.promo_popup_enabled',
+                'value' => ['enabled' => true],
+                'type' => 'boolean',
+                'group' => 'affiliate',
+                'description' => 'Show affiliate promo popup to regular users',
+            ],
+            [
+                'key' => 'affiliate.promo_popup_delay_days',
+                'value' => ['days' => 7],
+                'type' => 'integer',
+                'group' => 'affiliate',
+                'description' => 'Days after signup before showing affiliate promo popup',
+            ],
         ];
 
         foreach ($settings as $setting) {

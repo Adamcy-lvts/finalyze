@@ -5,10 +5,21 @@ import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import AuthBase from '@/layouts/AuthLayout.vue';
 import { Form, Head } from '@inertiajs/vue3';
-import { LoaderCircle, Eye, EyeOff } from 'lucide-vue-next';
+import { LoaderCircle, Eye, EyeOff, Gift } from 'lucide-vue-next';
 import { ref } from 'vue';
+
+interface Props {
+    referralCode?: string | null;
+    referrerName?: string | null;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+    referralCode: null,
+    referrerName: null,
+});
 
 const showPassword = ref(false);
 const showPasswordConfirmation = ref(false);
@@ -17,6 +28,15 @@ const showPasswordConfirmation = ref(false);
 <template>
     <AuthBase title="Create an account" description="Enter your details below to create your account">
         <Head title="Register" />
+
+        <!-- Referral Notice -->
+        <Alert v-if="referralCode" class="mb-6 border-green-500/30 bg-green-500/5">
+            <Gift class="h-4 w-4 text-green-600" />
+            <AlertDescription class="text-green-700 dark:text-green-400">
+                <span v-if="referrerName">You were invited by <strong>{{ referrerName }}</strong>.</span>
+                <span v-else>You're signing up with a referral link.</span>
+            </AlertDescription>
+        </Alert>
 
         <Form
             method="post"

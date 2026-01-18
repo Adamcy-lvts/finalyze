@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminProjectController;
 use App\Http\Controllers\Admin\AdminPromptPreviewController;
 use App\Http\Controllers\Admin\AdminPromptTemplateController;
+use App\Http\Controllers\Admin\AdminReferralController;
 use App\Http\Controllers\Admin\AdminRegistrationInviteController;
 use App\Http\Controllers\Admin\AdminSystemController;
 use App\Http\Controllers\Admin\AdminUniversityController;
@@ -116,6 +117,9 @@ Route::get('/test-broadcast', function () {
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/payment.php';
+require __DIR__.'/feedback.php';
+require __DIR__.'/referral.php';
+require __DIR__.'/affiliate.php';
 
 // Theme test page (temporary for debugging)
 Route::get('/theme-test', function () {
@@ -300,6 +304,34 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::post('/{notification}/read', [AdminNotificationController::class, 'markRead'])->name('admin.notifications.read');
         Route::post('/read-all', [AdminNotificationController::class, 'markAllRead'])->name('admin.notifications.read-all');
     });
+
+    // Referrals
+    Route::prefix('referrals')->group(function () {
+        Route::get('/', [AdminReferralController::class, 'index'])->name('admin.referrals.index');
+        Route::put('/settings', [AdminReferralController::class, 'updateSettings'])->name('admin.referrals.update-settings');
+        Route::get('/users', [AdminReferralController::class, 'users'])->name('admin.referrals.users');
+        Route::put('/users/{user}', [AdminReferralController::class, 'updateUserRate'])->name('admin.referrals.update-user-rate');
+        Route::delete('/users/{user}/rate', [AdminReferralController::class, 'resetUserRate'])->name('admin.referrals.reset-user-rate');
+        Route::get('/earnings', [AdminReferralController::class, 'earnings'])->name('admin.referrals.earnings');
+    });
+
+    // Affiliates
+    Route::prefix('affiliates')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'index'])->name('admin.affiliates.index');
+        Route::put('/settings', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'updateSettings'])->name('admin.affiliates.update-settings');
+        Route::get('/list', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'list'])->name('admin.affiliates.list');
+        Route::put('/{user}', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'update'])->name('admin.affiliates.update');
+        Route::delete('/{user}/rate', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'resetRate'])->name('admin.affiliates.reset-rate');
+
+        Route::get('/invites', [\App\Http\Controllers\Admin\AdminAffiliateInviteController::class, 'index'])->name('admin.affiliates.invites.index');
+        Route::post('/invites', [\App\Http\Controllers\Admin\AdminAffiliateInviteController::class, 'store'])->name('admin.affiliates.invites.store');
+        Route::put('/invites/{invite}', [\App\Http\Controllers\Admin\AdminAffiliateInviteController::class, 'update'])->name('admin.affiliates.invites.update');
+        Route::delete('/invites/{invite}', [\App\Http\Controllers\Admin\AdminAffiliateInviteController::class, 'destroy'])->name('admin.affiliates.invites.destroy');
+
+        Route::get('/requests', [\App\Http\Controllers\Admin\AdminAffiliateRequestController::class, 'index'])->name('admin.affiliates.requests.index');
+        Route::post('/requests/{user}/approve', [\App\Http\Controllers\Admin\AdminAffiliateRequestController::class, 'approve'])->name('admin.affiliates.requests.approve');
+        Route::post('/requests/{user}/reject', [\App\Http\Controllers\Admin\AdminAffiliateRequestController::class, 'reject'])->name('admin.affiliates.requests.reject');
+    });
 });
 
 // Bulk project deletion (placed outside to avoid conflicts with numeric bindings)
@@ -313,7 +345,7 @@ if (app()->environment('testing')) {
         ->name('projects.bulk-destroy');
 }
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'project.access'])->group(function () {
     // Dashboard - Main landing page after login
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 

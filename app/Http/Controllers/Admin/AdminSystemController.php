@@ -60,16 +60,59 @@ class AdminSystemController extends Controller
 
     public function updateSettings(Request $request)
     {
+        \Illuminate\Support\Facades\Log::info('Settings update request:', $request->all());
+
         $data = $request->validate([
             'settings' => 'required|array',
             'settings.*.key' => 'required|string|exists:system_settings,key',
-            'settings.*.value' => 'required',
+            'settings.*.value' => 'nullable',
         ]);
+
+        $structuredKeys = [
+            'affiliate.enabled' => ['enabled', 'bool'],
+            'affiliate.registration_open' => ['enabled', 'bool'],
+            'affiliate.commission_percentage' => ['percentage', 'float'],
+            'affiliate.minimum_payment_amount' => ['amount', 'int'],
+            'affiliate.fee_bearer' => ['bearer', 'string'],
+            'affiliate.promo_popup_enabled' => ['enabled', 'bool'],
+            'affiliate.promo_popup_delay_days' => ['days', 'int'],
+            'referral.enabled' => ['enabled', 'bool'],
+            'referral.commission_percentage' => ['percentage', 'float'],
+            'referral.minimum_payment_amount' => ['amount', 'int'],
+            'referral.fee_bearer' => ['bearer', 'string'],
+        ];
 
         foreach ($data['settings'] as $item) {
             $setting = SystemSetting::where('key', $item['key'])->first();
             if ($setting) {
-                $setting->update(['value' => $item['value']]);
+                // Determine if we need to decode JSON strings
+                $newValue = $item['value'];
+                
+                // If the model expects an array (JSON) but we received a string that looks like JSON, try to decode it
+                // This prevents double-encoding
+                if ($setting->hasCast('value', 'array') && is_string($newValue)) {
+                    $decoded = json_decode($newValue, true);
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                       $newValue = $decoded;
+                    }
+                }
+                
+                if (isset($structuredKeys[$item['key']])) {
+                    [$valueKey, $castType] = $structuredKeys[$item['key']];
+                    if (! is_array($newValue) || ! array_key_exists($valueKey, $newValue)) {
+                        $scalar = $newValue;
+                        $newValue = match ($castType) {
+                            'bool' => filter_var($scalar, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false,
+                            'int' => (int) $scalar,
+                            'float' => (float) $scalar,
+                            default => (string) $scalar,
+                        };
+                        $newValue = [$valueKey => $newValue];
+                    }
+                }
+
+                \Illuminate\Support\Facades\Log::info("Updating setting {$item['key']}", ['old' => $setting->value, 'new' => $newValue]);
+                $setting->update(['value' => $newValue]);
             }
         }
 

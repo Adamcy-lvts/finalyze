@@ -38,6 +38,7 @@ class DatabaseSeeder extends Seeder
             FeatureFlagSeeder::class,
             SystemSettingSeeder::class,
             AdminRoleSeeder::class,
+            BankSeeder::class,
         ]);
     }
 }
