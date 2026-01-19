@@ -1,41 +1,20 @@
 <!-- resources/js/pages/projects/Defense.vue -->
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import { debounce } from 'lodash-es';
 import AppLayout from '@/layouts/AppLayout.vue';
-import {
-    Shield,
-    Presentation,
-    Zap,
-    ArrowLeft,
-    Play,
-    Target,
-    Brain,
-    Users,
-    Mic,
-    Sparkles,
-    History,
-    Maximize2,
-    ArrowUpDown,
-    RotateCcw,
-    Download
-} from 'lucide-vue-next';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-
-import { Progress } from '@/components/ui/progress';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import RichTextViewer from '@/components/ui/rich-text-editor/RichTextViewer.vue';
-import DeckViewer from '@/components/defense/DeckViewer.vue';
-import WysiwygSlideEditor from '@/components/defense/editor/WysiwygSlideEditor.vue';
-import ExecutiveBriefingDeck from '@/components/defense/ExecutiveBriefingDeck.vue';
-import PredictedQuestionsDeck from '@/components/defense/PredictedQuestionsDeck.vue';
+import DefenseSimulationHud from '@/components/defense/DefenseSimulationHud.vue';
+import DefensePanelVisualization from '@/components/defense/DefensePanelVisualization.vue';
+import DefenseChatInterface from '@/components/defense/DefenseChatInterface.vue';
+import DefensePrepLeftColumn from '@/components/defense/DefensePrepLeftColumn.vue';
+import DefensePrepRightColumn from '@/components/defense/DefensePrepRightColumn.vue';
+import DefenseSimulationLabIntro from '@/components/defense/DefenseSimulationLabIntro.vue';
+import DefenseHeader from '@/components/defense/DefenseHeader.vue';
+import DefenseViewToggle from '@/components/defense/DefenseViewToggle.vue';
+import DefenseOnboardingDialog from '@/components/defense/DefenseOnboardingDialog.vue';
 import { useDefenseSession } from '@/composables/useDefenseSession';
 import { ensureWysiwygFormat, wysiwygToLegacy } from '@/utils/editor/migration';
 import type { DefenseMessage } from '@/types/defense';
@@ -60,21 +39,70 @@ interface Project {
     chapters: Chapter[];
 }
 
+interface SimulationPersona {
+    id: string;
+    name: string;
+    role: string;
+    avatar?: string;
+}
+
+interface DefenseConfig {
+    default_question_limit: number;
+    default_difficulty: 'undergraduate' | 'masters' | 'doctoral';
+    personas: SimulationPersona[];
+}
+
 const props = defineProps<{
     project: Project;
+    defenseConfig?: DefenseConfig;
 }>();
+
+const defenseConfig = computed(() => ({
+    default_question_limit: props.defenseConfig?.default_question_limit ?? 10,
+    default_difficulty: props.defenseConfig?.default_difficulty ?? 'undergraduate',
+    personas: props.defenseConfig?.personas ?? [],
+}));
 
 const currentView = ref<'preparation' | 'simulation'>('preparation');
 const isSimulating = ref(false);
-const readinessScore = ref(72);
+const simulationElapsedSeconds = ref(0);
+const simulationTimer = ref<ReturnType<typeof setInterval> | null>(null);
+const localSimulationStartMs = ref<number | null>(null);
+const readinessScore = ref<number | null>(null);
+const overallReadinessScore = ref<number | null>(null);
 const lowBalanceMessage = ref<string | null>(null);
 const isAutoEnding = ref(false);
-const totalQuestionsPerSession = 10;
-const activeSimulationPersonas = ref([
-    { id: 'skeptic', name: 'The Skeptic', role: 'Critical Reviewer', avatar: '🧐', color: 'text-amber-500' },
-    { id: 'methodologist', name: 'The Methodologist', role: 'Technical Expert', avatar: '🧪', color: 'text-blue-500' },
-    { id: 'generalist', name: 'The Generalist', role: 'Value Reviewer', avatar: '🌍', color: 'text-green-500' }
-]);
+const totalQuestionsPerSession = computed(() => defenseConfig.value.default_question_limit);
+const personaAvatars: Record<string, string> = {
+    skeptic: '🧐',
+    methodologist: '🧪',
+    generalist: '🌍',
+    theorist: '📚',
+    practitioner: '🧭',
+};
+const activeSimulationPersonas = computed(() => {
+    return defenseConfig.value.personas.map(persona => ({
+        ...persona,
+        avatar: persona.avatar ?? personaAvatars[persona.id] ?? '•',
+    }));
+});
+const onboardingKey = 'defense:onboarding:v1';
+const showOnboarding = ref(false);
+const onboardingStep = ref(0);
+const onboardingSteps = [
+    {
+        title: 'Scan your prep materials',
+        description: 'Review the executive briefing and predicted questions before you start. The goal is clarity, not memorization.',
+    },
+    {
+        title: 'Draft a strong opening',
+        description: 'Write a concise opening statement and refine it with analysis so you hit the right tone immediately.',
+    },
+    {
+        title: 'Run the mock defense',
+        description: 'Start the simulation, answer questions, and request hints when you need momentum.',
+    },
+];
 
 interface PredictedQuestion {
     id?: number;
@@ -215,10 +243,11 @@ const startSimulation = async () => {
         const selectedPanelists = activeSimulationPersonas.value.map(persona => persona.id);
         await startSession({
             selected_panelists: selectedPanelists,
-            difficulty_level: 'undergraduate',
-            question_limit: totalQuestionsPerSession,
+            difficulty_level: defenseConfig.value.default_difficulty,
+            question_limit: totalQuestionsPerSession.value,
         });
 
+        localSimulationStartMs.value = session.value?.started_at ? null : Date.now();
         isSimulating.value = true;
         currentView.value = 'simulation';
 
@@ -259,6 +288,8 @@ const stopSimulation = async (autoEnded = false) => {
         isSimulating.value = false;
         currentView.value = 'preparation';
         isAutoEnding.value = false;
+        localSimulationStartMs.value = null;
+        simulationElapsedSeconds.value = 0;
     }
 };
 
@@ -277,6 +308,11 @@ const submitResponse = async () => {
         await fetchNextQuestion();
     } catch (error) {
         if (notifyLowBalance(error)) return;
+        const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        if (message && message.toLowerCase().includes('time limit')) {
+            await stopSimulation(true);
+            return;
+        }
         console.error('Failed to submit response:', error);
     }
 };
@@ -290,6 +326,10 @@ const fetchNextQuestion = async (requestHint = false) => {
     } catch (error) {
         if (notifyLowBalance(error)) return;
         const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        if (message && message.toLowerCase().includes('time limit')) {
+            await stopSimulation(true);
+            return;
+        }
         if (message && message.toLowerCase().includes('question limit')) {
             await stopSimulation(true);
             return;
@@ -735,6 +775,7 @@ const loadSessionHistory = async () => {
     try {
         const response = await axios.get(`/api/projects/${props.project.id}/defense/sessions`);
         sessionHistory.value = response.data.sessions || [];
+        overallReadinessScore.value = response.data.overall_readiness_score ?? null;
     } catch (error) {
         notifyLowBalance(error);
         console.error('Failed to load session history:', error);
@@ -745,6 +786,7 @@ const loadSessionHistory = async () => {
 
 const openSession = async (sessionId: number) => {
     await loadSession(sessionId);
+    localSimulationStartMs.value = session.value?.started_at ? null : Date.now();
     isSimulating.value = true;
     currentView.value = 'simulation';
 };
@@ -769,7 +811,7 @@ const containerClass = computed(() => {
 const displayMessages = computed<DefenseMessage[]>(() => messages.value || []);
 
 const formattedReadinessScore = computed(() => {
-    return performanceMetrics.value?.readiness_score ?? readinessScore.value;
+    return performanceMetrics.value?.readiness_score ?? readinessScore.value ?? null;
 });
 
 const clarityScore = computed(() => performanceMetrics.value?.clarity ?? 0);
@@ -792,15 +834,15 @@ const totalPanelistQuestions = computed(() => {
 });
 
 const plannedQuestionLimit = computed(() => {
-    return totalQuestionsPerSession;
+    return totalQuestionsPerSession.value;
 });
 
 const panelistQuestionTarget = computed<Record<string, number>>(() => {
     const panelists = activeSimulationPersonas.value;
     if (panelists.length === 0) return {};
 
-    const base = Math.floor(totalQuestionsPerSession / panelists.length);
-    const remainder = totalQuestionsPerSession % panelists.length;
+    const base = Math.floor(totalQuestionsPerSession.value / panelists.length);
+    const remainder = totalQuestionsPerSession.value % panelists.length;
     const chairIndex = panelists.findIndex(persona => persona.id === 'generalist');
 
     return panelists.reduce<Record<string, number>>((acc, persona, index) => {
@@ -815,15 +857,56 @@ const questionLimitLabel = computed(() => {
     return `${totalPanelistQuestions.value}/${session.value.question_limit}`;
 });
 
-const formatMessageTime = (message: DefenseMessage) => {
-    if (!message.created_at) return '';
-    return new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const updateSimulationElapsed = () => {
+    const startedAt = session.value?.started_at ? Date.parse(session.value.started_at) : null;
+    const startMs = Number.isNaN(startedAt) ? null : startedAt;
+    const effectiveStartMs = startMs ?? localSimulationStartMs.value;
+    if (!effectiveStartMs) {
+        simulationElapsedSeconds.value = 0;
+        return;
+    }
+    simulationElapsedSeconds.value = Math.max(0, Math.floor((Date.now() - effectiveStartMs) / 1000));
 };
 
-const formatSessionDate = (dateValue: string | null) => {
-    if (!dateValue) return '';
-    return new Date(dateValue).toLocaleDateString();
+const startSimulationTimer = () => {
+    if (simulationTimer.value) return;
+    updateSimulationElapsed();
+    simulationTimer.value = setInterval(updateSimulationElapsed, 1000);
 };
+
+const stopSimulationTimer = () => {
+    if (!simulationTimer.value) return;
+    clearInterval(simulationTimer.value);
+    simulationTimer.value = null;
+};
+
+const formattedSimulationTime = computed(() => {
+    const totalSeconds = simulationElapsedSeconds.value;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+});
+
+const remainingSimulationSeconds = computed(() => {
+    const limitMinutes = session.value?.time_limit_minutes;
+    if (!limitMinutes) return null;
+    const totalLimitSeconds = limitMinutes * 60;
+    return Math.max(0, totalLimitSeconds - simulationElapsedSeconds.value);
+});
+
+const formattedSimulationCountdown = computed(() => {
+    const remaining = remainingSimulationSeconds.value;
+    if (remaining === null) return formattedSimulationTime.value;
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+});
+
+const simulationTimeLabel = computed(() => {
+    return remainingSimulationSeconds.value === null ? 'Elapsed' : 'Time left';
+});
+
+const showElapsedTime = computed(() => remainingSimulationSeconds.value !== null);
 
 onMounted(() => {
     loadPredictedQuestions();
@@ -831,767 +914,147 @@ onMounted(() => {
     loadSessionHistory();
     loadActiveSession();
     refreshDefenseDeckStatus();
+
+    if (typeof window !== 'undefined' && !localStorage.getItem(onboardingKey)) {
+        onboardingStep.value = 0;
+        showOnboarding.value = true;
+    }
 });
 
-const chatContainer = ref<HTMLElement | null>(null);
-
-const scrollToBottom = async () => {
-    await nextTick();
-    if (chatContainer.value) {
-        chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+const completeOnboarding = () => {
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(onboardingKey, '1');
     }
+    showOnboarding.value = false;
 };
 
-watch(displayMessages, () => {
-    scrollToBottom();
-}, { deep: true });
-
-watch(isSimulating, (newVal) => {
-    if (newVal) {
-        scrollToBottom();
+const skipOnboarding = () => {
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(onboardingKey, '1');
     }
+    showOnboarding.value = false;
+};
+
+const replayOnboarding = () => {
+    onboardingStep.value = 0;
+    showOnboarding.value = true;
+};
+
+watch([isSimulating, session], ([isActive, currentSession]) => {
+    if (isActive) {
+        showOnboarding.value = false;
+        if (currentSession?.started_at) {
+            localSimulationStartMs.value = null;
+        } else if (!localSimulationStartMs.value) {
+            localSimulationStartMs.value = Date.now();
+        }
+        startSimulationTimer();
+        updateSimulationElapsed();
+        return;
+    }
+    stopSimulationTimer();
+}, { immediate: true });
+
+watch([simulationElapsedSeconds, remainingSimulationSeconds, isSimulating], async ([elapsed, remaining, isActive]) => {
+    if (!isActive || isAutoEnding.value) return;
+    if (remaining !== null && remaining <= 0) {
+        await stopSimulation(true);
+        return;
+    }
+    if (session.value?.time_limit_minutes && elapsed >= session.value.time_limit_minutes * 60) {
+        await stopSimulation(true);
+    }
+});
+
+watch([showOnboarding, onboardingStep], ([isVisible, step]) => {
+    if (!isVisible || isSimulating.value) return;
+    currentView.value = step === 2 ? 'simulation' : 'preparation';
 });
 
 onBeforeUnmount(() => {
     stopDeckPolling();
     debouncedPersistDeckSlides.cancel();
+    stopSimulationTimer();
 });
 
 </script>
 
 <template>
     <AppLayout :title="`Defense Preparation: ${project.title}`">
+        <DefenseOnboardingDialog v-model="showOnboarding" v-model:step="onboardingStep"
+            :steps="onboardingSteps" @complete="completeOnboarding" @skip="skipOnboarding" />
         <div class="min-h-screen transition-colors duration-700" :class="containerClass">
             <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
-                <!-- Immersive Header -->
-                <div class="flex flex-col gap-6 md:flex-row md:items-end md:justify-between mb-12">
-                    <div class="space-y-4">
-                        <div class="flex items-center gap-2">
-                            <Button variant="ghost" size="sm"
-                                @click="router.visit(route('projects.writing', project.slug))"
-                                class="h-8 w-8 rounded-full p-0"
-                                :class="isSimulating ? 'text-zinc-400 hover:text-white' : ''">
-                                <ArrowLeft class="h-4 w-4" />
-                            </Button>
-                            <Badge variant="outline" class="gap-1 border-primary/20 bg-primary/5 text-primary">
-                                <Shield class="h-3 w-3" />
-                                Defense Readiness
-                            </Badge>
-                        </div>
-                        <h1 class="text-3xl font-bold tracking-tight md:text-6xl font-display"
-                            :class="isSimulating ? 'text-white' : 'text-foreground'">
-                            Prepare for Victory
-                        </h1>
-                        <p class="max-w-2xl text-base md:text-lg text-muted-foreground"
-                            :class="isSimulating ? 'text-zinc-400' : ''">
-                            Master your project defense with AI-predicted questions, structured presentation guides, and
-                            high-stakes simulation.
-                        </p>
-                        <div v-if="lowBalanceMessage"
-                            class="flex items-start justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90">
-                            <span>{{ lowBalanceMessage }}</span>
-                            <Button variant="ghost" size="sm" class="h-7 px-2 text-amber-100/90 hover:text-white"
-                                @click="dismissLowBalance">
-                                Dismiss
-                            </Button>
-                        </div>
-                    </div>
+                <DefenseHeader :is-simulating="isSimulating" :formatted-readiness-score="formattedReadinessScore"
+                    :overall-readiness-score="overallReadinessScore" :low-balance-message="lowBalanceMessage"
+                    :class="showOnboarding && onboardingStep === 2 ? 'opacity-40 transition-opacity' : ''"
+                    @back="router.visit(route('projects.writing', project.slug))"
+                    @dismiss-low-balance="dismissLowBalance" @replay-onboarding="replayOnboarding" />
 
-                    <div v-show="!isSimulating"
-                        class="flex flex-row md:flex-col items-center gap-4 md:gap-3 p-4 md:p-6 rounded-3xl border border-primary/10 bg-primary/5 backdrop-blur-sm w-full md:w-auto">
-                        <div class="relative flex items-center justify-center shrink-0">
-                            <svg class="h-16 w-16 md:h-20 md:w-20 transform -rotate-90">
-                                <circle class="text-muted/20 md:hidden" stroke-width="5" stroke="currentColor"
-                                    fill="transparent" r="28" cx="32" cy="32" />
-                                <circle class="text-muted/20 hidden md:block" stroke-width="6" stroke="currentColor"
-                                    fill="transparent" r="34" cx="40" cy="40" />
-
-                                <circle class="text-primary transition-all duration-1000 ease-out md:hidden"
-                                    stroke-width="5" :stroke-dasharray="2 * Math.PI * 28"
-                                    :stroke-dashoffset="2 * Math.PI * 28 * (1 - formattedReadinessScore / 100)"
-                                    stroke-linecap="round" stroke="currentColor" fill="transparent" r="28" cx="32"
-                                    cy="32" />
-                                <circle class="text-primary transition-all duration-1000 ease-out hidden md:block"
-                                    stroke-width="6" :stroke-dasharray="2 * Math.PI * 34"
-                                    :stroke-dashoffset="2 * Math.PI * 34 * (1 - formattedReadinessScore / 100)"
-                                    stroke-linecap="round" stroke="currentColor" fill="transparent" r="34" cx="40"
-                                    cy="40" />
-                            </svg>
-                            <span class="absolute text-base md:text-xl font-bold">{{ formattedReadinessScore }}%</span>
-                        </div>
-                        <span
-                            class="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center">Readiness
-                            Score</span>
-                    </div>
-                </div>
-
-                <!-- Main View Toggle -->
-                <div v-show="!isSimulating"
-                    class="flex p-1 rounded-2xl bg-muted/50 border border-border/50 mb-8 w-full sm:w-auto sm:inline-flex">
-                    <button @click="currentView = 'preparation'"
-                        class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 rounded-xl text-sm font-medium transition-all"
-                        :class="currentView === 'preparation' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'">
-                        <Zap class="h-4 w-4" />
-                        <span class="hidden sm:inline">Preparation Suite</span>
-                        <span class="sm:hidden">Prep</span>
-                    </button>
-                    <button @click="currentView = 'simulation'"
-                        class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 rounded-xl text-sm font-medium transition-all"
-                        :class="currentView === 'simulation' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'">
-                        <Users class="h-4 w-4" />
-                        <span class="hidden sm:inline">Simulation Lab</span>
-                        <span class="sm:hidden">Sim</span>
-                    </button>
-                </div>
+                <DefenseViewToggle v-model="currentView" :is-simulating="isSimulating"
+                    :class="showOnboarding && onboardingStep === 2 ? 'opacity-40 transition-opacity' : ''" />
 
                 <!-- PREPARATION SUITE -->
                 <div v-if="currentView === 'preparation' && !isSimulating"
                     class="grid gap-8 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <DefensePrepLeftColumn v-model="openingStatement" :is-deck-swapped="isDeckSwapped"
+                        :predicted-questions="predictedQuestions" :is-generating-questions="isGeneratingQuestions"
+                        :briefing-slides="briefingSlides" :executive-briefing="executiveBriefing"
+                        :is-briefing-loading="isBriefingLoading" :opening-analysis="openingAnalysis"
+                        :is-opening-generating="isOpeningGenerating" :is-opening-analyzing="isOpeningAnalyzing"
+                        :highlight-prep="showOnboarding && onboardingStep === 0"
+                        :highlight-opening="showOnboarding && onboardingStep === 1"
+                        @generate-predicted-questions="generatePredictedQuestions"
+                        @refresh-executive-briefing="refreshExecutiveBriefing" @toggle-deck-swap="toggleDeckSwap"
+                        @generate-opening-statement="generateOpeningStatement"
+                        @analyze-opening-statement="analyzeOpeningStatement" />
 
-                    <!-- Left Column: Core Prep -->
-                    <div class="lg:col-span-8 space-y-8 transition-all duration-500">
-                        <template v-if="!isDeckSwapped">
-                            <!-- AI Executive Summary -->
-                            <Card
-                                class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <CardHeader class="pb-2">
-                                    <div
-                                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
-                                        <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
-                                            <Sparkles class="h-5 w-5 text-indigo-500" />
-                                            Executive Briefing
-                                        </CardTitle>
-                                        <div class="flex items-center gap-2">
-                                            <Button variant="ghost" size="sm" class="text-xs gap-1.5 h-8 w-fit"
-                                                @click="refreshExecutiveBriefing" :disabled="isBriefingLoading">
-                                                <History class="h-3.5 w-3.5" />
-                                                {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
-                                            </Button>
-                                            <Button variant="ghost" size="icon"
-                                                class="h-8 w-8 text-zinc-500 hover:text-indigo-400"
-                                                @click="toggleDeckSwap" title="Swap position">
-                                                <ArrowUpDown class="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
-                                        project's core value proposition, synthesized for your defense.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
-                                    <div v-if="briefingSlides.length > 0" class="h-full">
-                                        <ExecutiveBriefingDeck :slides="briefingSlides" :is-loading="isBriefingLoading"
-                                            @refresh="refreshExecutiveBriefing" />
-                                    </div>
-                                    <div v-else-if="executiveBriefing" class="relative z-10 space-y-4">
-                                        <div
-                                            class="absolute -left-6 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500/80 via-purple-500/80 to-transparent rounded-full opacity-60">
-                                        </div>
-                                        <RichTextViewer :content="executiveBriefing" :show-font-controls="false"
-                                            viewer-class="prose-sm md:prose-base dark:prose-invert leading-relaxed"
-                                            class="!bg-transparent" />
-                                    </div>
-                                    <div v-else
-                                        class="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                                        <div
-                                            class="h-12 w-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
-                                            <Sparkles class="h-6 w-6 text-indigo-500/50" />
-                                        </div>
-                                        <p class="text-base text-muted-foreground italic max-w-xs">
-                                            No executive briefing yet. Click “Refresh AI” to generate a comprehensive
-                                            summary of your research.
-                                        </p>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                            <!-- Predicted Questions -->
-                            <div class="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
-                                <Card
-                                    class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
-                                    <CardHeader class="pb-2">
-                                        <div
-                                            class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
-                                            <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
-                                                <Target class="h-5 w-5 text-rose-500" />
-                                                Predicted Defense Questions
-                                            </CardTitle>
-                                            <div class="flex items-center gap-2">
-                                                <Badge variant="secondary" class="font-mono text-[10px]">{{
-                                                    predictedQuestions.length }}
-                                                    TOP QUESTIONS</Badge>
-                                                <Button variant="ghost" size="sm" class="text-xs h-8"
-                                                    @click="generatePredictedQuestions"
-                                                    :disabled="isGeneratingQuestions">
-                                                    <Sparkles class="h-3.5 w-3.5" />
-                                                    {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
-                                                </Button>
-                                                <Button variant="ghost" size="icon"
-                                                    class="h-8 w-8 text-zinc-500 hover:text-rose-400"
-                                                    @click="toggleDeckSwap" title="Swap position">
-                                                    <ArrowUpDown class="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        <CardDescription class="text-rose-600/70 dark:text-rose-400/70 text-sm">
-                                            Identify and prepare for high-probability questions examiners might ask.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[450px]">
-                                        <PredictedQuestionsDeck :questions="predictedQuestions"
-                                            :is-loading="isGeneratingQuestions" />
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </template>
-                        <template v-else>
-                            <!-- Predicted Questions First -->
-                            <div class="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <Card
-                                    class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50">
-                                    <CardHeader class="pb-2">
-                                        <div
-                                            class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
-                                            <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
-                                                <Target class="h-5 w-5 text-rose-500" />
-                                                Predicted Defense Questions
-                                            </CardTitle>
-                                            <div class="flex items-center gap-2">
-                                                <Badge variant="secondary" class="font-mono text-[10px]">{{
-                                                    predictedQuestions.length }}
-                                                    TOP QUESTIONS</Badge>
-                                                <Button variant="ghost" size="sm" class="text-xs h-8"
-                                                    @click="generatePredictedQuestions"
-                                                    :disabled="isGeneratingQuestions">
-                                                    <Sparkles class="h-3.5 w-3.5" />
-                                                    {{ isGeneratingQuestions ? 'Generating...' : 'Generate' }}
-                                                </Button>
-                                                <Button variant="ghost" size="icon"
-                                                    class="h-8 w-8 text-zinc-500 hover:text-rose-400"
-                                                    @click="toggleDeckSwap" title="Swap position">
-                                                    <ArrowUpDown class="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        <CardDescription class="text-rose-600/70 dark:text-rose-400/70 text-sm">
-                                            Identify and prepare for high-probability questions examiners might ask.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[450px]">
-                                        <PredictedQuestionsDeck :questions="predictedQuestions"
-                                            :is-loading="isGeneratingQuestions" />
-                                    </CardContent>
-                                </Card>
-                            </div>
-                            <!-- Executive Briefing Second -->
-                            <Card
-                                class="overflow-hidden border-none bg-zinc-900/30 shadow-none ring-1 ring-border/50 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
-                                <CardHeader class="pb-2">
-                                    <div
-                                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
-                                        <CardTitle class="flex items-center gap-2 text-xl md:text-2xl font-display">
-                                            <Sparkles class="h-5 w-5 text-indigo-500" />
-                                            Executive Briefing
-                                        </CardTitle>
-                                        <div class="flex items-center gap-2">
-                                            <Button variant="ghost" size="sm" class="text-xs gap-1.5 h-8 w-fit"
-                                                @click="refreshExecutiveBriefing" :disabled="isBriefingLoading">
-                                                <History class="h-3.5 w-3.5" />
-                                                {{ isBriefingLoading ? 'Loading...' : 'Refresh AI' }}
-                                            </Button>
-                                            <Button variant="ghost" size="icon"
-                                                class="h-8 w-8 text-zinc-500 hover:text-indigo-400"
-                                                @click="toggleDeckSwap" title="Swap position">
-                                                <ArrowUpDown class="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <CardDescription class="text-indigo-600/70 dark:text-indigo-400/70 text-sm">Your
-                                        project's core value proposition, synthesized for your defense.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent class="relative pb-6 md:pb-10 px-6 md:px-10 min-h-[400px]">
-                                    <div v-if="briefingSlides.length > 0" class="h-full">
-                                        <ExecutiveBriefingDeck :slides="briefingSlides" :is-loading="isBriefingLoading"
-                                            @refresh="refreshExecutiveBriefing" />
-                                    </div>
-                                    <div v-else-if="executiveBriefing" class="relative z-10 space-y-4">
-                                        <div
-                                            class="absolute -left-6 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500/80 via-purple-500/80 to-transparent rounded-full opacity-60">
-                                        </div>
-                                        <RichTextViewer :content="executiveBriefing" :show-font-controls="false"
-                                            viewer-class="prose-sm md:prose-base dark:prose-invert leading-relaxed"
-                                            class="!bg-transparent" />
-                                    </div>
-                                    <div v-else
-                                        class="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                                        <div
-                                            class="h-12 w-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
-                                            <Sparkles class="h-6 w-6 text-indigo-500/50" />
-                                        </div>
-                                        <p class="text-base text-muted-foreground italic max-w-xs">
-                                            No executive briefing yet. Click “Refresh AI” to generate a comprehensive
-                                            summary of your research.
-                                        </p>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </template>
-
-                        <!-- Quick Pitch Laboratory -->
-                        <Card class="border-border/50 shadow-sm rounded-3xl overflow-hidden group">
-                            <CardHeader class="pb-2">
-                                <CardTitle class="flex items-center gap-2 text-base">
-                                    <Mic class="h-4 w-4 text-emerald-500" />
-                                    Opening Statement
-                                </CardTitle>
-                                <CardDescription>Your 60-second "hook" to impress the panel.</CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-4">
-                                <div class="relative">
-                                    <textarea v-model="openingStatement" rows="4"
-                                        class="w-full rounded-2xl border-border/50 bg-muted/30 p-4 text-sm focus:ring-primary/20 transition-all"
-                                        placeholder="Type your opening statement here..."></textarea>
-                                    <div class="absolute bottom-3 right-3 flex items-center gap-2">
-                                        <Button variant="outline" size="icon" class="h-8 w-8 rounded-full">
-                                            <Mic class="h-3.5 w-3.5" />
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <Button variant="outline" class="w-full text-xs font-bold gap-2 rounded-xl"
-                                        @click="generateOpeningStatement" :disabled="isOpeningGenerating">
-                                        <Sparkles class="h-3.5 w-3.5" />
-                                        {{ isOpeningGenerating ? 'Generating...' : 'GENERATE OPENING' }}
-                                    </Button>
-                                    <Button variant="secondary" class="w-full text-xs font-bold gap-2 rounded-xl"
-                                        @click="analyzeOpeningStatement" :disabled="isOpeningAnalyzing">
-                                        <Brain class="h-3.5 w-3.5" />
-                                        {{ isOpeningAnalyzing ? 'Analyzing...' : 'ANALYZE PITCH FLOW' }}
-                                    </Button>
-                                </div>
-                                <div v-if="openingAnalysis"
-                                    class="text-sm text-muted-foreground border-t border-emerald-500/10 pt-4 mt-2">
-                                    <RichTextViewer :content="openingAnalysis" :show-font-controls="false"
-                                        class="!bg-transparent" viewer-class="prose-xs md:prose-sm" />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <!-- Right Column: Tools -->
-                    <div class="lg:col-span-4 space-y-8">
-                        <!-- Presentation Hub -->
-                        <!-- Presentation Hub -->
-                        <Card
-                            class="border-border/50 shadow-2xl shadow-indigo-500/10 rounded-3xl overflow-hidden bg-zinc-900/20">
-                            <CardHeader
-                                class="relative overflow-hidden bg-gradient-to-br from-indigo-950 via-zinc-900 to-black text-white pb-6 border-b border-white/5">
-                                <!-- Abstract Glows -->
-                                <div class="absolute -right-6 -top-6 h-32 w-32 bg-indigo-500/10 rounded-full blur-3xl">
-                                </div>
-                                <div
-                                    class="absolute -left-10 -bottom-10 h-40 w-40 bg-purple-500/10 rounded-full blur-3xl">
-                                </div>
-
-                                <div class="relative z-10 flex items-center gap-3 mb-2">
-                                    <div
-                                        class="p-2 bg-indigo-500/10 rounded-xl backdrop-blur-md border border-indigo-500/20">
-                                        <Presentation class="h-5 w-5 text-indigo-400" />
-                                    </div>
-                                    <CardTitle
-                                        class="text-xl md:text-2xl font-display font-bold tracking-tight bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-                                        Presentation Guide</CardTitle>
-                                </div>
-                                <div
-                                    class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <CardDescription class="text-zinc-400 text-xs leading-relaxed max-w-[220px]">
-                                        Step-by-step structure for high-impact defense slides.
-                                    </CardDescription>
-                                    <div class="flex flex-col items-end gap-1.5">
-                                        <template v-if="deckSlides.length">
-                                            <Button variant="outline" size="sm"
-                                                class="h-7 text-[10px] gap-1.5 border-white/5 bg-white/5 hover:bg-white/10 text-zinc-400"
-                                                @click="generateDefenseDeck" :disabled="isDeckGenerating">
-                                                <RotateCcw class="h-3 w-3" />
-                                                Regenerate
-                                            </Button>
-                                            <div class="flex items-center gap-1.5">
-                                                <Button variant="secondary" size="sm"
-                                                    class="h-7 text-[10px] gap-1.5 px-3 font-bold"
-                                                    @click="downloadPptx" :disabled="isDeckGenerating">
-                                                    <Download class="h-3 w-3" />
-                                                    {{ isDeckGenerating ? 'Generating...' : 'Download PPTX' }}
-                                                </Button>
-                                                <Button variant="ghost" size="icon"
-                                                    class="h-7 w-7 text-zinc-500 hover:text-white"
-                                                    @click="isGuideExpanded = true">
-                                                    <Maximize2 class="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
-                                        </template>
-                                        <Button v-else variant="secondary" size="sm"
-                                            class="h-8 text-xs gap-1.5 font-bold" @click="generateDefenseDeck"
-                                            :disabled="isDeckGenerating">
-                                            <Sparkles class="h-3.5 w-3.5" />
-                                            {{ isDeckGenerating ? 'Generating...' : 'Generate Guide' }}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent class="p-4 md:p-6 h-[500px] flex flex-col">
-                                <div v-if="deckStatus !== 'idle'" class="mb-3 text-[11px] text-zinc-400">
-                                    <span v-if="deckStatus === 'queued'">Deck queued.</span>
-                                    <span v-else-if="deckStatus === 'outlining'">Generating slides with GPT-4o...</span>
-                                    <span v-else-if="deckStatus === 'extracting'">Extracting chapter data...</span>
-                                    <span v-else-if="deckStatus === 'extracted'">Extraction complete. Preparing
-                                        slides...</span>
-                                    <span v-else-if="deckStatus === 'generating'">Generating slides with
-                                        GPT-4o...</span>
-                                    <span v-else-if="deckStatus === 'outlined'">Slides ready for review.</span>
-                                    <span v-else-if="deckStatus === 'rendering'">Rendering PPTX...</span>
-                                    <span v-else-if="deckStatus === 'ready'">PPTX ready for download.</span>
-                                    <span v-else-if="deckStatus === 'failed'">Failed to generate deck.</span>
-                                </div>
-                                <div v-if="deckStatus === 'failed' && deckError" class="mb-3 text-[11px] text-rose-400">
-                                    {{ deckError }}
-                                </div>
-                                <DeckViewer :project="project" :slides="deckSlides"
-                                    v-model:active-index="activeDeckSlideIndex" :is-saving="isDeckSaving" compact
-                                    :show-pptx="!!deckId" :pptx-url="deckDownloadUrl" :pptx-busy="isDeckGenerating"
-                                    @update:slides="handleDeckSlidesChange" @toggle-expand="isGuideExpanded = true"
-                                    @download-pptx="downloadPptx" @export-pptx="downloadPptx" />
-                            </CardContent>
-                        </Card>
-
-                        <!-- Expanded WYSIWYG Editor Dialog -->
-                        <Dialog v-model:open="isGuideExpanded">
-                            <DialogContent
-                                class="max-w-[98vw] w-full lg:max-w-[98vw] h-[95vh] flex flex-col p-0 bg-zinc-100 dark:bg-zinc-950 border-white/10 shadow-2xl overflow-hidden rounded-3xl">
-                                <div v-if="isProduction" class="flex-1 flex items-center justify-center">
-                                    <div class="max-w-2xl text-center px-6">
-                                        <div
-                                            class="mx-auto mb-4 inline-flex items-center rounded-full border border-zinc-200/70 bg-white px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 dark:border-white/10 dark:bg-white/5 dark:text-white/70">
-                                            Coming Soon
-                                        </div>
-                                        <h3 class="text-2xl md:text-3xl font-display font-bold text-zinc-900 dark:text-white">
-                                            Defense Slide Deck Editor
-                                        </h3>
-                                        <p class="mt-3 text-sm text-zinc-600 dark:text-white/70">
-                                            We are polishing the slide deck editor before release. Once ready, you will
-                                            be able to edit layouts, drag-and-drop elements, theme slides, and export
-                                            a presentation-ready deck in minutes.
-                                        </p>
-                                    </div>
-                                </div>
-                                <WysiwygSlideEditor
-                                    v-else
-                                    :slides="wysiwygSlides"
-                                    :active-index="activeDeckSlideIndex"
-                                    :is-saving="isDeckSaving"
-                                    :project-title="project.title"
-                                    @update:slides="handleWysiwygSlidesChange"
-                                    @update:active-index="activeDeckSlideIndex = $event"
-                                    @export="downloadPptx"
-                                />
-                            </DialogContent>
-                        </Dialog>
-
-                        <!-- Session History -->
-                        <Card class="border-border/50 shadow-sm rounded-3xl overflow-hidden">
-                            <CardHeader class="pb-2">
-                                <CardTitle class="flex items-center gap-2 text-base">
-                                    <History class="h-4 w-4 text-amber-500" />
-                                    Session History
-                                </CardTitle>
-                                <CardDescription>Your past defense simulations for this project.</CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-3">
-                                <div v-if="isHistoryLoading" class="text-xs text-muted-foreground">
-                                    Loading sessions...
-                                </div>
-                                <div v-else-if="!sessionHistory.length" class="text-xs text-muted-foreground">
-                                    No sessions yet. Start a simulation to create your first one.
-                                </div>
-                                <div v-else class="space-y-3">
-                                    <div v-for="sessionItem in sessionHistory" :key="sessionItem.id"
-                                        class="flex items-center justify-between gap-3 rounded-2xl border border-border/50 p-3">
-                                        <div class="space-y-1">
-                                            <div class="text-xs font-semibold text-foreground">
-                                                {{ formatSessionDate(sessionItem.started_at || sessionItem.created_at)
-                                                }}
-                                            </div>
-                                            <div class="text-[11px] text-muted-foreground">
-                                                {{ sessionItem.status }} • {{ sessionItem.questions_asked }} Qs
-                                            </div>
-                                        </div>
-                                        <Button size="sm" variant="outline" @click="openSession(sessionItem.id)">
-                                            {{ sessionItem.status === 'completed' ? 'Review' : 'Resume' }}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
+                    <div class="lg:col-span-4"
+                        :class="showOnboarding && onboardingStep < 2 ? 'opacity-40 transition-opacity' : ''">
+                        <DefensePrepRightColumn :project="project" :deck-slides="deckSlides" :deck-status="deckStatus"
+                            :deck-error="deckError" :deck-download-url="deckDownloadUrl" :deck-id="deckId"
+                            :is-deck-generating="isDeckGenerating" :is-deck-saving="isDeckSaving"
+                            :is-guide-expanded="isGuideExpanded" :is-production="isProduction"
+                            :wysiwyg-slides="wysiwygSlides" :session-history="sessionHistory"
+                            :is-history-loading="isHistoryLoading" :active-deck-slide-index="activeDeckSlideIndex"
+                            @generate-defense-deck="generateDefenseDeck" @download-pptx="downloadPptx"
+                            @update:deck-slides="handleDeckSlidesChange"
+                            @update:wysiwyg-slides="handleWysiwygSlidesChange"
+                            @update:active-deck-slide-index="activeDeckSlideIndex = $event"
+                            @update:is-guide-expanded="isGuideExpanded = $event" @open-session="openSession" />
                     </div>
                 </div>
 
                 <!-- SIMULATION LAB (INACTIVE) -->
-                <div v-if="currentView === 'simulation' && !isSimulating"
-                    class="flex flex-col items-center justify-center py-20 animate-in zoom-in-95 duration-700">
-                    <div class="relative mb-8">
-                        <div
-                            class="absolute -inset-4 bg-gradient-to-r from-primary to-purple-500 rounded-full opacity-20 blur-2xl animate-pulse">
-                        </div>
-                        <Users class="h-24 w-24 text-primary relative z-10" />
-                    </div>
-                    <h2 class="text-3xl font-bold mb-4">The Mock Defense</h2>
-                    <p class="max-w-md text-center text-muted-foreground mb-12">
-                        Face a panel of AI examiners who will challenge your research from different perspectives.
-                        Record your session for post-defense feedback.
-                    </p>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl mb-12">
-                        <Card class="border-border/50 bg-card/50 backdrop-blur-sm rounded-3xl overflow-hidden">
-                            <CardHeader class="pb-2">
-                                <CardTitle class="text-base flex items-center gap-2">
-                                    <Users class="h-4 w-4 text-primary" />
-                                    How the simulation works
-                                </CardTitle>
-                                <CardDescription>Chair-moderated rotation with real-time feedback.</CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-3 text-sm text-muted-foreground">
-                                <p>1) The chair opens, then panelists rotate with targeted questions.</p>
-                                <p>2) You respond; the system scores clarity and technical depth.</p>
-                                <p>3) Hints guide you before answers are revealed.</p>
-                                <p>4) When the question limit is reached, the session auto-completes and scores.</p>
-                                <p class="text-xs text-muted-foreground/80">Total questions: {{ plannedQuestionLimit }}.
-                                    Each question is worth 10 marks (100 total).</p>
-                            </CardContent>
-                        </Card>
-                        <Card class="border-border/50 bg-card/50 backdrop-blur-sm rounded-3xl overflow-hidden">
-                            <CardHeader class="pb-2">
-                                <CardTitle class="text-base flex items-center gap-2">
-                                    <Target class="h-4 w-4 text-emerald-500" />
-                                    Scoring breakdown
-                                </CardTitle>
-                                <CardDescription>Readiness is a weighted summary of core metrics.</CardDescription>
-                            </CardHeader>
-                            <CardContent class="space-y-3 text-sm text-muted-foreground">
-                                <div class="flex items-center justify-between">
-                                    <span>Per-question mark</span>
-                                    <span class="text-foreground font-semibold">10 marks total</span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span>Derived from</span>
-                                    <span class="text-foreground font-semibold">Clarity + Depth</span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span>Coverage, confidence, and response time</span>
-                                    <span class="text-foreground font-semibold">Shown as diagnostics</span>
-                                </div>
-                                <div class="text-xs text-muted-foreground/80">
-                                    10 questions x 10 marks each = 100 total marks. Readiness uses clarity/depth
-                                    averages.
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-12">
-                        <Card v-for="persona in activeSimulationPersonas" :key="persona.id"
-                            class="border-border/50 bg-card/50 backdrop-blur-sm rounded-3xl overflow-hidden hover:border-primary/30 transition-all">
-                            <CardContent class="p-8 text-center space-y-3">
-                                <div class="text-4xl mb-4">{{ persona.avatar }}</div>
-                                <h4 class="font-bold">{{ persona.name }}</h4>
-                                <Badge variant="secondary" class="text-[10px]">{{ persona.role }}</Badge>
-                                <p class="text-xs text-muted-foreground leading-relaxed">
-                                    {{ persona.name === 'The Skeptic' ? 'High pressure, doubts your findings.' :
-                                        persona.name === 'The Methodologist' ? 'Strict on research design and ethics.' :
-                                            'Focuses on the bigger picture.' }}
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <Button size="lg" @click="startSimulation" :disabled="isStarting"
-                        class="px-12 py-8 text-xl font-bold rounded-3xl shadow-2xl shadow-primary/20 gap-4 hover:scale-105 transition-all">
-                        <Play class="h-6 w-6 fill-current" />
-                        START SIMULATION
-                    </Button>
-                </div>
+                <DefenseSimulationLabIntro v-if="currentView === 'simulation' && !isSimulating"
+                    :planned-question-limit="plannedQuestionLimit"
+                    :active-simulation-personas="activeSimulationPersonas" :is-starting="isStarting"
+                    :highlight="showOnboarding && onboardingStep === 2" @start="startSimulation" />
 
                 <!-- ACTIVE SIMULATION (IMMERSIVE MODE) -->
                 <div v-if="isSimulating"
                     class="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center p-4 md:p-8 animate-in fade-in duration-500">
-                    <!-- Simulation HUD -->
-                    <div class="w-full max-w-6xl flex items-center justify-between mb-8">
-                        <div class="flex items-center gap-4">
-                            <div class="h-3 w-3 rounded-full bg-rose-600 animate-pulse"></div>
-                            <span class="text-xs font-bold tracking-[0.2em] text-zinc-500 uppercase">Live
-                                Simulation</span>
-                            <div
-                                class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
-                                <History class="h-3.5 w-3.5 text-zinc-400" />
-                                <span class="text-sm font-mono text-zinc-300">14:22</span>
-                            </div>
-                            <div
-                                class="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
-                                <Target class="h-3.5 w-3.5 text-zinc-400" />
-                                <span class="text-xs text-zinc-300">Questions {{ questionLimitLabel }}</span>
-                            </div>
-                        </div>
-                        <Button variant="ghost" @click="stopSimulation"
-                            class="rounded-full text-zinc-400 hover:text-white hover:bg-zinc-900 gap-2">
-                            Finish & Analysis
-                            <ArrowLeft class="h-4 w-4 rotate-180" />
-                        </Button>
-                    </div>
+                    <DefenseSimulationHud :formatted-simulation-time="formattedSimulationCountdown"
+                        :time-label="simulationTimeLabel"
+                        :secondary-time-label="showElapsedTime ? 'Elapsed' : undefined"
+                        :secondary-time="showElapsedTime ? formattedSimulationTime : undefined"
+                        :question-limit-label="questionLimitLabel"
+                        @stop="stopSimulation" />
 
                     <div class="grid lg:grid-cols-12 gap-8 w-full max-w-6xl flex-grow overflow-hidden">
 
                         <!-- Panel Visualization -->
-                        <div class="lg:col-span-4 space-y-4 md:space-y-6 overflow-y-auto pr-2 custom-scrollbar">
-                            <h3 class="text-[10px] md:text-sm font-bold text-zinc-500 uppercase tracking-widest px-2">
-                                The Panel</h3>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-4 md:gap-6">
-                                <Card v-for="persona in activeSimulationPersonas" :key="persona.id"
-                                    class="bg-zinc-900/50 border-zinc-800 hover:border-zinc-700 transition-all rounded-3xl">
-                                    <CardContent class="p-4 md:p-6">
-                                        <div class="flex items-center gap-3 md:gap-4">
-                                            <div
-                                                class="h-10 w-10 md:h-12 md:w-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-xl md:text-2xl">
-                                                {{ persona.avatar }}
-                                            </div>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="flex items-center justify-between gap-2">
-                                                    <span
-                                                        class="font-bold text-zinc-200 text-sm md:text-base truncate">{{
-                                                            persona.name }}</span>
-                                                    <Badge
-                                                        v-if="isFetchingQuestion && (!thinkingPersonaId || thinkingPersonaId === persona.id)"
-                                                        class="bg-amber-500/10 text-amber-500 border-none text-[8px] h-4 shrink-0">
-                                                        THINKING</Badge>
-                                                </div>
-                                                <span class="text-[10px] md:text-xs text-zinc-500 truncate">{{
-                                                    persona.role }}</span>
-                                                <div class="text-[10px] md:text-xs text-zinc-600">
-                                                    Questions asked: {{ panelistQuestionCounts[persona.id] ?? 0 }} /
-                                                    {{ panelistQuestionTarget[persona.id] ?? 0 }}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-
-                            <!-- Performance HUD -->
-                            <Card
-                                class="bg-zinc-900 border-none rounded-3xl p-4 md:p-6 mt-6 md:mt-12 bg-gradient-to-br from-zinc-900 to-black">
-                                <h4 class="text-[10px] md:text-xs font-bold text-zinc-500 mb-4 uppercase">Live
-                                    Performance</h4>
-                                <div class="grid grid-cols-3 lg:grid-cols-1 gap-4 md:gap-6">
-                                    <div class="space-y-2">
-                                        <div class="flex items-center justify-between text-[10px] md:text-xs">
-                                            <span class="text-zinc-400">Clarity</span>
-                                            <span class="text-zinc-200">{{ clarityScore }}%</span>
-                                        </div>
-                                        <Progress :model-value="clarityScore" class="h-1 bg-zinc-800"
-                                            indicator-class="bg-blue-500" />
-                                    </div>
-                                    <div class="space-y-2">
-                                        <div class="flex items-center justify-between text-[10px] md:text-xs">
-                                            <span class="text-zinc-400">Depth</span>
-                                            <span class="text-zinc-200">{{ depthScore }}%</span>
-                                        </div>
-                                        <Progress :model-value="depthScore" class="h-1 bg-zinc-800"
-                                            indicator-class="bg-emerald-500" />
-                                    </div>
-                                    <div class="space-y-2">
-                                        <div class="flex items-center justify-between text-[10px] md:text-xs">
-                                            <span class="text-zinc-400">Confidence</span>
-                                            <span class="text-zinc-200">{{ performanceMetrics?.confidence_score ?? 0
-                                            }}%</span>
-                                        </div>
-                                        <Progress :model-value="performanceMetrics?.confidence_score ?? 0"
-                                            class="h-1 bg-zinc-800" indicator-class="bg-rose-500" />
-                                    </div>
-                                </div>
-                            </Card>
-                        </div>
+                        <DefensePanelVisualization :active-simulation-personas="activeSimulationPersonas"
+                            :is-fetching-question="isFetchingQuestion" :thinking-persona-id="thinkingPersonaId"
+                            :panelist-question-counts="panelistQuestionCounts"
+                            :panelist-question-target="panelistQuestionTarget" :clarity-score="clarityScore"
+                            :depth-score="depthScore" :confidence-score="confidenceScore" />
 
                         <!-- Chat Interaction Area -->
-                        <div
-                            class="lg:col-span-8 flex flex-col bg-zinc-900/40 rounded-[2.5rem] border border-zinc-800/50 backdrop-blur-xl overflow-hidden">
-                            <div ref="chatContainer" class="flex-grow p-8 overflow-y-auto custom-scrollbar">
-                                <div class="space-y-10 max-w-3xl mx-auto py-8">
-                                    <div v-for="(msg, i) in displayMessages" :key="i"
-                                        class="group animate-in fade-in slide-in-from-bottom-2 duration-500"
-                                        :class="msg.role === 'student' ? 'flex flex-col items-end' : 'flex flex-col items-start'">
-                                        <div class="flex items-center gap-2 mb-2 px-1">
-                                            <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                                {{ msg.role === 'panelist' ? (personaLookup[msg.panelist_persona || '']
-                                                    || 'Panelist') : 'Candidate' }}
-                                            </span>
-                                            <span class="text-[8px] text-zinc-600">{{ formatMessageTime(msg) }}</span>
-                                        </div>
-                                        <div class="p-5 rounded-3xl text-sm leading-relaxed max-w-[85%]"
-                                            :class="msg.role === 'student'
-                                                ? 'bg-zinc-100 text-zinc-950 rounded-tr-none'
-                                                : 'bg-zinc-800/80 text-zinc-200 border border-zinc-700/50 rounded-tl-none'">
-                                            {{ msg.content }}
-                                        </div>
-                                        <div v-if="msg.role === 'panelist'" class="mt-3 flex gap-4 px-2">
-                                            <button
-                                                class="text-[10px] font-bold text-zinc-600 hover:text-zinc-400 uppercase tracking-tighter flex items-center gap-1">
-                                                <Target class="h-3 w-3" />
-                                                View Strategy
-                                            </button>
-                                            <button
-                                                class="text-[10px] font-bold text-zinc-600 hover:text-zinc-400 uppercase tracking-tighter flex items-center gap-1">
-                                                <Brain class="h-3 w-3" />
-                                                Analyze Critique
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- User Input Area (Simulation) -->
-                            <div class="p-4 md:p-8 border-t border-zinc-800/50 bg-black/20">
-                                <div class="relative max-w-3xl mx-auto">
-                                    <textarea v-model="responseInput" placeholder="Speak your defense answer..."
-                                        class="w-full bg-zinc-950 border-zinc-800 rounded-2xl py-4 md:py-6 px-4 md:px-6 pr-20 md:pr-24 text-zinc-100 focus:ring-primary/40 focus:border-primary/40 placeholder-zinc-700 transition-all resize-none shadow-2xl text-sm md:text-base"
-                                        :disabled="isSending" rows="2"></textarea>
-                                    <div
-                                        class="absolute right-3 md:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                        <div
-                                            class="hidden sm:flex gap-1 h-8 px-2 items-center bg-zinc-900 rounded-full border border-zinc-800">
-                                            <div class="h-2 w-0.5 bg-rose-500 animate-pulse"></div>
-                                            <div class="h-4 w-0.5 bg-rose-500 animate-pulse delay-75"></div>
-                                            <div class="h-2 w-0.5 bg-rose-500 animate-pulse delay-150"></div>
-                                        </div>
-                                        <Button size="icon" @click="submitResponse" :disabled="isSending"
-                                            class="h-9 w-9 md:h-10 md:w-10 rounded-full bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20">
-                                            <ArrowLeft class="h-4 w-4 md:h-5 md:w-5 rotate-180" />
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div class="mt-4 flex justify-center gap-6">
-                                    <button
-                                        class="flex items-center gap-2 text-[10px] font-bold text-zinc-500 hover:text-white transition-colors uppercase tracking-widest">
-                                        <Mic class="h-3.5 w-3.5" />
-                                        Hold Space to Speak
-                                    </button>
-                                    <button
-                                        class="flex items-center gap-2 text-[10px] font-bold text-zinc-500 hover:text-white transition-colors uppercase tracking-widest"
-                                        @click="requestHint">
-                                        <History class="h-3.5 w-3.5" />
-                                        Request Hint
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <DefenseChatInterface v-model="responseInput" :messages="displayMessages"
+                            :persona-lookup="personaLookup" :is-sending="isSending" @submit="submitResponse"
+                            @request-hint="requestHint" />
                     </div>
                 </div>
 
@@ -1599,48 +1062,3 @@ onBeforeUnmount(() => {
         </div>
     </AppLayout>
 </template>
-
-<style scoped>
-.custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #27272a;
-    border-radius: 10px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #3f3f46;
-}
-
-@keyframes progress {
-    0% {
-        transform: translateX(-100%);
-    }
-
-    50% {
-        transform: translateX(0);
-    }
-
-    100% {
-        transform: translateX(100%);
-    }
-}
-
-.animate-progress {
-    animation: progress 2s infinite linear;
-}
-
-/* Glassmorphism utility */
-.glass {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-}
-</style>
