@@ -1110,7 +1110,7 @@ HTML;
 
                 if ($this->convertWithLibreOffice($fullHtml, $filename, $metadata)) {
                     Log::info('LibreOffice full project export successful');
-
+                    $this->postProcessWordSections($filename);
                     return $filename;
                 }
 
@@ -1123,7 +1123,7 @@ HTML;
 
                 if ($this->convertWithPandoc($fullHtml, $filename, $metadata)) {
                     Log::info('Pandoc full project export successful');
-
+                    $this->postProcessWordSections($filename);
                     return $filename;
                 }
 
@@ -1148,43 +1148,104 @@ HTML;
     {
         $html = '';
 
-        // Title page - escape all text content
+        // Title page - match PDF cover layout with dynamic fields
+        $academicLevel = $project->academic_level;
+        $isPostgraduate = $academicLevel === 'postgraduate';
+        $documentType = $isPostgraduate ? 'DISSERTATION' : 'PROJECT';
+
+        $rawType = strtolower((string) ($project->type ?? ''));
+        $derivedDegree = match ($rawType) {
+            'phd', 'doctorate' => 'Doctor of Philosophy',
+            'mba' => 'Master of Business Administration',
+            'ma' => 'Master of Arts',
+            'masters', 'msc' => 'Master of Science',
+            'undergraduate', 'bachelor', 'honors', 'hnd', 'nd' => 'Bachelor of Science',
+            default => null,
+        };
+
+        $derivedDegreeAbbrev = match ($rawType) {
+            'phd', 'doctorate' => 'Ph.D.',
+            'mba' => 'MBA',
+            'ma' => 'M.A.',
+            'masters', 'msc' => 'M.Sc.',
+            'undergraduate', 'bachelor', 'honors', 'hnd', 'nd' => 'B.Sc.',
+            default => null,
+        };
+
+        $defaultPostgradDegree = ($project->document_type === 'thesis') ? 'Doctor of Philosophy' : 'Master of Science';
+        $defaultPostgradAbbrev = ($project->document_type === 'thesis') ? 'Ph.D.' : 'M.Sc.';
+
+        $degree = $project->degree ?: ($isPostgraduate ? $defaultPostgradDegree : $derivedDegree);
+        $degreeAbbrev = $project->degree_abbreviation ?: ($isPostgraduate ? $defaultPostgradAbbrev : $derivedDegreeAbbrev);
+        $course = $project->course ?: $project->field_of_study;
+        $departmentLabel = $project->getEffectiveDepartment() ?: data_get($project->settings, 'department') ?: $course;
+        $facultyName = $project->getEffectiveFaculty() ?: $project->faculty;
+        $universityName = $project->full_university_name
+            ?: ($project->universityRelation?->name ?? $project->university);
+
+        $safeUpper = function (?string $value): string {
+            return htmlspecialchars(strtoupper((string) ($value ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        };
+
+        $spacer = '<p style="margin: 0; line-height: 1.6;">&nbsp;<br>&nbsp;</p>';
+
         $html .= '<div style="text-align: center; margin-bottom: 3em;">';
-        $html .= '<h1>'.htmlspecialchars(strtoupper($project->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
-        $html .= '<p>BY</p>';
-        $html .= '<p><strong>'.htmlspecialchars(strtoupper($project->student_name ?: ($project->user->name ?? 'AUTHOR NAME')), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</strong></p>';
-
-        if ($project->abstract) {
-            $html .= '<div style="margin-top: 2em;">';
-            $html .= '<h2>ABSTRACT</h2>';
-            $html .= '<p style="text-align: justify;">'.htmlspecialchars($project->abstract, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
-            $html .= '</div>';
+        $html .= '<h1>'.$safeUpper($project->title).'</h1>';
+        $html .= '<p style="margin-top: 3em;">BY</p>';
+        $html .= '<p><strong>'.$safeUpper($project->student_name ?: ($project->user->name ?? 'AUTHOR NAME')).'</strong></p>';
+        if ($project->student_id) {
+            $html .= '<p>'.$safeUpper($project->student_id).'</p>';
         }
 
-        if ($project->university) {
-            $html .= '<p>'.htmlspecialchars(strtoupper($project->university), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+        $html .= $spacer;
+        $html .= '<p style="line-height: 1.6;">';
+        $html .= 'A '.$safeUpper($documentType).' SUBMITTED TO THE '.($isPostgraduate ? 'SCHOOL OF' : 'DEPARTMENT OF').'<br>';
+        $html .= $isPostgraduate
+            ? 'POST-GRADUATE STUDIES IN PARTIAL FULFILMENT FOR THE REQUIREMENTS<br>'
+            : ($departmentLabel ? $safeUpper($departmentLabel).' IN PARTIAL FULFILMENT FOR THE REQUIREMENTS<br>' : 'DEPARTMENT IN PARTIAL FULFILMENT FOR THE REQUIREMENTS<br>');
+        $html .= 'OF THE AWARD OF THE DEGREE OF '.$safeUpper($degree ?? 'DEGREE');
+        if ($degreeAbbrev) {
+            $html .= ' ('.$safeUpper($degreeAbbrev).')';
         }
-
-        if ($project->field_of_study) {
-            $html .= '<p>Department of '.htmlspecialchars($project->field_of_study, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
+        if ($course) {
+            $html .= ' IN '.$safeUpper($course);
         }
+        $html .= '</p>';
 
-        $html .= '<p>'.$project->created_at->format('F Y').'</p>';
+        $html .= $spacer;
+        $html .= '<p style="line-height: 1.6;">';
+        $html .= 'AT THE DEPARTMENT OF<br>';
+        $html .= $safeUpper($departmentLabel ?? 'DEPARTMENT').'<br>';
+        $html .= 'FACULTY OF '.$safeUpper($facultyName ?? 'FACULTY').'<br><br>';
+        $html .= $safeUpper($universityName ?? 'UNIVERSITY');
+        $html .= '</p>';
+
+        $html .= $spacer;
+        $html .= '<p>'.$safeUpper(now()->format('F, Y')).'</p>';
         $html .= '</div>';
-        $html .= '<div class="page-break"></div>';
+        $html .= '<p class="section-marker" style="font-size: 1pt; color: #ffffff;">[[SECTION_BREAK:title_end]]</p>';
 
         // Preliminary pages
+        $prelimIndex = 0;
         foreach ($preliminaryPages as $page) {
             $title = strtoupper($page['title'] ?? '');
             $content = $page['html'] ?? '';
+            $headingStyle = 'text-align: center;';
+            if ($prelimIndex > 0) {
+                $headingStyle .= ' page-break-before: always; break-before: page;';
+            }
 
-            $html .= '<h1 style="text-align: center;">'.$title.'</h1>';
+            $html .= '<h1 style="'.$headingStyle.'">'.$title.'</h1>';
             $html .= $content;
-            $html .= '<div class="page-break"></div>';
+            $prelimIndex++;
         }
 
         // Table of contents
-        $html .= '<h1 style="text-align: center;">TABLE OF CONTENTS</h1>';
+        $tocStyle = 'text-align: center;';
+        if ($prelimIndex > 0) {
+            $tocStyle .= ' page-break-before: always; break-before: page;';
+        }
+        $html .= '<h1 style="'.$tocStyle.'">TABLE OF CONTENTS</h1>';
 
         $chapters = $project->chapters()->orderBy('chapter_number')->get();
         foreach ($chapters as $chapter) {
@@ -1197,7 +1258,7 @@ HTML;
             $html .= '<p>REFERENCES</p>';
         }
 
-        $html .= '<div class="page-break"></div>';
+        $html .= '<p class="section-marker" style="font-size: 1pt; color: #ffffff;">[[SECTION_BREAK:frontmatter_end]]</p>';
 
         // Get references to append to last chapter
         $referencesHtml = $this->chapterReferenceService->formatProjectReferencesFromDatabase($project);
@@ -1205,10 +1266,15 @@ HTML;
         // All chapters
         $chaptersWithContent = $chapters->filter(fn ($ch) => ! empty($ch->content));
         $lastChapter = $chaptersWithContent->last();
+        $firstChapterRendered = false;
 
         foreach ($chapters as $chapter) {
             if (! empty($chapter->content)) {
-                $html .= '<h1>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
+                $chapterStyle = '';
+                if ($firstChapterRendered) {
+                    $chapterStyle = ' style="page-break-before: always; break-before: page;"';
+                }
+                $html .= '<h1'.$chapterStyle.'>CHAPTER '.$this->numberToWords($chapter->chapter_number).'</h1>';
                 $html .= '<h1>'.htmlspecialchars(strtoupper($chapter->title), ENT_QUOTES | ENT_HTML5, 'UTF-8').'</h1>';
 
                 // Strip individual chapter references - we'll add consolidated references at the end
@@ -1216,18 +1282,44 @@ HTML;
                 $chapterContent = $this->stripReferencesSection($chapterContent);
                 $html .= $chapterContent; // Content is processed by preprocessHtmlForPandoc which handles escaping
 
+                $firstChapterRendered = true;
+
                 // If this is the last chapter, append consolidated references (no page break)
                 if ($lastChapter && $chapter->id === $lastChapter->id && ! empty($referencesHtml)) {
                     $html .= $referencesHtml;
                     Log::info('Added collected project references to last chapter', ['project_id' => $project->id, 'last_chapter' => $chapter->chapter_number]);
-                } else {
-                    // Only add page break if not the last chapter
-                    $html .= '<div class="page-break"></div>';
                 }
             }
         }
 
         return $html;
+    }
+
+    private function postProcessWordSections(string $filename): void
+    {
+        try {
+            $processor = app(\App\Services\Word\DocxSectionProcessor::class);
+            $ok = $processor->process($filename, [
+                ['marker' => 'title_end', 'pageNumberFormat' => null],
+                ['marker' => 'frontmatter_end', 'pageNumberFormat' => 'lowerRoman', 'start' => 1],
+                ['marker' => 'document_end', 'pageNumberFormat' => 'decimal', 'start' => 1],
+            ]);
+
+            if (! $ok) {
+                Log::warning('DOCX section post-processing failed', ['path' => $filename]);
+
+                return;
+            }
+
+            if (! $this->validateAndRepairDocx($filename)) {
+                Log::warning('DOCX section post-processing produced invalid XML', ['path' => $filename]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('DOCX section post-processing error', [
+                'path' => $filename,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -1392,7 +1484,7 @@ HTML;
 
         $html .= '<p>'.$project->created_at->format('F Y').'</p>';
         $html .= '</div>';
-        $html .= '<div class="page-break"></div>';
+        $html .= '<p class="page-break" style="page-break-after: always; break-after: page;">&nbsp;</p>';
 
         // Table of contents
         $html .= '<h1 style="text-align: center;">TABLE OF CONTENTS</h1>';
@@ -1408,7 +1500,7 @@ HTML;
             }
         }
 
-        $html .= '<div class="page-break"></div>';
+        $html .= '<p class="page-break" style="page-break-after: always; break-after: page;">&nbsp;</p>';
 
         // Get references to append to last chapter
         $referencesHtml = $this->formatSelectedChaptersReferences($chapters);
@@ -1432,7 +1524,7 @@ HTML;
                     $html .= $referencesHtml;
                 } else {
                     // Only add page break if not the last chapter
-                    $html .= '<div class="page-break"></div>';
+                    $html .= '<p class="page-break" style="page-break-after: always; break-after: page;">&nbsp;</p>';
                 }
             }
         }
