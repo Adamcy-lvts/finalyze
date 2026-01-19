@@ -146,33 +146,38 @@ const save = () => {
       </div>
 
       <Tabs v-model="activeTab" class="space-y-6">
-        <TabsList class="grid w-full grid-cols-4 lg:w-[600px]">
-           <TabsTrigger v-for="cat in categories" :key="cat.id" :value="cat.id">
+        <TabsList class="flex w-full overflow-x-auto lg:w-auto lg:inline-flex bg-muted/40 p-1 rounded-xl h-auto gap-1">
+           <TabsTrigger 
+             v-for="cat in categories" 
+             :key="cat.id" 
+             :value="cat.id"
+             class="flex-1 lg:flex-none px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm transition-all duration-200 font-medium text-muted-foreground"
+           >
              {{ cat.label }}
            </TabsTrigger>
         </TabsList>
 
-        <TabsContent v-for="category in categories" :key="category.id" :value="category.id" class="space-y-4">
-          <Card>
+        <TabsContent v-for="category in categories" :key="category.id" :value="category.id" class="space-y-4 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+          <Card class="border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle>{{ category.label }}</CardTitle>
+              <CardTitle class="text-lg">{{ category.label }}</CardTitle>
               <CardDescription>{{ category.description }}</CardDescription>
             </CardHeader>
             <CardContent class="grid gap-6">
-              <div v-for="(setting, index) in category.settings" :key="setting.key" class="grid gap-3 p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors">
+              <div v-for="(setting, index) in category.settings" :key="setting.key" class="group grid gap-3 p-5 rounded-xl border border-border/50 bg-card hover:border-primary/20 hover:shadow-sm transition-all duration-200">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <Label :for="setting.key" class="text-base font-semibold text-foreground">
+                    <Label :for="setting.key" class="text-base font-medium text-foreground group-hover:text-primary transition-colors">
                       {{ formatLabel(setting.key) }}
                     </Label>
-                    <code class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground font-mono">{{ setting.key }}</code>
+                    <code class="text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground font-mono opacity-50 group-hover:opacity-100 transition-opacity">{{ setting.key }}</code>
                   </div>
                   
-                  <Badge v-if="isUnwired(setting.key)" variant="destructive" class="gap-1">
+                  <Badge v-if="isUnwired(setting.key)" variant="outline" class="gap-1.5 text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">
                     <AlertCircle class="w-3 h-3" />
-                    Not Implemented
+                    Pending
                   </Badge>
-                  <Badge v-else variant="outline" class="gap-1 text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
+                  <Badge v-else variant="outline" class="gap-1.5 text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
                     <CheckCircle2 class="w-3 h-3" />
                     Active
                   </Badge>
@@ -184,15 +189,15 @@ const save = () => {
                      :id="setting.key"
                      v-model="setting.value"
                      :rows="textareaRows(setting.value)"
-                     class="font-mono text-sm leading-relaxed"
+                     class="font-mono text-sm leading-relaxed bg-muted/5 border-border/50 focus:bg-background transition-colors"
                    />
                    <Input 
                      v-else 
                      :id="setting.key" 
                      v-model="setting.value" 
-                     class="max-w-md"
+                     class="max-w-md bg-muted/5 border-border/50 focus:bg-background transition-colors"
                    />
-                   <p v-if="setting.description" class="text-sm text-muted-foreground">
+                   <p v-if="setting.description" class="text-sm text-muted-foreground/80">
                      {{ setting.description }}
                    </p>
                 </div>
