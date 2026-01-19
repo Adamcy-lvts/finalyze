@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Brain } from 'lucide-vue-next';
+import { Brain, X, Loader2 } from 'lucide-vue-next';
 
 const props = defineProps<{
   isGenerating: boolean;
@@ -13,83 +13,83 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition enter-active-class="transition-all duration-300 ease-out"
-      enter-from-class="opacity-0 -translate-y-4" enter-to-class="opacity-100 translate-y-0"
-      leave-active-class="transition-all duration-200 ease-in" leave-from-class="opacity-100 translate-y-0"
-      leave-to-class="opacity-0 -translate-y-4">
-      <div v-if="props.isGenerating"
-        class="fixed top-2 left-0 right-0 z-50 px-3 sm:top-8 sm:px-4 flex justify-center pointer-events-none">
-        <div class="w-full max-w-md pointer-events-auto">
-          <div
-            class="group relative overflow-hidden rounded-2xl border border-white/20 bg-white/80 dark:bg-zinc-900/80 p-5 shadow-2xl backdrop-blur-xl transition-all duration-300 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/5">
+  <Transition
+    enter-active-class="transition-all duration-300 ease-out"
+    enter-from-class="opacity-0 -translate-y-full height-0"
+    enter-to-class="opacity-100 translate-y-0"
+    leave-active-class="transition-all duration-300 ease-in"
+    leave-from-class="opacity-100 translate-y-0"
+    leave-to-class="opacity-0 -translate-y-full height-0"
+  >
+    <div v-if="props.isGenerating" class="w-full relative z-30 bg-background/80 backdrop-blur-xl border-b border-border/50">
+      
+      <!-- Animated Background Gradient (Subtle) -->
+      <div class="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none"></div>
+      
+      <!-- Progress Bar (Top Line) -->
+      <div class="absolute top-0 left-0 right-0 h-[2px] bg-primary/10 overflow-hidden">
+         <div 
+           class="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-300 ease-out relative"
+           :style="{ width: `${props.generationPercentage}%` }"
+         >
+           <div class="absolute inset-0 bg-white/30 w-full animate-shimmer -skew-x-12 translate-x-[-100%]"></div>
+         </div>
+      </div>
 
-            <!-- Animated Background Glow -->
-            <div class="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-blue-500/20 blur-3xl animate-pulse">
-            </div>
-            <div
-              class="absolute -bottom-24 -left-24 h-48 w-48 rounded-full bg-purple-500/20 blur-3xl animate-pulse delay-1000">
-            </div>
+      <div class="container mx-auto max-w-5xl px-4 py-2 flex items-center justify-between gap-4 relative">
+        
+        <!-- Left: Status Text -->
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <div class="relative flex-shrink-0">
+             <!-- Outer Ring Spinner (Circling) -->
+             <div class="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" style="animation-duration: 1.5s;"></div>
+             
+             <!-- Inner Pulse (Optional/Subtle) -->
+             <div class="absolute inset-0 rounded-full animate-ping opacity-20 bg-primary"></div>
 
-            <div class="relative flex items-center gap-4">
-              <!-- Icon & Spinner -->
-              <div class="relative flex-shrink-0">
-                <!-- Outer Ring Spinner -->
-                <div
-                  class="absolute inset-0 -m-1.5 rounded-full border-2 border-transparent border-t-blue-500 border-r-purple-500 animate-spin [animation-duration:2s]">
-                </div>
-
-                <!-- Icon Container -->
-                <div
-                  class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 z-10 relative">
-                  <Brain class="h-5 w-5 text-white animate-pulse" />
-                </div>
-              </div>
-
-              <!-- Content -->
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between mb-2">
-                  <div class="flex flex-col">
-                    <h4 class="text-sm font-bold text-foreground tracking-tight flex items-center gap-2">
-                      Writing Chapter
-                      <span
-                        class="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                    </h4>
-                  </div>
-                  <span
-                    class="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
-                    {{ Math.round(props.generationPercentage) }}%
-                  </span>
-                </div>
-
-                <!-- Progress Bar -->
-                <div class="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden backdrop-blur-sm">
-                  <div
-                    class="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(59,130,246,0.5)] relative"
-                    :style="{ width: `${props.generationPercentage}%` }">
-                    <div class="absolute inset-0 bg-white/30 w-full animate-shimmer -skew-x-12 translate-x-[-100%]">
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Detailed Status -->
-                <div class="mt-2.5 flex items-center justify-between">
-                  <p class="text-[10px] font-medium text-muted-foreground truncate max-w-[200px] flex items-center gap-1.5">
-                    <span class="w-1 h-1 rounded-full bg-blue-500"></span>
-                    {{ props.generationProgress || 'Initializing writer...' }}
-                  </p>
-
-                  <!-- Stop Button (Integrated) -->
-                  <button @click="emit('stop')"
-                    class="text-[10px] font-semibold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors uppercase tracking-wider flex items-center gap-1 hover:bg-red-50 dark:hover:bg-red-900/10 px-2 py-0.5 rounded-full">
-                    Stop
-                  </button>
-                </div>
-              </div>
-            </div>
+             <div class="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary relative z-10">
+               <Brain class="h-3.5 w-3.5" />
+             </div>
+          </div>
+          
+          <div class="flex flex-col min-w-0">
+             <div class="flex items-baseline gap-2">
+                <span class="text-xs font-semibold text-foreground tracking-tight">Writing Chapter</span>
+                <span class="text-[10px] text-muted-foreground hidden sm:inline-block truncate">
+                  {{ props.generationProgress || 'Initializing...' }}
+                </span>
+             </div>
+             <!-- Mobile-only progress subtext -->
+             <span class="text-[10px] text-muted-foreground sm:hidden truncate">
+                {{ props.generationProgress || 'Initializing...' }}
+             </span>
           </div>
         </div>
+
+        <!-- Right: Actions & Percentage -->
+        <div class="flex items-center gap-3 flex-shrink-0">
+           <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50 border border-border/50">
+              <span class="text-xs font-mono font-medium text-primary">
+                {{ Math.round(props.generationPercentage) }}%
+              </span>
+           </div>
+
+           <div class="h-4 w-px bg-border/60"></div>
+
+           <button 
+             @click="emit('stop')"
+             class="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-full hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-all duration-200"
+             title="Stop Generation"
+           >
+             <div class="p-0.5 rounded-full bg-destructive/10 group-hover:bg-destructive/20 text-destructive text-[10px]">
+                <div class="h-1.5 w-1.5 rounded-[1px] bg-current"></div>
+             </div>
+             <span class="text-xs font-medium hidden sm:inline-block">Stop</span>
+           </button>
+        </div>
+
       </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </Transition>
 </template>
+

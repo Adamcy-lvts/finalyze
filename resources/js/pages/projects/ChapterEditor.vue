@@ -1638,98 +1638,10 @@ watch(globalIsDark, () => {
                     </div>
                 </div>
 
-                <!-- AI Generation Progress Card -->
-                <div v-if="isGenerating" class="mx-3 my-2">
-                    <div
-                        class="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50 p-3 shadow-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-purple-950/30">
-                        <!-- Background Animation -->
-                        <div
-                            class="absolute inset-0 -skew-x-12 animate-pulse bg-gradient-to-r from-transparent via-white/10 to-transparent">
-                        </div>
-
-                        <!-- Header -->
-                        <div class="relative z-10 mb-2 flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <div class="relative">
-                                    <div
-                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600">
-                                        <Brain class="h-3 w-3 text-white" />
-                                    </div>
-                                    <!-- Pulsing ring -->
-                                    <div
-                                        class="absolute inset-0 h-6 w-6 animate-ping rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 opacity-20">
-                                    </div>
-                                </div>
-                                <div>
-                                    <h4 class="text-xs font-semibold text-indigo-900 dark:text-indigo-100">AI Writing
-                                        Assistant</h4>
-                                    <p
-                                        class="text-[10px] text-indigo-700 dark:text-indigo-300 font-medium tracking-wide uppercase">
-                                        {{ generationPhase }}</p>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <Button variant="ghost" size="icon"
-                                    class="h-7 w-7 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
-                                    @click="stopGeneration" title="Stop writing">
-                                    <XCircle class="h-4 w-4 text-red-600 dark:text-red-400" />
-                                </Button>
-                                <Badge variant="secondary"
-                                    class="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border-0">
-                                    {{ Math.round(generationPercentage) }}%
-                                </Badge>
-                            </div>
-                        </div>
-
-                        <!-- Progress Bar -->
-                        <div class="relative z-10 mb-2">
-                            <div class="mb-1.5 flex items-center justify-between">
-                                <span
-                                    class="text-[10px] font-medium text-indigo-800 dark:text-indigo-200 uppercase tracking-wider">Writing
-                                    Progress</span>
-                                <span class="text-[10px] tabular-nums text-indigo-600 dark:text-indigo-400 font-mono">{{
-                                    streamWordCount }} / {{
-                                        estimatedTotalWords }} words</span>
-                            </div>
-                            <div
-                                class="relative h-1.5 overflow-hidden rounded-full bg-indigo-100 dark:bg-indigo-950/50">
-                                <!-- Animated progress bar -->
-                                <div class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-                                    :style="{ width: `${generationPercentage}%` }">
-                                    <!-- Shimmer effect -->
-                                    <div
-                                        class="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/40 to-transparent">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Status Message -->
-                        <div
-                            class="relative z-10 flex items-center gap-2.5 bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg border border-indigo-100 dark:border-indigo-800/30">
-                            <!-- Dynamic icon based on phase -->
-                            <div class="flex-shrink-0">
-                                <div v-if="generationPhase === 'Initializing'"
-                                    class="h-2 w-2 animate-bounce rounded-full bg-blue-500"></div>
-                                <div v-else-if="generationPhase === 'Connecting'" class="flex gap-0.5">
-                                    <div class="h-2 w-0.5 animate-pulse rounded-full bg-blue-500"></div>
-                                    <div class="h-2 w-0.5 animate-pulse rounded-full bg-purple-500"
-                                        style="animation-delay: 0.2s"></div>
-                                    <div class="h-2 w-0.5 animate-pulse rounded-full bg-blue-500"
-                                        style="animation-delay: 0.4s"></div>
-                                </div>
-                                <div v-else-if="generationPhase === 'Writing' || generationPhase === 'Writing Section'"
-                                    class="h-2 w-2 animate-spin rounded-full border-2 border-blue-500 border-t-transparent">
-                                </div>
-                                <div v-else-if="generationPhase === 'Complete'"
-                                    class="h-2 w-2 rounded-full bg-green-500">
-                                </div>
-                                <div v-else class="h-2 w-2 rounded-full bg-red-500"></div>
-                            </div>
-                            <p class="flex-1 text-xs text-blue-800 dark:text-blue-200">{{ generationProgress }}</p>
-                        </div>
-                    </div>
-                </div>
+                <!-- AI Generation Status Bar (Docked) -->
+                <GenerationStatusOverlay :is-generating="isGenerating"
+                    :generation-progress="generationProgress"
+                    :generation-percentage="generationPercentage" @stop="stopGeneration" />
 
                 <!-- WritingStatistics DISABLED in ChapterEditor -->
 
@@ -2131,7 +2043,7 @@ watch(globalIsDark, () => {
 
 
                         <!-- Main Editor Area -->
-                        <div class="flex-1 overflow-hidden relative group bg-background/20">
+                        <div class="flex-1 overflow-hidden relative group bg-background/20 flex flex-col">
                             <GenerationStatusOverlay :is-generating="isGenerating"
                                 :generation-progress="generationProgress"
                                 :generation-percentage="generationPercentage" @stop="stopGeneration" />
@@ -2162,9 +2074,9 @@ watch(globalIsDark, () => {
                         <!-- Footer Info -->
                         <div id="editor-footer"
                             class="h-10 border-t border-border/30 bg-background/40 backdrop-blur-sm flex items-center justify-between px-4 text-[10px] text-muted-foreground shrink-0 relative">
-                            <div class="hidden sm:flex items-center gap-3">
-                                <span>Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
-                                <span class="hidden md:inline">Last saved: {{ isSaving ? 'Saving...' : `Just now` }}</span>
+                            <!-- Left: Word Count -->
+                            <div class="flex items-center gap-2 z-10 overflow-hidden text-[10px] sm:w-auto">
+                                <span class="truncate">Words: {{ currentWordCount }} / {{ targetWordCount }}</span>
                             </div>
 
                             <!-- Centered Chapter Navigation -->
@@ -2186,11 +2098,16 @@ watch(globalIsDark, () => {
                                 </Button>
                             </div>
 
-                            <div class="hidden sm:flex items-center gap-2">
-                                <span>Quality: <span :class="writingQualityScore > 70 ? 'text-green-500' : 'text-amber-500'">{{ writingQualityScore }}%</span></span>
-                                <span v-if="isValid" class="text-green-500 flex items-center gap-1 ml-2">
-                                    <CheckCircle class="h-3 w-3" /> Ready
-                                </span>
+                            <!-- Right: Saved Status (Mobile) & Quality (Desktop) -->
+                            <div class="flex items-center gap-2 z-10">
+                                <span class="sm:hidden text-[10px] text-muted-foreground truncate max-w-[60px]">{{ isSaving ? 'Saving...' : 'Saved' }}</span>
+                                
+                                <div class="hidden sm:flex items-center gap-2">
+                                    <span>Quality: <span :class="writingQualityScore > 70 ? 'text-green-500' : 'text-amber-500'">{{ writingQualityScore }}%</span></span>
+                                    <span v-if="isValid" class="text-green-500 flex items-center gap-1 ml-2">
+                                        <CheckCircle class="h-3 w-3" /> Ready
+                                    </span>
+                                </div>
                             </div>
                         </div>
 

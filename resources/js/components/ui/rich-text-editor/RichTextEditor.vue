@@ -86,7 +86,8 @@ import {
   Trash2,
   Loader2,
   Image as ImageIcon,
-  Upload
+  Upload,
+  Sparkles
 } from 'lucide-vue-next'
 
 interface Props {
