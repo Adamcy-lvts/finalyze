@@ -351,6 +351,27 @@ class ChapterController extends Controller
                     'prompt_length' => strlen($prompt),
                 ]);
 
+                // Adjust prompt for resume to avoid repeating existing content
+                $promptToUse = $prompt;
+                if ($isResuming && $request->input('generation_type') === 'progressive') {
+                    $plainContent = trim(strip_tags($chapter->content ?? ''));
+                    $currentWordCount = str_word_count($plainContent);
+                    $targetWordCount = $this->getChapterWordCount($project, $chapterNumber);
+                    $remainingWords = max(200, $targetWordCount - $currentWordCount);
+                    $contextWindow = 800;
+                    $contextText = substr($plainContent, -$contextWindow);
+                    $cursorPosition = strlen($plainContent);
+
+                    $promptToUse = $this->buildContinuationPrompt(
+                        $project,
+                        $chapterNumber,
+                        $cursorPosition,
+                        $contextText,
+                        $plainContent,
+                        $remainingWords
+                    );
+                }
+
                 // Use optimized generation based on chapter type
                 $chapterType = $this->getChapterType($chapterNumber);
 
@@ -361,7 +382,7 @@ class ChapterController extends Controller
                 $saveTimeInterval = 30; // Also save every 30 seconds
 
                 // For progressive generation, use simplified single-pass generation with stopping logic
-                if ($request->input('generation_type') === 'progressive') {
+                if ($request->input('generation_type') === 'progressive' && ! $isResuming) {
                     // ALWAYS recalculate target word count to use updated values (don't trust old DB values)
                     $targetWordCount = $this->getChapterWordCount($project, $chapterNumber);
                     $maxWordCount = intval($targetWordCount * 1.1); // 110% of target (stop point)
@@ -374,7 +395,7 @@ class ChapterController extends Controller
                         'generation_id' => $generationId,
                     ]);
 
-                    $fullContent = $this->generateStreamingContentSimplified($project, $prompt, $chapterType, $targetWordCount, $maxWordCount);
+                    $fullContent = $this->generateStreamingContentSimplified($project, $promptToUse, $chapterType, $targetWordCount, $maxWordCount);
                     $wordCount = $this->computeWordCount($fullContent);
                 } else {
                     // Use regular streaming generation for other types
@@ -383,7 +404,7 @@ class ChapterController extends Controller
                     $systemPrompt = $this->getSystemPromptForGenerationType($project, (string) $request->input('generation_type'));
                     $messages = [
                         ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $prompt],
+                        ['role' => 'user', 'content' => $promptToUse],
                     ];
 
                     foreach ($this->aiGenerator->generateOptimizedMessages($messages, $chapterType) as $chunk) {
