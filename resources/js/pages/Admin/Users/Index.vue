@@ -140,12 +140,36 @@
       </DialogContent>
     </Dialog>
 
+    <!-- Delete User Alert Dialog -->
+    <AlertDialog :open="deleteUserOpen" @update:open="deleteUserOpen = $event">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle class="text-destructive flex items-center gap-2">
+            <AlertTriangle class="h-5 w-5" />
+            Delete User Permanently?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This action cannot be undone. This will permanently delete
+            <span class="font-semibold text-foreground">{{ selectedUser?.name }}</span>
+            and remove all of their data, including projects, payments, and generated content.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction @click="submitDelete"
+            class="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            Delete Permanently
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, provide } from 'vue'
-import { useForm } from '@inertiajs/vue3'
+import { useForm, router } from '@inertiajs/vue3'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import DataTable from '@/components/Admin/DataTable.vue'
@@ -164,6 +188,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { route } from 'ziggy-js'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { AlertTriangle } from 'lucide-vue-next'
 
 const props = defineProps<{
   users: {
@@ -179,6 +214,7 @@ const selectedUser = ref<UserRow | null>(null)
 const resetPasswordOpen = ref(false)
 const addWordsOpen = ref(false)
 const suspendOpen = ref(false)
+const deleteUserOpen = ref(false)
 const isDeduction = ref(false)
 
 // Forms
@@ -227,10 +263,16 @@ const onSuspend = (user: UserRow) => {
   suspendOpen.value = true
 }
 
+const onDelete = (user: UserRow) => {
+  selectedUser.value = user
+  deleteUserOpen.value = true
+}
+
 provide('onResetPassword', onResetPassword)
 provide('onAddWords', onAddWords)
 provide('onDeductWords', onDeductWords)
 provide('onSuspend', onSuspend)
+provide('onDelete', onDelete)
 
 // Submit Handlers
 const submitResetPassword = () => {
@@ -264,6 +306,17 @@ const submitSuspend = () => {
     onSuccess: () => {
       suspendOpen.value = false
       suspendForm.reset()
+    },
+  })
+}
+
+const submitDelete = () => {
+  if (!selectedUser.value) return
+  // Using Inertia router directly for DELETE requests without a form
+  router.delete(route('admin.users.force-destroy', selectedUser.value.id), {
+    onSuccess: () => {
+      deleteUserOpen.value = false
+      selectedUser.value = null
     },
   })
 }

@@ -22,13 +22,8 @@ const onResetPassword = inject<(user: UserRow) => void>('onResetPassword')
 const onAddWords = inject<(user: UserRow) => void>('onAddWords')
 const onDeductWords = inject<(user: UserRow) => void>('onDeductWords')
 const onSuspend = inject<(user: UserRow) => void>('onSuspend')
+const onDelete = inject<(user: UserRow) => void>('onDelete')
 
-const deleteUser = () => {
-    if (!confirm(`Are you sure you want to delete ${props.user.name}?`)) return
-    router.delete(route('admin.users.destroy', { user: props.user.id }), {
-        preserveScroll: true,
-    })
-}
 
 const unsuspendUser = () => {
     if (!confirm(`Unsuspend ${props.user.name}?`)) return
@@ -78,7 +73,7 @@ const unsuspendUser = () => {
                 Unsuspend
             </DropdownMenuItem>
 
-            <DropdownMenuItem @click="deleteUser" class="text-rose-600 focus:text-rose-600 focus:bg-rose-50">
+            <DropdownMenuItem @click="onDelete?.(user)" class="text-rose-600 focus:text-rose-600 focus:bg-rose-50">
                 <Trash2 class="mr-2 h-4 w-4" />
                 Delete
             </DropdownMenuItem>
