@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AdminDepartmentController;
 use App\Http\Controllers\Admin\AdminFacultyController;
 use App\Http\Controllers\Admin\AdminFacultyStructureController;
 use App\Http\Controllers\Admin\AdminNotificationController;
+use App\Http\Controllers\Admin\AdminDataCleanupController;
 use App\Http\Controllers\Admin\AdminPackageController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminProjectController;
@@ -293,6 +294,10 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::delete('/prompt-templates/{template}', [AdminPromptTemplateController::class, 'destroy'])->name('admin.system.prompt-templates.destroy');
         Route::put('/prompt-templates/{template}/active', [AdminPromptTemplateController::class, 'toggleActive'])->name('admin.system.prompt-templates.toggle-active');
         Route::post('/cache/clear', [AdminSystemController::class, 'clearCache'])->name('admin.system.clear-cache');
+        Route::middleware(['role:super_admin'])->group(function () {
+            Route::get('/cleanup', [AdminDataCleanupController::class, 'index'])->name('admin.system.cleanup');
+            Route::post('/cleanup', [AdminDataCleanupController::class, 'run'])->name('admin.system.cleanup.run');
+        });
     });
 
     // Audit Logs
