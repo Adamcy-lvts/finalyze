@@ -8,66 +8,25 @@ use App\Services\ChapterContentAnalysisService;
 
 class PanelistPersonaService
 {
-    private const CHAIR_ID = 'generalist';
-
     private ChapterContentAnalysisService $contentAnalysis;
-
-    private array $personas = [
-        'skeptic' => [
-            'id' => 'skeptic',
-            'name' => 'The Skeptic',
-            'role' => 'Critical Reviewer',
-            'questioningStyle' => 'aggressive',
-            'focusAreas' => ['methodology_flaws', 'sample_size', 'bias', 'generalizability'],
-            'difficultyModifier' => 1.2,
-        ],
-        'methodologist' => [
-            'id' => 'methodologist',
-            'name' => 'The Methodologist',
-            'role' => 'Technical Expert',
-            'questioningStyle' => 'methodical',
-            'focusAreas' => ['research_design', 'data_analysis', 'validity', 'reliability'],
-            'difficultyModifier' => 1.0,
-        ],
-        'generalist' => [
-            'id' => 'generalist',
-            'name' => 'The Generalist',
-            'role' => 'Value Reviewer',
-            'questioningStyle' => 'supportive',
-            'focusAreas' => ['contribution', 'practical_implications', 'future_research'],
-            'difficultyModifier' => 0.8,
-        ],
-        'theorist' => [
-            'id' => 'theorist',
-            'name' => 'The Theorist',
-            'role' => 'Framework Expert',
-            'questioningStyle' => 'methodical',
-            'focusAreas' => ['theoretical_framework', 'literature_gaps', 'conceptual_clarity'],
-            'difficultyModifier' => 1.1,
-        ],
-        'practitioner' => [
-            'id' => 'practitioner',
-            'name' => 'The Practitioner',
-            'role' => 'Industry Expert',
-            'questioningStyle' => 'supportive',
-            'focusAreas' => ['real_world_application', 'industry_relevance', 'implementation'],
-            'difficultyModifier' => 0.9,
-        ],
-    ];
+    private string $chairId;
 
     public function __construct(ChapterContentAnalysisService $contentAnalysis)
     {
         $this->contentAnalysis = $contentAnalysis;
+        $this->chairId = (string) config('defense.chair_id', 'generalist');
     }
 
     public function getPersona(string $type): array
     {
-        return $this->personas[$type] ?? $this->personas['generalist'];
+        $personas = config('defense.personas', []);
+
+        return $personas[$type] ?? $personas[$this->chairId] ?? [];
     }
 
     public function getDefaultPersonaIds(): array
     {
-        return array_keys($this->personas);
+        return array_keys(config('defense.personas', []));
     }
 
     public function pickNextPersonaId(DefenseSession $session): string
@@ -186,8 +145,8 @@ PROMPT;
     {
         $unique = array_values(array_unique($panelists));
 
-        if (! in_array(self::CHAIR_ID, $unique, true)) {
-            array_unshift($unique, self::CHAIR_ID);
+        if (! in_array($this->chairId, $unique, true)) {
+            array_unshift($unique, $this->chairId);
         }
 
         $ordered = $this->orderPanelists($unique);
@@ -203,14 +162,13 @@ PROMPT;
 
     private function orderPanelists(array $panelists): array
     {
-        $priority = ['methodologist', 'skeptic', 'theorist', 'practitioner'];
         $ordered = [];
 
-        if (in_array(self::CHAIR_ID, $panelists, true)) {
-            $ordered[] = self::CHAIR_ID;
+        if (in_array($this->chairId, $panelists, true)) {
+            $ordered[] = $this->chairId;
         }
 
-        foreach ($priority as $id) {
+        foreach ($this->getPanelistPriority() as $id) {
             if (in_array($id, $panelists, true)) {
                 $ordered[] = $id;
             }
@@ -253,7 +211,7 @@ PROMPT;
 
         $base = intdiv($questionLimit, $count);
         $remainder = $questionLimit % $count;
-        $chairIndex = array_search(self::CHAIR_ID, $sequence, true);
+        $chairIndex = array_search($this->chairId, $sequence, true);
 
         foreach ($sequence as $index => $id) {
             $targets[$id] = $base;
@@ -263,5 +221,15 @@ PROMPT;
         }
 
         return $targets;
+    }
+
+    private function getPanelistPriority(): array
+    {
+        return config('defense.panelist_priority', [
+            'methodologist',
+            'skeptic',
+            'theorist',
+            'practitioner',
+        ]);
     }
 }

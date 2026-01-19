@@ -2,6 +2,11 @@
 
 namespace App\Services\Defense;
 
+use App\DTOs\Defense\NextDefenseQuestionData;
+use App\DTOs\Defense\NextDefenseQuestionResult;
+use App\DTOs\Defense\SimulationResponseData;
+use App\DTOs\Defense\StartDefenseSessionData;
+use App\DTOs\Defense\SubmitDefenseResponseData;
 use App\Events\Defense\DefenseMessageSent;
 use App\Events\Defense\DefensePerformanceUpdated;
 use App\Events\Defense\DefenseSessionEnded;
@@ -35,9 +40,9 @@ class DefenseSimulationService
         $this->performance = $performance;
     }
 
-    public function startSession(Project $project, array $config): DefenseSession
+    public function startSession(Project $project, StartDefenseSessionData $config): DefenseSession
     {
-        $panelists = $config['selected_panelists'] ?? $this->personas->getDefaultPersonaIds();
+        $panelists = $config->selectedPanelists ?: $this->personas->getDefaultPersonaIds();
 
         $session = DefenseSession::create([
             'user_id' => $project->user_id,
@@ -45,9 +50,9 @@ class DefenseSimulationService
             'mode' => 'text',
             'status' => 'in_progress',
             'selected_panelists' => $panelists,
-            'difficulty_level' => $config['difficulty_level'] ?? 'undergraduate',
-            'time_limit_minutes' => $config['time_limit_minutes'] ?? null,
-            'question_limit' => $config['question_limit'] ?? null,
+            'difficulty_level' => $config->difficultyLevel ?? config('defense.default_difficulty', 'undergraduate'),
+            'time_limit_minutes' => $config->timeLimitMinutes,
+            'question_limit' => $config->questionLimit,
             'started_at' => now(),
         ]);
 
@@ -58,16 +63,12 @@ class DefenseSimulationService
         return $session;
     }
 
-    public function generatePanelistQuestion(
-        DefenseSession $session,
-        ?string $personaId = null,
-        bool $requestHint = false
-    ): DefenseMessage
+    public function generatePanelistQuestion(DefenseSession $session, NextDefenseQuestionData $data): NextDefenseQuestionResult
     {
         $this->ensureSessionActive($session);
         $this->ensureHasWordBalance($session, 'continue the defense simulation');
 
-        $personaId = $personaId ?: $this->personas->pickNextPersonaId($session);
+        $personaId = $data->persona ?: $this->personas->pickNextPersonaId($session);
         $project = $session->project()->with('chapters', 'universityRelation')->firstOrFail();
 
         $lastQuestion = $session->messages()
@@ -75,7 +76,7 @@ class DefenseSimulationService
             ->latest()
             ->first();
         $followUpPersona = $lastQuestion?->panelist_persona ?? $personaId;
-        $followUpPrompt = $this->buildFollowUpPrompt($session, $followUpPersona, $requestHint);
+        $followUpPrompt = $this->buildFollowUpPrompt($session, $followUpPersona, $data->requestHint);
         if ($followUpPrompt && $lastQuestion?->panelist_persona) {
             $personaId = $lastQuestion->panelist_persona;
         }
@@ -113,18 +114,18 @@ class DefenseSimulationService
 
         broadcast(new DefenseMessageSent($session, $message));
 
-        return $message;
+        return new NextDefenseQuestionResult($message, $session->fresh());
     }
 
-    public function processStudentResponse(DefenseSession $session, string $response, ?int $responseTimeMs = null): array
+    public function processStudentResponse(DefenseSession $session, SubmitDefenseResponseData $data): SimulationResponseData
     {
         $this->ensureSessionActive($session);
         $this->ensureHasWordBalance($session, 'continue the defense simulation');
 
         $message = $session->messages()->create([
             'role' => 'student',
-            'content' => $response,
-            'response_time_ms' => $responseTimeMs,
+            'content' => $data->response,
+            'response_time_ms' => $data->responseTimeMs,
         ]);
 
         $question = $session->messages()
@@ -148,11 +149,11 @@ class DefenseSimulationService
 
         broadcast(new DefensePerformanceUpdated($session, $metrics));
 
-        return [
-            'message' => $message->fresh(),
-            'evaluation' => $evaluation,
-            'metrics' => $metrics,
-        ];
+        return new SimulationResponseData(
+            $message->fresh(),
+            $evaluation,
+            $metrics
+        );
     }
 
     public function endSession(DefenseSession $session, bool $asyncFeedback = true): DefenseFeedback
@@ -482,6 +483,7 @@ PROMPT;
             if ($session->time_limit_minutes && $session->started_at) {
                 $elapsed = now()->diffInMinutes($session->started_at);
                 if ($elapsed >= $session->time_limit_minutes) {
+                    $this->endSession($session);
                     throw new \RuntimeException('Session time limit reached.');
                 }
             }

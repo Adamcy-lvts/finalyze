@@ -2,6 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Defense\AnalyzeOpeningStatementRequest;
+use App\Http\Requests\Defense\GenerateDefenseQuestionsRequest;
+use App\Http\Requests\Defense\GetDefenseQuestionsRequest;
+use App\Http\Requests\Defense\MarkDefenseQuestionHelpfulRequest;
+use App\Http\Requests\Defense\NextDefenseQuestionRequest;
+use App\Http\Requests\Defense\StartDefenseSessionRequest;
+use App\Http\Requests\Defense\StreamGenerateDefenseQuestionsRequest;
+use App\Http\Requests\Defense\SubmitDefenseResponseRequest;
+use App\Http\Resources\Defense\DefenseFeedbackResource;
+use App\Http\Resources\Defense\DefenseMessageResource;
+use App\Http\Resources\Defense\DefenseSessionResource;
+use App\DTOs\Defense\StartDefenseSessionData;
+use App\DTOs\Defense\SubmitDefenseResponseData;
+use App\DTOs\Defense\NextDefenseQuestionData;
+use App\DTOs\Defense\DefenseQuestionsQueryData;
+use App\DTOs\Defense\GenerateDefenseQuestionsData;
+use App\DTOs\Defense\StreamDefenseQuestionsData;
 use App\Models\Chapter;
 use App\Models\DefenseFeedback;
 use App\Models\DefensePreparation;
@@ -11,6 +28,7 @@ use App\Models\Project;
 use App\Services\AIContentGenerator;
 use App\Services\ChapterContentAnalysisService;
 use App\Services\Defense\DefenseCreditService;
+use App\Services\Defense\DefensePromptBuilder;
 use App\Services\Defense\DefenseSimulationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -26,22 +44,26 @@ class DefenseController extends Controller
 
     private DefenseCreditService $defenseCredit;
 
+    private DefensePromptBuilder $promptBuilder;
+
     public function __construct(
         AIContentGenerator $aiGenerator,
         ChapterContentAnalysisService $contentAnalysis,
         DefenseSimulationService $defenseSimulation,
-        DefenseCreditService $defenseCredit
+        DefenseCreditService $defenseCredit,
+        DefensePromptBuilder $promptBuilder
     ) {
         $this->aiGenerator = $aiGenerator;
         $this->contentAnalysis = $contentAnalysis;
         $this->defenseSimulation = $defenseSimulation;
         $this->defenseCredit = $defenseCredit;
+        $this->promptBuilder = $promptBuilder;
     }
 
     /**
      * Get defense questions for a project
      */
-    public function getQuestions(Request $request, $project_id)
+    public function getQuestions(GetDefenseQuestionsRequest $request, $project_id)
     {
         // Manually load the project by ID
         $project = Project::findOrFail($project_id);
@@ -50,34 +72,22 @@ class DefenseController extends Controller
         abort_if($project->user_id !== auth()->id(), 403);
 
         // More lenient validation
-        $validated = $request->validate([
-            'chapter_number' => 'nullable|integer|min:1|max:20', // Increased max
-            'limit' => 'nullable|integer|min:1|max:20',
-            'force_refresh' => 'nullable|boolean',
-            'difficulty' => 'nullable|string', // Changed from specific enum
-            'skip_generation' => 'nullable|boolean',
-        ]);
-
-        // Provide defaults
-        $chapterNumber = isset($validated['chapter_number']) ? (int) $validated['chapter_number'] : null;
-        $limit = isset($validated['limit']) ? (int) $validated['limit'] : 5;
-        $forceRefresh = isset($validated['force_refresh']) ? (bool) $validated['force_refresh'] : false;
-        $skipGeneration = isset($validated['skip_generation']) ? (bool) $validated['skip_generation'] : false;
+        $data = DefenseQuestionsQueryData::fromArray($request->validated());
 
         // Log the request for debugging
         Log::info('Defense questions requested', [
             'project_id' => $project->id,
-            'chapter_number' => $chapterNumber,
-            'limit' => $limit,
-            'force_refresh' => $forceRefresh,
-            'skip_generation' => $skipGeneration,
+            'chapter_number' => $data->chapterNumber,
+            'limit' => $data->limit,
+            'force_refresh' => $data->forceRefresh,
+            'skip_generation' => $data->skipGeneration,
         ]);
 
         // Cache key
-        $cacheKey = "defense_questions_{$project->id}_{$chapterNumber}";
+        $cacheKey = "defense_questions_{$project->id}_{$data->chapterNumber}";
 
         // Check cache first (unless force refresh)
-        if (! $forceRefresh && Cache::has($cacheKey)) {
+        if (! $data->forceRefresh && Cache::has($cacheKey)) {
             $cachedQuestions = Cache::get($cacheKey);
 
             return response()->json([
@@ -92,28 +102,28 @@ class DefenseController extends Controller
             ->active()
             ->notRecentlyShown(24);
 
-        if ($chapterNumber) {
-            $query->forChapter($chapterNumber);
+        if ($data->chapterNumber) {
+            $query->forChapter($data->chapterNumber);
         }
 
-        if (isset($validated['difficulty']) && $validated['difficulty'] !== 'all') {
-            $query->byDifficulty($validated['difficulty']);
+        if ($data->difficulty && $data->difficulty !== 'all') {
+            $query->byDifficulty($data->difficulty);
         }
 
         $existingQuestions = $query->inRandomOrder()
-            ->limit($limit)
+            ->limit($data->limit)
             ->get();
 
         // Check if we need to generate more
-        if (! $skipGeneration && $existingQuestions->count() < 3) {
+        if (! $data->skipGeneration && $existingQuestions->count() < 3) {
             // For now, generate synchronously if no questions exist
             if ($existingQuestions->isEmpty()) {
-                $existingQuestions = $this->generateQuestionsSynchronously($project, $chapterNumber, 3);
+                $existingQuestions = $this->generateQuestionsSynchronously($project, $data->chapterNumber, 3);
 
                 // If still empty and chapter number is specified, check word count
-                if ($existingQuestions->isEmpty() && $chapterNumber) {
+                if ($existingQuestions->isEmpty() && $data->chapterNumber) {
                     $chapter = Chapter::where('project_id', $project->id)
-                        ->where('chapter_number', $chapterNumber)
+                        ->where('chapter_number', $data->chapterNumber)
                         ->first();
 
                     if ($chapter && ! $this->contentAnalysis->hasMinimumWordCountForDefense($chapter)) {
@@ -122,7 +132,7 @@ class DefenseController extends Controller
                         return response()->json([
                             'questions' => [],
                             'source' => 'insufficient_content',
-                            'message' => "Chapter {$chapterNumber} needs at least ".ChapterContentAnalysisService::MIN_WORD_COUNT_FOR_DEFENSE." words to generate defense questions. Current word count: {$wordCount}",
+                            'message' => "Chapter {$data->chapterNumber} needs at least ".ChapterContentAnalysisService::MIN_WORD_COUNT_FOR_DEFENSE." words to generate defense questions. Current word count: {$wordCount}",
                             'word_count' => $wordCount,
                             'minimum_required' => ChapterContentAnalysisService::MIN_WORD_COUNT_FOR_DEFENSE,
                             'next_refresh' => null,
@@ -158,24 +168,18 @@ class DefenseController extends Controller
     /**
      * Generate new defense questions (synchronous)
      */
-    public function generateQuestions(Request $request, $project_id)
+    public function generateQuestions(GenerateDefenseQuestionsRequest $request, $project_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
 
-        $validated = $request->validate([
-            'chapter_number' => 'nullable|integer|min:1|max:20',
-            'count' => 'nullable|integer|min:1|max:10',
-        ]);
-
-        $chapterNumber = $validated['chapter_number'] ?? null;
-        $count = $validated['count'] ?? 5;
+        $data = GenerateDefenseQuestionsData::fromArray($request->validated());
 
         try {
-            $questions = $this->generateQuestionsSynchronously($project, $chapterNumber, $count);
+            $questions = $this->generateQuestionsSynchronously($project, $data->chapterNumber, $data->count);
 
             // Clear cache to ensure fresh questions are loaded
-            $cacheKey = "defense_questions_{$project->id}_{$chapterNumber}";
+            $cacheKey = "defense_questions_{$project->id}_{$data->chapterNumber}";
             Cache::forget($cacheKey);
 
             return response()->json([
@@ -188,7 +192,7 @@ class DefenseController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to generate defense questions', [
                 'project_id' => $project->id,
-                'chapter_number' => $chapterNumber,
+                'chapter_number' => $data->chapterNumber,
                 'error' => $e->getMessage(),
             ]);
 
@@ -203,17 +207,13 @@ class DefenseController extends Controller
     /**
      * Stream generate new defense questions
      */
-    public function streamGenerate(Request $request, $project_id)
+    public function streamGenerate(StreamGenerateDefenseQuestionsRequest $request, $project_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
 
         // Rest of the streaming logic...
-        $validated = $request->validate([
-            'chapter_number' => 'nullable|integer|min:1|max:10',
-            'count' => 'nullable|integer|min:1|max:10',
-            'focus' => 'nullable|in:methodology,literature,findings,theory,contribution,general',
-        ]);
+        $data = StreamDefenseQuestionsData::fromArray($request->validated());
 
         // Your existing streaming logic here...
         return response()->stream(function () {
@@ -224,7 +224,7 @@ class DefenseController extends Controller
     /**
      * Mark a question as helpful
      */
-    public function markHelpful(Request $request, $project_id, $question_id)
+    public function markHelpful(MarkDefenseQuestionHelpfulRequest $request, $project_id, $question_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
@@ -232,9 +232,7 @@ class DefenseController extends Controller
         $question = DefenseQuestion::findOrFail($question_id);
         abort_if($question->project_id !== $project->id, 404);
 
-        $validated = $request->validate([
-            'user_marked_helpful' => 'required|boolean',
-        ]);
+        $validated = $request->validated();
 
         $question->markAsHelpful($validated['user_marked_helpful']);
 
@@ -264,18 +262,12 @@ class DefenseController extends Controller
     /**
      * Start a defense simulation session (text mode)
      */
-    public function startSession(Request $request, $project_id)
+    public function startSession(StartDefenseSessionRequest $request, $project_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
 
-        $validated = $request->validate([
-            'selected_panelists' => 'required|array|min:1',
-            'selected_panelists.*' => 'string',
-            'difficulty_level' => 'nullable|in:undergraduate,masters,doctoral',
-            'time_limit_minutes' => 'nullable|integer|min:5|max:120',
-            'question_limit' => 'nullable|integer|min:1|max:50',
-        ]);
+        $validated = $request->validated();
 
         if (! $this->defenseCredit->hasEnoughCredits($request->user(), 'text')) {
             return response()->json([
@@ -284,11 +276,14 @@ class DefenseController extends Controller
             ], 402);
         }
 
-        $session = $this->defenseSimulation->startSession($project, $validated);
+        $session = $this->defenseSimulation->startSession(
+            $project,
+            StartDefenseSessionData::fromArray($validated)
+        );
 
         return response()->json([
             'success' => true,
-            'session' => $session->fresh(),
+            'session' => new DefenseSessionResource($session->fresh()),
         ]);
     }
 
@@ -306,7 +301,7 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'session' => $session->load('messages', 'feedback'),
+            'session' => new DefenseSessionResource($session->load('messages', 'feedback')),
         ]);
     }
 
@@ -323,9 +318,14 @@ class DefenseController extends Controller
             ->limit(25)
             ->get();
 
+        $overallReadiness = DefenseSession::where('project_id', $project->id)
+            ->whereNotNull('readiness_score')
+            ->avg('readiness_score');
+
         return response()->json([
             'success' => true,
-            'sessions' => $sessions,
+            'sessions' => DefenseSessionResource::collection($sessions),
+            'overall_readiness_score' => $overallReadiness !== null ? (int) round($overallReadiness) : null,
         ]);
     }
 
@@ -344,14 +344,14 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'session' => $session,
+            'session' => $session ? new DefenseSessionResource($session) : null,
         ]);
     }
 
     /**
      * Fetch next panelist question
      */
-    public function getNextQuestion(Request $request, $project_id, $session_id)
+    public function getNextQuestion(NextDefenseQuestionRequest $request, $project_id, $session_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
@@ -360,16 +360,12 @@ class DefenseController extends Controller
             ->where('id', $session_id)
             ->firstOrFail();
 
-        $validated = $request->validate([
-            'persona' => 'nullable|string',
-            'request_hint' => 'nullable|boolean',
-        ]);
+        $validated = $request->validated();
 
         try {
-            $message = $this->defenseSimulation->generatePanelistQuestion(
+            $result = $this->defenseSimulation->generatePanelistQuestion(
                 $session,
-                $validated['persona'] ?? null,
-                (bool) ($validated['request_hint'] ?? false)
+                NextDefenseQuestionData::fromArray($validated)
             );
         } catch (\RuntimeException $e) {
             return response()->json([
@@ -387,15 +383,15 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $message,
-            'session' => $session->fresh(),
+            'message' => new DefenseMessageResource($result->message),
+            'session' => new DefenseSessionResource($result->session),
         ]);
     }
 
     /**
      * Submit a student response
      */
-    public function submitResponse(Request $request, $project_id, $session_id)
+    public function submitResponse(SubmitDefenseResponseRequest $request, $project_id, $session_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
@@ -404,17 +400,13 @@ class DefenseController extends Controller
             ->where('id', $session_id)
             ->firstOrFail();
 
-        $validated = $request->validate([
-            'response' => 'required|string|min:3|max:8000',
-            'response_time_ms' => 'nullable|integer|min:0|max:600000',
-        ]);
+        $validated = $request->validated();
 
         try {
-            $result = $this->defenseSimulation->processStudentResponse(
-                $session,
-                $validated['response'],
-                $validated['response_time_ms'] ?? null
-            );
+        $result = $this->defenseSimulation->processStudentResponse(
+            $session,
+            SubmitDefenseResponseData::fromArray($validated)
+        );
         } catch (\RuntimeException $e) {
             return response()->json([
                 'success' => false,
@@ -431,9 +423,9 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $result['message'],
-            'evaluation' => $result['evaluation'],
-            'performance_metrics' => $result['metrics'],
+            'message' => new DefenseMessageResource($result->message),
+            'evaluation' => $result->evaluation,
+            'performance_metrics' => $result->metrics,
         ]);
     }
 
@@ -467,8 +459,8 @@ class DefenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'session' => $session->fresh(),
-                'feedback' => $feedback,
+                'session' => new DefenseSessionResource($session->fresh()),
+                'feedback' => $feedback ? new DefenseFeedbackResource($feedback) : null,
             ]);
         }
 
@@ -500,8 +492,8 @@ class DefenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'session' => $session->fresh(),
-                'feedback' => $feedback,
+                'session' => new DefenseSessionResource($session->fresh()),
+                'feedback' => $feedback ? new DefenseFeedbackResource($feedback) : null,
                 'message' => $e->getMessage(),
             ]);
         } catch (\Exception $e) {
@@ -521,8 +513,8 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'session' => $session->fresh(),
-            'feedback' => $feedback,
+            'session' => new DefenseSessionResource($session->fresh()),
+            'feedback' => $feedback ? new DefenseFeedbackResource($feedback) : null,
         ]);
     }
 
@@ -545,7 +537,7 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'session' => $session->fresh(),
+            'session' => new DefenseSessionResource($session->fresh()),
         ]);
     }
 
@@ -565,7 +557,7 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'feedback' => $feedback,
+            'feedback' => $feedback ? new DefenseFeedbackResource($feedback) : null,
         ]);
     }
 
@@ -583,7 +575,7 @@ class DefenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'messages' => $session->messages()->orderBy('created_at')->get(),
+            'messages' => DefenseMessageResource::collection($session->messages()->orderBy('created_at')->get()),
         ]);
     }
 
@@ -617,7 +609,7 @@ class DefenseController extends Controller
             ], 402);
         }
 
-        $prompt = $this->buildExecutiveBriefingPrompt($project);
+        $prompt = $this->promptBuilder->buildExecutiveBriefingPrompt($project);
         $briefing = $this->aiGenerator->generate($prompt, [
             'feature' => 'defense_briefing',
             'model' => 'gpt-4o',
@@ -645,7 +637,7 @@ class DefenseController extends Controller
     /**
      * Analyze opening statement
      */
-    public function analyzeOpeningStatement(Request $request, $project_id)
+    public function analyzeOpeningStatement(AnalyzeOpeningStatementRequest $request, $project_id)
     {
         $project = Project::findOrFail($project_id);
         abort_if($project->user_id !== auth()->id(), 403);
@@ -662,11 +654,9 @@ class DefenseController extends Controller
             ], 402);
         }
 
-        $validated = $request->validate([
-            'opening_statement' => 'required|string|min:20|max:5000',
-        ]);
+        $validated = $request->validated();
 
-        $prompt = $this->buildOpeningStatementPrompt($project, $validated['opening_statement']);
+        $prompt = $this->promptBuilder->buildOpeningStatementPrompt($project, $validated['opening_statement']);
         $analysis = $this->aiGenerator->generate($prompt, [
             'feature' => 'defense_opening_analysis',
             'model' => 'gpt-4o-mini',
@@ -722,7 +712,7 @@ class DefenseController extends Controller
             ], 402);
         }
 
-        $prompt = $this->buildOpeningStatementGenerationPrompt($project);
+        $prompt = $this->promptBuilder->buildOpeningStatementGenerationPrompt($project);
         $statement = $this->aiGenerator->generate($prompt, [
             'feature' => 'defense_opening_statement',
             'model' => 'gpt-4o-mini',
@@ -777,7 +767,7 @@ class DefenseController extends Controller
             ], 402);
         }
 
-        $prompt = $this->buildPresentationGuidePrompt($project);
+        $prompt = $this->promptBuilder->buildPresentationGuidePrompt($project);
         $guide = $this->aiGenerator->generate($prompt, [
             'feature' => 'defense_presentation_guide',
             'model' => 'gpt-4o-mini',
@@ -833,203 +823,6 @@ class DefenseController extends Controller
             'estimates' => $this->defenseCredit->estimateSessionCost('text', 30),
             'minimum_balance' => config('pricing.minimum_balance.defense', 500),
         ]);
-    }
-
-    /**
-     * Build AI prompt for defense questions
-     */
-    private function buildDefenseQuestionsPrompt($project, $chapterContent, $focus, $count)
-    {
-        $context = "Project Title: {$project->title}\n";
-        $context .= "Topic: {$project->topic}\n";
-        $context .= "Field of Study: {$project->field_of_study}\n";
-        $context .= "University: {$project->universityRelation?->name}\n";
-        $context .= "Course: {$project->course}\n";
-
-        // Enhanced context: Include content from multiple chapters (only those with sufficient content)
-        $chapters = Chapter::where('project_id', $project->id)
-            ->orderBy('chapter_number')
-            ->get();
-
-        if ($chapters->isNotEmpty()) {
-            $context .= "\n=== PROJECT CONTENT ===\n";
-
-            foreach ($chapters as $chapter) {
-                // Only include chapters with sufficient content for defense questions
-                if ($chapter->content && $this->contentAnalysis->hasMinimumWordCountForDefense($chapter)) {
-                    $wordCount = $this->contentAnalysis->getChapterWordCount($chapter);
-                    $context .= "\n--- Chapter {$chapter->chapter_number}: {$chapter->title} (Word Count: {$wordCount}) ---\n";
-                    // Include substantial content but limit to prevent token explosion
-                    $chapterPreview = substr($chapter->content, 0, 2000);
-                    $context .= $chapterPreview."\n";
-                }
-            }
-        }
-
-        // Keep legacy single chapter content for backwards compatibility
-        if ($chapterContent && ! $chapters->isNotEmpty()) {
-            $context .= "\nChapter Content (Preview):\n".substr($chapterContent, 0, 3000)."...\n";
-        }
-
-        $focusInstruction = match ($focus) {
-            'methodology' => 'Focus on research methodology, data collection, and analysis methods.',
-            'literature' => 'Focus on literature review, theoretical framework, and related works.',
-            'findings' => 'Focus on research findings, results, and data interpretation.',
-            'theory' => 'Focus on theoretical contributions and conceptual framework.',
-            'contribution' => 'Focus on research contributions, implications, and significance.',
-            default => 'Cover various aspects including methodology, findings, and contributions.'
-        };
-
-        return <<<PROMPT
-You are an experienced thesis defense examiner. Based on the following thesis information, generate {$count} potential defense questions that examiners might ask.
-
-{$context}
-
-{$focusInstruction}
-
-For each question, provide:
-1. The question itself (challenging but fair)
-2. A suggested answer approach (2-3 sentences)
-3. Key points to cover (2-3 bullet points)
-4. Difficulty level (easy/medium/hard)
-5. Category (methodology/literature/findings/theory/contribution)
-
-Format each question as:
-QUESTION: [question text]
-ANSWER: [suggested answer approach]
-KEY_POINTS: • [point 1] • [point 2] • [point 3]
-DIFFICULTY: [level]
-CATEGORY: [category]
----
-
-Generate thoughtful, academic questions that test deep understanding of the research.
-PROMPT;
-    }
-
-    private function buildExecutiveBriefingPrompt(Project $project): string
-    {
-        $context = $this->buildProjectContext($project);
-
-        return <<<PROMPT
-You are an academic defense coach. Create an executive briefing for a thesis defense, organized into 4-5 key slides.
-
-{$context}
-
-Return a valid JSON object with this structure:
-{
-    "slides": [
-        {
-            "title": "Slide Title (e.g., Overview, Methodology, Findings)",
-            "content": "Markdown content for the slide body (bullet points, short paragraphs)."
-        }
-    ]
-}
-
-Ensure the slides cover:
-1. Concise Overview
-2. Key Methodology
-3. Major Findings
-4. Implications & Contributions
-5. Chapter-by-Chapter Key Points (Brief breakdown)
-6. Potential Weak Points (for defense prep)
-PROMPT;
-    }
-
-    private function buildOpeningStatementPrompt(Project $project, string $statement): string
-    {
-        $context = $this->buildProjectContext($project);
-
-        return <<<PROMPT
-You are an academic defense coach. Evaluate the opening statement below.
-
-{$context}
-
-Opening Statement:
-{$statement}
-
-Provide:
-- Clarity score (0-100)
-- Confidence score (0-100)
-- Key strengths (2-3 bullets)
-- Improvements (2-3 bullets)
-- A revised 60-90 second version.
-PROMPT;
-    }
-
-    private function buildOpeningStatementGenerationPrompt(Project $project): string
-    {
-        $context = $this->buildProjectContext($project);
-
-        return <<<PROMPT
-You are an academic defense coach. Draft a strong 60-90 second opening statement for a thesis defense.
-
-{$context}
-
-Requirements:
-- 120 to 180 words.
-- Clear problem framing, core contribution, and practical impact.
-- Confident but not exaggerated tone.
-- No bullet points, write as a single short speech.
-PROMPT;
-    }
-
-    private function buildPresentationGuidePrompt(Project $project): string
-    {
-        $context = $this->buildProjectContext($project);
-
-        return <<<PROMPT
-You are an academic defense coach. Create a structured presentation guide for a thesis defense.
-
-{$context}
-
-Return a valid JSON object wrapped in a markdown code block (```json ... ```).
-The JSON object must have a "slides" key containing an array of 8-12 slide objects.
-Each slide object must have:
-- "title": string (e.g., "Introduction", "Methodology")
-- "duration": string (e.g., "1 min")
-- "content": string (bullet points or short paragraph for the slide body)
-- "talking_points": array of strings (key script notes for the speaker)
-- "visuals": string (description of recommended visuals/diagrams)
-
-Example format:
-```json
-{
-    "slides": [
-        {
-            "title": "Introduction",
-            "duration": "2 mins",
-            "content": "- Hook statement\n- Problem context",
-            "talking_points": ["Start with a story...", "Define the core gap..."],
-            "visuals": " infographic of the problem"
-        }
-    ]
-}
-```
-PROMPT;
-    }
-
-    private function buildProjectContext(Project $project): string
-    {
-        $project->loadMissing('chapters', 'universityRelation');
-
-        $context = "Project Title: {$project->title}\n";
-        $context .= "Topic: {$project->topic}\n";
-        $context .= "Field of Study: {$project->field_of_study}\n";
-        $context .= "University: {$project->universityRelation?->name}\n";
-        $context .= "Course: {$project->course}\n";
-
-        $chapters = $project->chapters->sortBy('chapter_number');
-        if ($chapters->isNotEmpty()) {
-            $context .= "\n=== CHAPTER SUMMARIES ===\n";
-            foreach ($chapters as $chapter) {
-                if ($chapter->content && $this->contentAnalysis->hasMinimumWordCountForDefense($chapter)) {
-                    $preview = substr($chapter->content, 0, 1500);
-                    $context .= "\nChapter {$chapter->chapter_number}: {$chapter->title}\n{$preview}\n";
-                }
-            }
-        }
-
-        return $context;
     }
 
     /**
@@ -1121,7 +914,7 @@ PROMPT;
                 }
             }
 
-            $prompt = $this->buildDefenseQuestionsPrompt($project, $chapterContent, 'general', $count);
+            $prompt = $this->promptBuilder->buildDefenseQuestionsPrompt($project, $chapterContent, 'general', $count);
 
             // Check if AI generator is available
             if (! $this->aiGenerator) {

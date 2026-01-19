@@ -461,7 +461,22 @@ class ProjectController extends Controller
 
         $payload = $this->projectWritingService->writingPayload($project);
 
-        return Inertia::render('projects/Defense', $payload);
+        $personas = collect(config('defense.personas', []))
+            ->values()
+            ->map(fn (array $persona) => [
+                'id' => $persona['id'] ?? '',
+                'name' => $persona['name'] ?? 'Panelist',
+                'role' => $persona['role'] ?? 'Reviewer',
+            ])
+            ->all();
+
+        return Inertia::render('projects/Defense', $payload + [
+            'defenseConfig' => [
+                'default_question_limit' => (int) config('defense.default_question_limit', 10),
+                'default_difficulty' => (string) config('defense.default_difficulty', 'undergraduate'),
+                'personas' => $personas,
+            ],
+        ]);
     }
 
     /**
