@@ -60,6 +60,9 @@ export function useChapterGeneration({
     const showRecoveryDialog = ref(false);
     const partialContentSaved = ref(false);
     const savedWordCountOnError = ref(0);
+    const isPageHidden = ref(false);
+    const generationPausedByVisibility = ref(false);
+    const generationPausedAt = ref<number | null>(null);
 
     // Content history for undo/redo functionality
     interface ContentHistoryEntry {
@@ -212,8 +215,10 @@ export function useChapterGeneration({
             // Use requestAnimationFrame to ensure TipTap has finished rendering
             requestAnimationFrame(() => {
                 if (cachedScrollContainer.value && cachedScrollContainer.value.isConnected) {
-                    // Direct scroll - immediate for real-time follow
-                    cachedScrollContainer.value.scrollTop = cachedScrollContainer.value.scrollHeight;
+                    cachedScrollContainer.value.scrollTo({
+                        top: cachedScrollContainer.value.scrollHeight,
+                        behavior: 'smooth',
+                    });
                 }
             });
         });
@@ -342,10 +347,68 @@ export function useChapterGeneration({
         }
     };
 
+    const handleVisibilityChange = () => {
+        isPageHidden.value = document.hidden;
+
+        if (document.hidden) {
+            handlePageHidden();
+        } else {
+            handlePageVisible();
+        }
+    };
+
+    const handlePageHidden = () => {
+        if (!isGenerating.value || !eventSource.value) return;
+
+        generationPausedAt.value = Date.now();
+        generationPausedByVisibility.value = true;
+
+        try {
+            localStorage.setItem(`generation_pause_${props.chapter.id}`, JSON.stringify({
+                generationId: currentGenerationId.value,
+                streamBuffer: streamBuffer.value,
+                streamWordCount: streamWordCount.value,
+                pausedAt: Date.now(),
+            }));
+        } catch (e) {
+            // Ignore localStorage failures (private mode, quota)
+        }
+
+        eventSource.value?.close();
+        eventSource.value = null;
+
+        generationPhase.value = 'Paused';
+        generationProgress.value = `Paused (${streamWordCount.value} words saved)`;
+    };
+
+    const handlePageVisible = async () => {
+        if (!generationPausedByVisibility.value) return;
+
+        const pauseDuration = Date.now() - (generationPausedAt.value || 0);
+        const maxPause = 5 * 60 * 1000;
+
+        if (pauseDuration > maxPause) {
+            generationPausedByVisibility.value = false;
+            showRecoveryDialog.value = true;
+            isGenerating.value = false;
+            return;
+        }
+
+        if (!navigator.onLine) {
+            toast.warning('No connection', { description: 'Reconnect to resume.' });
+            return;
+        }
+
+        generationPhase.value = 'Resuming';
+        generationPausedByVisibility.value = false;
+        attemptReconnection(currentGenerationType.value as any);
+    };
+
     // Start beforeunload protection when generation starts
     const enableGenerationProtection = () => {
         if (typeof window !== 'undefined') {
             window.addEventListener('beforeunload', handleBeforeUnload);
+            document.addEventListener('visibilitychange', handleVisibilityChange);
         }
     };
 
@@ -353,12 +416,18 @@ export function useChapterGeneration({
     const disableGenerationProtection = () => {
         if (typeof window !== 'undefined') {
             window.removeEventListener('beforeunload', handleBeforeUnload);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
     };
 
     // Cleanup function to be called when composable is unmounted
     const cleanupGenerationProtection = () => {
         disableGenerationProtection();
+        try {
+            localStorage.removeItem(`generation_pause_${props.chapter.id}`);
+        } catch (e) {
+            // Ignore localStorage failures
+        }
     };
 
     const monitorPaperCollection = async (): Promise<boolean> => {
@@ -577,16 +646,12 @@ export function useChapterGeneration({
                     streamBuffer.value += data.content;
                     streamWordCount.value = data.word_count || streamBuffer.value.split(/\s+/).filter((word) => word.length > 0).length;
 
-                    const now = Date.now();
-                    if (now - lastStreamUpdate.value > 200) {
-                        chapterContent.value = streamBuffer.value;
-                        lastStreamUpdate.value = now;
+                    chapterContent.value = streamBuffer.value;
 
-                        const wordProgress = Math.min((streamWordCount.value / Math.max(estimatedTotalWords.value, 1)) * 43, 43);
-                        generationPercentage.value = Math.max(52, 52 + wordProgress);
-                        generationProgress.value = `Writing chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
-                        scrollToBottom();
-                    }
+                    const wordProgress = Math.min((streamWordCount.value / Math.max(estimatedTotalWords.value, 1)) * 43, 43);
+                    generationPercentage.value = Math.max(52, 52 + wordProgress);
+                    generationProgress.value = `Writing chapter content... (${streamWordCount.value} / ${estimatedTotalWords.value} words)`;
+                    scrollToBottom();
                     break;
 
                 case 'heartbeat':

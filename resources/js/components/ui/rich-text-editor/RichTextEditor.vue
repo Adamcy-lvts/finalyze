@@ -131,7 +131,7 @@ const isStreamingActive = ref(false)
 const lastStreamingUpdate = ref(0)
 const pendingStreamingContent = ref('')
 const streamingUpdateTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const STREAMING_THROTTLE_MS = 300 // Update editor at most every 300ms during streaming
+const STREAMING_THROTTLE_MS = 100 // Update editor at most every 100ms during streaming
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
