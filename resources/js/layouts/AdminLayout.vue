@@ -1,6 +1,6 @@
 <template>
   <SidebarProvider>
-    <Sidebar collapsible="icon" variant="inset" class="border-r border-border bg-sidebar">
+    <Sidebar collapsible="icon" variant="inset" class="border-r border-border/60 bg-sidebar/95 backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/80">
       <SidebarHeader class="h-16 flex items-center justify-center border-b border-border/50 px-4">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -93,7 +93,7 @@
     </Sidebar>
     <SidebarInset class="bg-background text-foreground flex min-h-screen flex-col">
       <header
-        class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        class="sticky top-0 z-10 border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
         <div class="max-w-7xl mx-auto px-4 md:px-8 min-h-16 py-3 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <SidebarTrigger />
@@ -239,6 +239,7 @@ import {
   Building2,
   GraduationCap,
   Layers,
+  Trash2,
   ChevronsUpDown,
   LogOut,
   X,
@@ -285,6 +286,7 @@ const systemNavItems = [
   { href: '/admin/ai', label: 'AI Monitoring', icon: Cpu },
   { href: '/admin/system/features', label: 'Feature Flags', icon: ToggleLeft },
   { href: '/admin/system/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/system/cleanup', label: 'Data Cleanup', icon: Trash2 },
   { href: '/admin/system/universities', label: 'Universities', icon: Building2 },
   { href: '/admin/system/faculties', label: 'Faculties', icon: GraduationCap },
   { href: '/admin/system/departments', label: 'Departments', icon: Layers },
