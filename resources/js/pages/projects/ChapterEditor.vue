@@ -2137,7 +2137,7 @@ watch(globalIsDark, () => {
                                 leave-active-class="transition-all duration-200 ease-in"
                                 leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-4">
                                 <div v-if="isGenerating"
-                                    class="absolute top-8 left-0 right-0 z-40 px-4 flex justify-center pointer-events-none">
+                                    class="fixed sm:absolute top-2 sm:top-8 left-0 right-0 z-40 px-3 sm:px-4 flex justify-center pointer-events-none">
                                     <div class="w-full max-w-md pointer-events-auto">
                                         <div
                                             class="group relative overflow-hidden rounded-2xl border border-white/20 bg-white/80 dark:bg-zinc-900/80 p-5 shadow-2xl backdrop-blur-xl transition-all duration-300 dark:border-white/10 ring-1 ring-black/5 dark:ring-white/5">
