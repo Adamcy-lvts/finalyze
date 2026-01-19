@@ -900,7 +900,7 @@
     "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
   },
   "resources/js/app.ts": {
-    "file": "assets/app-7JpR9_Xs.js",
+    "file": "assets/app-BzrvLOZj.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -983,7 +983,7 @@
       "resources/js/pages/settings/Profile.vue"
     ],
     "css": [
-      "assets/app-5o73jPht.css"
+      "assets/app-eOQfWBvM.css"
     ]
   },
   "resources/js/components/chapter-editor/ChapterNavigation.vue": {
@@ -1801,7 +1801,7 @@
     ]
   },
   "resources/js/pages/Admin/Users/Index.vue": {
-    "file": "assets/Index-CTMWO2If.js",
+    "file": "assets/Index-BTFUUtho.js",
     "name": "Index",
     "src": "resources/js/pages/Admin/Users/Index.vue",
     "isDynamicEntry": true,
@@ -1822,6 +1822,7 @@
       "_Input.vue_vue_type_script_setup_true_lang-DAeY8mMm.js",
       "_Label.vue_vue_type_script_setup_true_lang-D84UGLqY.js",
       "_Textarea.vue_vue_type_script_setup_true_lang-B2qCjWbq.js",
+      "_AlertDialogTitle.vue_vue_type_script_setup_true_lang-DLCPkSzL.js",
       "_UserInfo.vue_vue_type_script_setup_true_lang-tVoAfrlY.js",
       "_TooltipTrigger.vue_vue_type_script_setup_true_lang-DunnpUO7.js",
       "_TableHeader.vue_vue_type_script_setup_true_lang-KafZe9uV.js"
