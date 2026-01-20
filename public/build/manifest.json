@@ -900,7 +900,7 @@
     "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
   },
   "resources/js/app.ts": {
-    "file": "assets/app-BzrvLOZj.js",
+    "file": "assets/app-BOylYZiG.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -1322,7 +1322,7 @@
     ]
   },
   "resources/js/pages/Admin/Dashboard.vue": {
-    "file": "assets/Dashboard-gutV_CYI.js",
+    "file": "assets/Dashboard-CsHIfcBr.js",
     "name": "Dashboard",
     "src": "resources/js/pages/Admin/Dashboard.vue",
     "isDynamicEntry": true,
@@ -1801,7 +1801,7 @@
     ]
   },
   "resources/js/pages/Admin/Users/Index.vue": {
-    "file": "assets/Index-BTFUUtho.js",
+    "file": "assets/Index-Ch1RFtyi.js",
     "name": "Index",
     "src": "resources/js/pages/Admin/Users/Index.vue",
     "isDynamicEntry": true,
@@ -1829,7 +1829,7 @@
     ]
   },
   "resources/js/pages/Admin/Users/Show.vue": {
-    "file": "assets/Show-CUqgeUHR.js",
+    "file": "assets/Show-pLgtjDQ3.js",
     "name": "Show",
     "src": "resources/js/pages/Admin/Users/Show.vue",
     "isDynamicEntry": true,

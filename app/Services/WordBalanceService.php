@@ -55,6 +55,10 @@ class WordBalanceService
             return false;
         }
 
+        if ($user->affiliate_is_pure) {
+            return false;
+        }
+
         $bonusWords = config('pricing.signup_bonus_words', 5000);
 
         DB::transaction(function () use ($user, $bonusWords) {
