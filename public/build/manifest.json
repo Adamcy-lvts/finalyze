@@ -900,7 +900,7 @@
     "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
   },
   "resources/js/app.ts": {
-    "file": "assets/app-BOylYZiG.js",
+    "file": "assets/app-PBU4dJ6Y.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -2049,7 +2049,7 @@
     ]
   },
   "resources/js/pages/Welcome.vue": {
-    "file": "assets/Welcome-DjmFL8Z_.js",
+    "file": "assets/Welcome-CAwvlpKc.js",
     "name": "Welcome",
     "src": "resources/js/pages/Welcome.vue",
     "isDynamicEntry": true,
@@ -2068,7 +2068,7 @@
       "__plugin-vue_export-helper-DlAUqK2U.js"
     ],
     "css": [
-      "assets/Welcome-C0rv2AOl.css"
+      "assets/Welcome-R1vj8NuS.css"
     ]
   },
   "resources/js/pages/auth/ConfirmPassword.vue": {
