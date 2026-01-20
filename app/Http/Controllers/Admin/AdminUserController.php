@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Events\WordBalanceUpdated;
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\User;
 use App\Models\WordTransaction;
 use Illuminate\Http\Request;
@@ -23,6 +24,8 @@ class AdminUserController extends Controller
                 'email' => $user->email,
                 'is_banned' => $user->is_banned,
                 'last_active_at' => $user->last_active_at,
+                'last_login_at' => $user->last_login_at,
+                'is_online' => $user->isOnline(),
                 'created_at' => $user->created_at,
                 'projects_count' => $user->projects_count,
                 'payments_count' => $user->payments_count,
@@ -53,6 +56,18 @@ class AdminUserController extends Controller
                 'created_at' => $tx->created_at,
             ]);
 
+        $recentActivities = ActivityLog::query()
+            ->where('causer_id', $user->id)
+            ->latest()
+            ->take(10)
+            ->get()
+            ->map(fn ($activity) => [
+                'id' => $activity->id,
+                'type' => $activity->type,
+                'message' => $activity->message,
+                'created_at' => $activity->created_at,
+            ]);
+
         return Inertia::render('Admin/Users/Show', [
             'user' => [
                 'id' => $user->id,
@@ -63,10 +78,13 @@ class AdminUserController extends Controller
                 'projects_count' => $user->projects_count,
                 'payments_count' => $user->payments_count,
                 'last_active_at' => $user->last_active_at,
+                'last_login_at' => $user->last_login_at,
+                'is_online' => $user->isOnline(),
                 'created_at' => $user->created_at,
                 'roles' => $user->getRoleNames(),
             ],
             'transactions' => $latestTransactions,
+            'activities' => $recentActivities,
         ]);
     }
 

@@ -15,6 +15,9 @@ export type UserRow = {
   projects_count: number
   payments_count: number
   is_banned: boolean
+  is_online: boolean
+  last_active_at: string | null
+  last_login_at: string | null
   created_at: string
 }
 
@@ -74,6 +77,30 @@ export const userColumns: ColumnDef<UserRow>[] = [
     cell: ({ row }) => {
       const banned = row.getValue('is_banned') as boolean
       return h(Badge, { variant: banned ? 'destructive' : 'secondary', class: banned ? '' : 'bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 border-emerald-500/20' }, () => banned ? 'Banned' : 'Active')
+    },
+  },
+  {
+    accessorKey: 'is_online',
+    header: 'Online',
+    cell: ({ row }) => {
+      const online = row.getValue('is_online') as boolean
+      return h(Badge, { variant: online ? 'secondary' : 'outline', class: online ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/20' : 'text-muted-foreground' }, () => online ? 'Online' : 'Offline')
+    },
+  },
+  {
+    accessorKey: 'last_active_at',
+    header: 'Last Active',
+    cell: ({ row }) => {
+      const value = row.getValue('last_active_at') as string | null
+      return h('div', { class: 'text-muted-foreground text-xs' }, value ? new Date(value).toLocaleString() : '—')
+    },
+  },
+  {
+    accessorKey: 'last_login_at',
+    header: 'Last Login',
+    cell: ({ row }) => {
+      const value = row.getValue('last_login_at') as string | null
+      return h('div', { class: 'text-muted-foreground text-xs' }, value ? new Date(value).toLocaleString() : '—')
     },
   },
   {

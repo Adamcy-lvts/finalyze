@@ -42,6 +42,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'ban_reason',
         'banned_by',
         'last_active_at',
+        'last_login_at',
         // Referral fields
         'referral_code',
         'referred_by',
@@ -84,7 +85,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'received_signup_bonus' => 'boolean',
             'is_banned' => 'boolean',
             'banned_at' => 'datetime',
-            'last_active_at' => 'datetime',
+        'last_active_at' => 'datetime',
+        'last_login_at' => 'datetime',
             // Referral casts
             'referral_commission_rate' => 'decimal:2',
             'referral_bank_setup_complete' => 'boolean',
@@ -169,6 +171,15 @@ class User extends Authenticatable implements MustVerifyEmail
     public function referralBankAccounts(): HasMany
     {
         return $this->hasMany(ReferralBankAccount::class);
+    }
+
+    public function isOnline(int $minutes = 2): bool
+    {
+        if (! $this->last_active_at) {
+            return false;
+        }
+
+        return $this->last_active_at->greaterThanOrEqualTo(now()->subMinutes($minutes));
     }
 
     // =========================================================================

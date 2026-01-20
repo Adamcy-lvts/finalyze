@@ -10,6 +10,7 @@ use App\Models\RegistrationInvite;
 use App\Models\User;
 use App\Models\WordTransaction;
 use Carbon\Carbon;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 
@@ -29,21 +30,44 @@ class AdminDashboardController extends Controller
         $wordsGenerated = abs(WordTransaction::where('type', WordTransaction::TYPE_USAGE)->sum('words'));
         $wordsGeneratedToday = abs(WordTransaction::where('type', WordTransaction::TYPE_USAGE)->whereDate('created_at', Carbon::today())->sum('words'));
 
-        $recentActivity = ActivityLog::query()
+        $activityLogs = ActivityLog::query()
+            ->with('causer')
             ->latest()
-            ->take(15)
+            ->take(200)
             ->get()
-            ->map(fn (ActivityLog $a) => [
-                'type' => $a->type,
-                'message' => $a->message,
-                'time' => $a->created_at->diffForHumans(),
-                'created_at' => $a->created_at->toDateTimeString(),
-            ])
+            ->groupBy(fn (ActivityLog $a) => implode('|', [
+                $a->type,
+                $a->message,
+                $a->route ?? '',
+                $a->method ?? '',
+            ]))
+            ->map(function ($group) {
+                /** @var ActivityLog $latest */
+                $latest = $group->sortByDesc('created_at')->first();
+
+                return [
+                    'type' => $latest->type,
+                    'message' => $latest->message,
+                    'time' => $latest->created_at->diffForHumans(),
+                    'created_at' => $latest->created_at->toDateTimeString(),
+                    'count' => $group->count(),
+                    'actor' => $latest->causer?->name ?? $latest->causer?->email,
+                    'route' => $latest->route,
+                    'method' => $latest->method,
+                    'status_code' => $latest->status_code,
+                    'duration_ms' => $latest->duration_ms,
+                    'sort_at' => $latest->created_at->timestamp,
+                ];
+            })
+            ->sortByDesc('sort_at')
+            ->values()
+            ->take(15)
+            ->map(fn (array $item) => Arr::except($item, ['sort_at']))
             ->toArray();
 
         // Backward-compatible fallback if no logs exist yet.
-        if (empty($recentActivity)) {
-            $recentActivity = [
+        if (empty($activityLogs)) {
+            $activityLogs = [
                 ...Payment::with('user')
                     ->latest()
                     ->take(5)
@@ -53,12 +77,24 @@ class AdminDashboardController extends Controller
                         'message' => "Payment of ₦".number_format($p->amount / 100, 0)." by ".$p->user?->email,
                         'time' => $p->created_at->diffForHumans(),
                         'created_at' => $p->created_at->toDateTimeString(),
+                        'count' => 1,
+                        'actor' => $p->user?->name ?? $p->user?->email,
+                        'route' => null,
+                        'method' => null,
+                        'status_code' => null,
+                        'duration_ms' => null,
                     ])->toArray(),
                 ...User::latest()->take(5)->get()->map(fn ($u) => [
                     'type' => 'user.registered',
                     'message' => "New signup: {$u->email}",
                     'time' => $u->created_at->diffForHumans(),
                     'created_at' => $u->created_at->toDateTimeString(),
+                    'count' => 1,
+                    'actor' => $u->name ?? $u->email,
+                    'route' => null,
+                    'method' => null,
+                    'status_code' => null,
+                    'duration_ms' => null,
                 ])->toArray(),
             ];
         }
@@ -92,7 +128,7 @@ class AdminDashboardController extends Controller
                 'projects' => ['total' => $totalProjects, 'today' => $projectsToday],
                 'words' => ['total' => $wordsGenerated, 'today' => $wordsGeneratedToday],
             ],
-            'recentActivity' => $recentActivity,
+            'recentActivity' => $activityLogs,
             'invites' => $invites,
             'charts' => [
                 'revenue' => [

@@ -310,7 +310,18 @@ const props = defineProps<{
     projects: { total: number; today: number }
     words: { total: number; today: number }
   }
-  recentActivity: { type: string; message: string; time: string; created_at?: string }[]
+  recentActivity: {
+    type: string
+    message: string
+    time: string
+    created_at?: string
+    count: number
+    actor?: string | null
+    route?: string | null
+    method?: string | null
+    status_code?: number | null
+    duration_ms?: number | null
+  }[]
   invites: {
     id: number
     code: string
@@ -583,7 +594,17 @@ const statsData = computed(() => [
 ])
 
 // TanStack Table Setup for Recent Activity
-const columnHelper = createColumnHelper<{ type: string; message: string; time: string }>()
+const columnHelper = createColumnHelper<{
+  type: string
+  message: string
+  time: string
+  count: number
+  actor?: string | null
+  route?: string | null
+  method?: string | null
+  status_code?: number | null
+  duration_ms?: number | null
+}>()
 
 const columns = [
   columnHelper.accessor('type', {
@@ -596,6 +617,26 @@ const columns = [
   columnHelper.accessor('message', {
     header: 'Activity',
     cell: (info) => h('div', { class: 'font-medium text-foreground' }, info.getValue()),
+  }),
+  columnHelper.accessor('actor', {
+    header: 'Actor',
+    cell: (info) => h('div', { class: 'text-muted-foreground text-sm' }, info.getValue() ?? '—'),
+  }),
+  columnHelper.accessor('route', {
+    header: 'Route',
+    cell: (info) => {
+      const route = info.getValue()
+      const row = info.row.original
+      const method = row.method ? row.method.toUpperCase() : null
+      if (!route && !method) {
+        return h('div', { class: 'text-muted-foreground text-sm' }, '—')
+      }
+      return h('div', { class: 'text-muted-foreground text-xs' }, `${method ?? ''} ${route ?? ''}`.trim())
+    },
+  }),
+  columnHelper.accessor('count', {
+    header: 'Count',
+    cell: (info) => h(Badge, { variant: 'outline', class: 'font-mono text-xs' }, () => String(info.getValue())),
   }),
   columnHelper.accessor('time', {
     header: 'Time',

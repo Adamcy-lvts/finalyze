@@ -29,6 +29,24 @@
               {{ user.is_banned ? 'Banned' : 'Active' }}
             </div>
           </div>
+          <div>
+            <div class="text-xs text-slate-500">Online</div>
+            <div class="font-medium" :class="user.is_online ? 'text-green-600' : 'text-slate-600'">
+              {{ user.is_online ? 'Online' : 'Offline' }}
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Last Active</div>
+            <div class="font-medium text-slate-900">
+              {{ user.last_active_at ? formatDate(user.last_active_at) : '—' }}
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Last Login</div>
+            <div class="font-medium text-slate-900">
+              {{ user.last_login_at ? formatDate(user.last_login_at) : '—' }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -56,6 +74,29 @@
           </table>
         </div>
       </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-700">
+        <h3 class="text-sm font-semibold text-slate-900 mb-2">Recent Activity</h3>
+        <div v-if="activities.length === 0" class="text-slate-500 text-sm">No activity logged yet.</div>
+        <div v-else class="overflow-x-auto">
+          <table class="min-w-full text-left text-sm">
+            <thead>
+              <tr class="text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <th class="py-2 pr-3">Type</th>
+                <th class="py-2 pr-3">Message</th>
+                <th class="py-2 pr-3">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="activity in activities" :key="activity.id" class="border-b border-slate-100">
+                <td class="py-2 pr-3">{{ activity.type }}</td>
+                <td class="py-2 pr-3">{{ activity.message }}</td>
+                <td class="py-2 pr-3 text-slate-500">{{ formatDate(activity.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </AdminLayout>
 </template>
@@ -73,6 +114,8 @@ const props = defineProps<{
     projects_count: number
     payments_count: number
     last_active_at: string | null
+    last_login_at: string | null
+    is_online: boolean
     created_at: string
   }
   transactions: {
@@ -80,6 +123,12 @@ const props = defineProps<{
     type: string
     words: number
     description: string | null
+    created_at: string
+  }[]
+  activities: {
+    id: number
+    type: string
+    message: string
     created_at: string
   }[]
 }>()

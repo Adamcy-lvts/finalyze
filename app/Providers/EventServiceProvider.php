@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Listeners\CreditSignupBonus;
 use App\Listeners\LogUserRegistered;
 use App\Listeners\NotifyAdminsOfNewUserSignup;
+use App\Listeners\TrackUserLogin;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use App\Listeners\SendEmailVerificationIfEnabled;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -22,6 +24,9 @@ class EventServiceProvider extends ServiceProvider
             CreditSignupBonus::class,
             NotifyAdminsOfNewUserSignup::class,
             LogUserRegistered::class,
+        ],
+        Login::class => [
+            TrackUserLogin::class,
         ],
     ];
 }
