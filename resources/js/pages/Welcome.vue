@@ -867,11 +867,11 @@ onUnmounted(() => {
                 <div class="max-w-7xl mx-auto px-6">
                     <div
                         class="flex flex-wrap justify-center items-center gap-x-12 gap-y-8 opacity-40 grayscale hover:grayscale-0 transition-all duration-500 social-proof">
-                        <span class="text-xl font-bold">Harvard</span>
-                        <span class="text-xl font-bold">Stanford</span>
-                        <span class="text-xl font-bold">MIT</span>
-                        <span class="text-xl font-bold">Oxford</span>
-                        <span class="text-xl font-bold">Cambridge</span>
+                        <span class="text-xl font-bold" title="University of Ibadan">UI</span>
+                        <span class="text-xl font-bold" title="University of Lagos">UNILAG</span>
+                        <span class="text-xl font-bold" title="University of Maiduguri">UNIMAID</span>
+                        <span class="text-xl font-bold" title="Obafemi Awolowo University">OAU</span>
+                        <span class="text-xl font-bold" title="Ahmadu Bello University">ABU</span>
                     </div>
                 </div>
             </section>
