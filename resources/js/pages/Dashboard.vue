@@ -66,7 +66,10 @@ const affiliate = computed(() => page.props.auth?.user?.affiliate);
 const canRequestAffiliate = computed(() => Boolean(affiliate.value?.can_request));
 const affiliateStatus = computed(() => affiliate.value?.status);
 const affiliateBannerDismissed = ref(false);
-const showAffiliateBanner = computed(() => affiliateStatus.value !== 'approved' && !affiliateBannerDismissed.value);
+const affiliatePromoVisible = computed(() => Boolean(page.props.affiliate?.show_promo));
+const showAffiliateBanner = computed(() => affiliateStatus.value !== 'approved'
+    && affiliatePromoVisible.value
+    && !affiliateBannerDismissed.value);
 
 // Use composable for real-time balance updates
 const { wordBalance } = useWordBalance();
@@ -224,6 +227,9 @@ const applyForAffiliate = async () => {
 
 const dismissAffiliateBanner = async () => {
     affiliateBannerDismissed.value = true;
+    if (props.user?.email) {
+        localStorage.setItem(`affiliate_banner_dismissed_${props.user.email}`, 'true');
+    }
 
     try {
         await fetch(route('affiliate.promo.dismiss'), {
@@ -239,6 +245,10 @@ const dismissAffiliateBanner = async () => {
 };
 
 onMounted(() => {
+    if (props.user?.email && localStorage.getItem(`affiliate_banner_dismissed_${props.user.email}`)) {
+        affiliateBannerDismissed.value = true;
+    }
+
     // Small delay to ensure DOM is ready and animations are settled
     setTimeout(() => {
         if (!localStorage.getItem(`dashboard_tour_seen_${props.user.email}`)) {
