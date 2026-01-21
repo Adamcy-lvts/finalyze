@@ -213,7 +213,7 @@ const applyForAffiliate = async () => {
         const data = await response.json();
 
         if (data.success) {
-            toast.success('Affiliate request submitted!');
+            toast.success('Affiliate request submitted! You will get an email once approved.');
         } else {
             toast.error(data.message || 'Could not submit request');
         }
