@@ -900,7 +900,7 @@
     "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
   },
   "resources/js/app.ts": {
-    "file": "assets/app-DRd7IKOC.js",
+    "file": "assets/app-CMQ_hgQs.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -1934,7 +1934,7 @@
     ]
   },
   "resources/js/pages/Dashboard.vue": {
-    "file": "assets/Dashboard-B3FZrWIu.js",
+    "file": "assets/Dashboard-C8lK_tJA.js",
     "name": "Dashboard",
     "src": "resources/js/pages/Dashboard.vue",
     "isDynamicEntry": true,
