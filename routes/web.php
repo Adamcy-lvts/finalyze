@@ -327,6 +327,8 @@ Route::prefix('admin')->middleware(['auth', 'role:super_admin|admin|support'])->
         Route::get('/list', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'list'])->name('admin.affiliates.list');
         Route::put('/{user}', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'update'])->name('admin.affiliates.update');
         Route::delete('/{user}/rate', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'resetRate'])->name('admin.affiliates.reset-rate');
+        Route::post('/{user}/setup-reminder', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'sendSetupReminder'])->name('admin.affiliates.setup-reminder');
+        Route::post('/{user}/approval-email', [\App\Http\Controllers\Admin\AdminAffiliateController::class, 'sendApprovalEmail'])->name('admin.affiliates.approval-email');
 
         Route::get('/invites', [\App\Http\Controllers\Admin\AdminAffiliateInviteController::class, 'index'])->name('admin.affiliates.invites.index');
         Route::post('/invites', [\App\Http\Controllers\Admin\AdminAffiliateInviteController::class, 'store'])->name('admin.affiliates.invites.store');

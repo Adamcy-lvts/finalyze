@@ -6,6 +6,7 @@ use App\Models\AffiliateInvite;
 use App\Models\AffiliateInviteRedemption;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Notifications\AffiliateRequestApproved;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -125,6 +126,7 @@ class AffiliateService
         ]);
 
         $user->assignRole('affiliate');
+        $user->notify(new AffiliateRequestApproved());
 
         Log::info('Affiliate request approved', [
             'user_id' => $user->id,

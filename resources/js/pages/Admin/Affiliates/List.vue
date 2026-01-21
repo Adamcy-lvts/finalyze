@@ -68,6 +68,24 @@
                                 <td class="py-4 px-2 text-right">
                                     <div class="flex items-center justify-end gap-2">
                                         <Button
+                                            v-if="affiliate.affiliate_status === 'approved'"
+                                            variant="ghost"
+                                            size="sm"
+                                            @click="sendApprovalEmail(affiliate)"
+                                            title="Send approval email"
+                                        >
+                                            <Mail class="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            v-if="affiliate.affiliate_status === 'approved' && !affiliate.can_receive_commissions"
+                                            variant="ghost"
+                                            size="sm"
+                                            @click="sendSetupReminder(affiliate)"
+                                            title="Send setup reminder"
+                                        >
+                                            <MailWarning class="h-4 w-4" />
+                                        </Button>
+                                        <Button
                                             variant="outline"
                                             size="sm"
                                             @click="openEditDialog(affiliate)"
@@ -173,7 +191,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { Pencil, RotateCcw, Loader2 } from 'lucide-vue-next'
+import { Pencil, RotateCcw, Loader2, Mail, MailWarning } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useDebounceFn } from '@vueuse/core'
 
@@ -190,6 +208,7 @@ interface Affiliate {
     total_earned_formatted: string
     bank_name: string | null
     account_name: string | null
+    can_receive_commissions: boolean
     created_at: string
 }
 
@@ -288,6 +307,50 @@ const resetRate = async (user: Affiliate) => {
         }
     } catch (error) {
         toast.error('Failed to reset rate')
+    }
+}
+
+const sendSetupReminder = async (user: Affiliate) => {
+    try {
+        const response = await fetch(route('admin.affiliates.setup-reminder', user.id), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+            toast.success(data.message || 'Setup reminder sent')
+        } else {
+            toast.error(data.message || 'Failed to send setup reminder')
+        }
+    } catch (error) {
+        toast.error('Failed to send setup reminder')
+    }
+}
+
+const sendApprovalEmail = async (user: Affiliate) => {
+    try {
+        const response = await fetch(route('admin.affiliates.approval-email', user.id), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            },
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+            toast.success(data.message || 'Approval email sent')
+        } else {
+            toast.error(data.message || 'Failed to send approval email')
+        }
+    } catch (error) {
+        toast.error('Failed to send approval email')
     }
 }
 </script>

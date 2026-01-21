@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ReferralEarning;
 use App\Models\User;
+use App\Notifications\AffiliateRequestApproved;
+use App\Notifications\AffiliateSetupReminder;
 use App\Services\AffiliateService;
 use App\Services\ReferralService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -85,6 +88,7 @@ class AdminAffiliateController extends Controller
                 'total_earned_formatted' => '₦'.number_format(($user->total_earned ?? 0) / 100, 0),
                 'bank_name' => $user->referralBankAccount?->bank_name,
                 'account_name' => $user->referralBankAccount?->account_name,
+                'can_receive_commissions' => $user->canReceiveCommissions(),
                 'created_at' => $user->created_at->toISOString(),
             ]);
 
@@ -126,6 +130,71 @@ class AdminAffiliateController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Commission rate reset to default',
+        ]);
+    }
+
+    public function sendSetupReminder(User $user, Request $request): JsonResponse
+    {
+        if (! $user->hasRole('affiliate')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User is not an affiliate',
+            ], 422);
+        }
+
+        if ($user->affiliate_status !== 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Affiliate request is not approved',
+            ], 422);
+        }
+
+        if ($user->canReceiveCommissions()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Affiliate account setup is already complete',
+            ], 422);
+        }
+
+        $user->notify(new AffiliateSetupReminder());
+
+        Log::info('Affiliate setup reminder sent', [
+            'user_id' => $user->id,
+            'admin_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Affiliate setup reminder sent',
+        ]);
+    }
+
+    public function sendApprovalEmail(User $user, Request $request): JsonResponse
+    {
+        if (! $user->hasRole('affiliate')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User is not an affiliate',
+            ], 422);
+        }
+
+        if ($user->affiliate_status !== 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Affiliate request is not approved',
+            ], 422);
+        }
+
+        $user->notify(new AffiliateRequestApproved());
+
+        Log::info('Affiliate approval email sent manually', [
+            'user_id' => $user->id,
+            'admin_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Affiliate approval email sent',
         ]);
     }
 

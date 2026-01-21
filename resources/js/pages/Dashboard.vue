@@ -9,7 +9,7 @@ import SafeHtmlText from '@/components/SafeHtmlText.vue';
 import { router, Link, usePage } from '@inertiajs/vue3';
 import { route } from 'ziggy-js';
 import { BookOpen, Clock, FileText, PenTool, Plus, Target, Award, Sparkles, Info, HelpCircle, X } from 'lucide-vue-next';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import AffiliatePromoPopup from '@/components/AffiliatePromoPopup.vue';
@@ -65,6 +65,8 @@ const page = usePage();
 const affiliate = computed(() => page.props.auth?.user?.affiliate);
 const canRequestAffiliate = computed(() => Boolean(affiliate.value?.can_request));
 const affiliateStatus = computed(() => affiliate.value?.status);
+const affiliateBannerDismissed = ref(false);
+const showAffiliateBanner = computed(() => affiliateStatus.value !== 'approved' && !affiliateBannerDismissed.value);
 
 // Use composable for real-time balance updates
 const { wordBalance } = useWordBalance();
@@ -221,6 +223,8 @@ const applyForAffiliate = async () => {
 };
 
 const dismissAffiliateBanner = async () => {
+    affiliateBannerDismissed.value = true;
+
     try {
         await fetch(route('affiliate.promo.dismiss'), {
             method: 'POST',
@@ -300,7 +304,7 @@ onMounted(() => {
                         </div>
 
                         <!-- Affiliate CTA -->
-                        <Card v-if="affiliateStatus !== 'approved'" class="border-border/60 bg-muted/30">
+                        <Card v-if="showAffiliateBanner" class="border-border/60 bg-muted/30">
                             <CardContent class="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-6">
                                 <Button
                                     variant="ghost"
