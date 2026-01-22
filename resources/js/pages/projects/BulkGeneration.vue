@@ -311,6 +311,11 @@ onMounted(async () => {
             route('api.projects.bulk-generate.status', props.project.slug)
         )
 
+        if (response.data.status === 'cancelled') {
+            reset()
+            return
+        }
+
         if (response.data.status !== 'not_started') {
             restoreFromApiData(response.data)
         }
