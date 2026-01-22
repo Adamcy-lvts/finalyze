@@ -12,6 +12,8 @@ export interface GenerationStage {
     description: string
     chapterTitle?: string
     progressMessage?: string
+    wordVelocity?: number
+    etaSeconds?: number
     status: 'pending' | 'active' | 'completed' | 'error'
     progress: number
     chapterProgress?: number
@@ -102,6 +104,8 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
 
     // Track known chapters for dynamic stage creation
     const knownChapters = new Set<number>()
+    const chapterVelocity = new Map<number, { lastCount: number; lastAt: number; velocity: number }>()
+    const chapterStartTimes = new Map<number, number>()
 
     // Echo instance
     let echoInstance: Echo<any> | null = null
@@ -329,6 +333,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
             stage.chapterTitle = event.chapter_title || stage.chapterTitle || stage.description
             stage.progressMessage = event.stage_description || event.message || stage.progressMessage
         }
+        chapterStartTimes.set(chapterNum, Date.now())
 
         // Start minimal fallback animation only if no real progress arrives
         // This will be overridden by real progress events from WebSocket
@@ -357,6 +362,42 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
                 stage.chapterProgress = event.chapter_progress
                 stage.wordCount = event.current_word_count
                 stage.progressMessage = event.stage_description || event.message || stage.progressMessage
+
+                const now = Date.now()
+                const currentCount = event.current_word_count ?? stage.wordCount ?? 0
+                const velocityState = chapterVelocity.get(chapterNum)
+                if (!velocityState) {
+                    chapterVelocity.set(chapterNum, {
+                        lastCount: currentCount,
+                        lastAt: now,
+                        velocity: 0,
+                    })
+                } else {
+                    const deltaWords = currentCount - velocityState.lastCount
+                    const deltaSeconds = (now - velocityState.lastAt) / 1000
+                    if (deltaWords > 0 && deltaSeconds > 0) {
+                        const instantVelocity = deltaWords / deltaSeconds
+                        const smoothed = velocityState.velocity > 0
+                            ? (velocityState.velocity * 0.7 + instantVelocity * 0.3)
+                            : instantVelocity
+                        velocityState.velocity = smoothed
+                        velocityState.lastCount = currentCount
+                        velocityState.lastAt = now
+                        chapterVelocity.set(chapterNum, velocityState)
+                    }
+                }
+
+                const velocity = chapterVelocity.get(chapterNum)?.velocity ?? 0
+                stage.wordVelocity = velocity > 0 ? velocity : undefined
+
+                const progress = event.chapter_progress ?? stage.chapterProgress ?? 0
+                const startedAt = chapterStartTimes.get(chapterNum)
+                if (startedAt && progress > 0) {
+                    const elapsedSeconds = Math.max(1, Math.round((now - startedAt) / 1000))
+                    stage.etaSeconds = Math.ceil(elapsedSeconds * (100 - progress) / progress)
+                } else {
+                    stage.etaSeconds = undefined
+                }
             }
 
             metadata.value = {
@@ -386,6 +427,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
             stage.chapterProgress = 100
             stage.wordCount = event.word_count
             stage.generationTime = event.generation_time
+            stage.etaSeconds = 0
         }
 
         // Update timings for ETA
