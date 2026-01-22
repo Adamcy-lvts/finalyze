@@ -109,7 +109,14 @@ const progressDescription = computed(() => {
     if (metadata.value?.current_chapter) {
         const chapterNum = metadata.value.current_chapter
         const chapterProg = metadata.value.chapter_progress || 0
-        return `Generating Chapter ${chapterNum} (${chapterProg}% complete)...`
+        const chapterStage = stages.value.find(
+            (stage) => stage.id === `chapter_generation_${chapterNum}`
+        )
+        const chapterTitle =
+            chapterStage?.chapterTitle ||
+            chapterStage?.description ||
+            `Chapter ${chapterNum}`
+        return `Generating ${chapterTitle} (${chapterProg}% complete)...`
     }
 
     if (state.value.currentStage === 'literature_mining') {
@@ -439,7 +446,11 @@ onMounted(async () => {
                                                     'text-muted-foreground/80': stage.status !== 'active',
                                                     'text-primary/90 font-medium': stage.status === 'active'
                                                 }">
-                                                    {{ stage.description }}
+                                                    {{
+                                                        stage.id.startsWith('chapter_generation_')
+                                                            ? (stage.chapterTitle || stage.description)
+                                                            : stage.description
+                                                    }}
                                                 </p>
 
                                                 <!-- Chapter specific stats -->
@@ -450,7 +461,11 @@ onMounted(async () => {
                                                         <span
                                                             class="uppercase tracking-wider text-[10px]">Progress</span>
                                                         <span class="text-xs tracking-tight text-muted-foreground">
-                                                            {{ stage.description || stage.name }}
+                                                            {{
+                                                                stage.chapterTitle ||
+                                                                stage.description ||
+                                                                stage.name
+                                                            }}
                                                         </span>
                                                     </div>
                                                     <div

@@ -10,6 +10,8 @@ export interface GenerationStage {
     id: string
     name: string
     description: string
+    chapterTitle?: string
+    progressMessage?: string
     status: 'pending' | 'active' | 'completed' | 'error'
     progress: number
     chapterProgress?: number
@@ -324,6 +326,8 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
             stage.status = 'active'
             stage.progress = 0
             stage.chapterProgress = 10 // Start at 10% (initializing)
+            stage.chapterTitle = event.chapter_title || stage.chapterTitle || stage.description
+            stage.progressMessage = event.stage_description || event.message || stage.progressMessage
         }
 
         // Start minimal fallback animation only if no real progress arrives
@@ -352,7 +356,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
                 // Use real progress data from WebSocket
                 stage.chapterProgress = event.chapter_progress
                 stage.wordCount = event.current_word_count
-                stage.description = event.stage_description || stage.description
+                stage.progressMessage = event.stage_description || event.message || stage.progressMessage
             }
 
             metadata.value = {
@@ -485,6 +489,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
                 id: `chapter_generation_${i}`,
                 name: `Chapter ${i}`,
                 description: `Chapter ${i}`,
+                chapterTitle: `Chapter ${i}`,
                 status: 'pending',
                 progress: 0,
                 chapterProgress: 0,
@@ -512,7 +517,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
             // Update existing stage
             const stage = stages.value.find(s => s.id === `chapter_generation_${chapterNum}`)
             if (stage) {
-                stage.description = title
+                stage.chapterTitle = title
                 stage.targetWordCount = targetWordCount
             }
             return
@@ -528,6 +533,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
             id: `chapter_generation_${chapterNum}`,
             name: `Chapter ${chapterNum}`,
             description: title,
+            chapterTitle: title,
             status: 'pending',
             progress: 0,
             chapterProgress: 0,
@@ -655,7 +661,7 @@ export function useGenerationWebSocket(projectId: number, projectSlug: string) {
             const stage = stages.value.find(s => s.id === `chapter_generation_${chapter.chapter_number}`)
             if (!stage) return
 
-            stage.description = chapter.title || stage.description
+            stage.chapterTitle = chapter.title || stage.chapterTitle || stage.description
             stage.targetWordCount = chapter.target_word_count ?? stage.targetWordCount
 
             if (chapter.is_completed || chapter.status === 'completed') {
