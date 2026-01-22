@@ -479,11 +479,12 @@ onMounted(async () => {
                                                     </div>
                                                     <div class="flex items-center justify-between text-[11px] text-muted-foreground/80">
                                                         <span class="font-mono">
-                                                            {{
-                                                                stage.wordVelocity
-                                                                    ? `${Math.round(stage.wordVelocity * 60)} wpm`
-                                                                    : '— wpm'
-                                                            }}
+                                                            <span
+                                                                :class="{ 'text-primary font-bold': stage.status === 'active', 'text-green-500 font-bold': stage.status === 'completed' }">
+                                                                {{ stage.wordCount?.toLocaleString() ?? 0 }}
+                                                            </span>
+                                                            <span class="opacity-50 mx-1">/</span>
+                                                            {{ stage.targetWordCount?.toLocaleString() ?? 0 }} words
                                                         </span>
                                                         <span class="font-mono">
                                                             ETA {{ formatEta(stage.etaSeconds) }}
