@@ -8,6 +8,8 @@ use App\Models\ProjectGeneration;
 use App\Services\FacultyStructureService;
 use App\Services\GenerationBroadcaster;
 use App\Services\PaperCollectionService;
+use App\Jobs\Concerns\CancellationAware;
+use App\Jobs\Concerns\GenerationCancelledException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\Log;
 
 class BulkGenerateProject implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, CancellationAware;
 
     public $timeout = 3600; // 1 hour timeout
 
@@ -36,6 +38,8 @@ class BulkGenerateProject implements ShouldQueue
         $totalChapters = count($chapterStructure);
 
         try {
+            $this->checkCancellation($this->generation);
+
             if (config('activity.bulk_jobs', true)) {
             ActivityLog::record(
                 'ai.bulk_generation.started',
@@ -76,6 +80,8 @@ class BulkGenerateProject implements ShouldQueue
                 $this->runLiteratureMining($project, $paperCollectionService, $broadcaster);
             }
 
+            $this->checkCancellation($this->generation);
+
             // Stage 2: Chapter Generation (20-95%)
             $this->startChapterGeneration($project, $chapterStructure, $broadcaster);
 
@@ -96,6 +102,9 @@ class BulkGenerateProject implements ShouldQueue
             );
             }
 
+        } catch (GenerationCancelledException $e) {
+            $this->handleCancellation($this->generation);
+            return;
         } catch (\Throwable $e) {
             Log::error('Bulk generation failed', [
                 'project_id' => $project->id,

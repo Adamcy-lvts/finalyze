@@ -1060,6 +1060,8 @@ class ProjectController extends Controller
                 'status' => 'cancelled',
                 'message' => 'Generation cancelled by user',
             ]);
+
+            \Illuminate\Support\Facades\Cache::put("generation_cancelled_{$generation->id}", true, 3600);
         }
 
         return response()->json(['message' => 'Generation cancelled']);

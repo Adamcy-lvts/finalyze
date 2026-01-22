@@ -6,6 +6,8 @@ use App\Models\Project;
 use App\Models\ProjectGeneration;
 use App\Services\GenerationBroadcaster;
 use App\Services\WordBalanceService;
+use App\Jobs\Concerns\CancellationAware;
+use App\Jobs\Concerns\GenerationCancelledException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +19,7 @@ use Throwable;
 
 class ConvertChaptersToHtml implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, CancellationAware;
 
     public $timeout = 600; // 10 minutes
 
@@ -31,6 +33,8 @@ class ConvertChaptersToHtml implements ShouldQueue
         $startTime = microtime(true);
 
         try {
+            $this->checkCancellation($this->generation);
+
             Log::info("Starting HTML conversion for project {$this->project->id}");
 
             $broadcaster->htmlConversion(
@@ -43,6 +47,8 @@ class ConvertChaptersToHtml implements ShouldQueue
             $totalWordCount = 0;
 
             foreach ($chapters as $index => $chapter) {
+                $this->checkCancellation($this->generation);
+
                 if ($chapter->content) {
                     // Convert Markdown to HTML
                     $htmlContent = Str::markdown($chapter->content);
@@ -77,6 +83,9 @@ class ConvertChaptersToHtml implements ShouldQueue
                 $this->getDownloadLinks()
             );
 
+        } catch (GenerationCancelledException $e) {
+            $this->handleCancellation($this->generation);
+            return;
         } catch (\Throwable $e) {
             Log::error('HTML conversion failed: '.$e->getMessage());
 

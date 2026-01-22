@@ -7,6 +7,8 @@ use App\Models\Chapter;
 use App\Models\Project;
 use App\Models\ProjectGeneration;
 use App\Services\GenerationBroadcaster;
+use App\Jobs\Concerns\CancellationAware;
+use App\Jobs\Concerns\GenerationCancelledException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\Log;
 
 class GenerateChapter implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, CancellationAware;
 
     public $timeout = 1200; // 20 minutes per chapter
 
@@ -37,6 +39,8 @@ class GenerateChapter implements ShouldQueue
         $targetWordCount = $chapterController->getChapterWordCount($this->project, $this->chapterNumber);
 
         try {
+            $this->checkCancellation($this->generation);
+
             Log::info("Starting generation for Chapter {$this->chapterNumber}", [
                 'project_id' => $this->project->id,
                 'chapter_number' => $this->chapterNumber,
@@ -63,6 +67,8 @@ class GenerateChapter implements ShouldQueue
             );
 
             $prompt = $chapterController->buildProgressivePrompt($this->project, $this->chapterNumber);
+
+            $this->checkCancellation($this->generation);
 
             // Phase 2: Generating content (20-80%)
             $broadcaster->chapterProgress(
@@ -133,9 +139,14 @@ class GenerateChapter implements ShouldQueue
                 'generation_time' => $generationTime,
             ]);
 
+            $this->checkCancellation($this->generation);
+
             // Dispatch next chapter or finalization
             $this->dispatchNextStep($broadcaster, $totalChapters);
 
+        } catch (GenerationCancelledException $e) {
+            $this->handleCancellation($this->generation);
+            return;
         } catch (\Throwable $e) {
             Log::error("Chapter {$this->chapterNumber} generation failed: ".$e->getMessage());
 
@@ -174,6 +185,7 @@ class GenerateChapter implements ShouldQueue
             &$lastBroadcastTime,
             $minBroadcastInterval
         ) {
+            $this->checkCancellation($this->generation);
             $now = microtime(true);
 
             // Throttle broadcasts to avoid overwhelming the WebSocket
@@ -208,6 +220,8 @@ class GenerateChapter implements ShouldQueue
      */
     private function dispatchNextStep(GenerationBroadcaster $broadcaster, int $totalChapters): void
     {
+        $this->checkCancellation($this->generation);
+
         $nextChapterNumber = $this->chapterNumber + 1;
 
         if ($nextChapterNumber <= $totalChapters) {

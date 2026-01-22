@@ -449,13 +449,8 @@ onMounted(async () => {
                                                         class="flex justify-between text-xs font-medium text-muted-foreground">
                                                         <span
                                                             class="uppercase tracking-wider text-[10px]">Progress</span>
-                                                        <span class="font-mono text-xs tracking-tight">
-                                                            <span
-                                                                :class="{ 'text-primary font-bold': stage.status === 'active', 'text-green-500 font-bold': stage.status === 'completed' }">
-                                                                {{ stage.wordCount?.toLocaleString() ?? 0 }}
-                                                            </span>
-                                                            <span class="opacity-50 mx-1">/</span>
-                                                            {{ stage.targetWordCount?.toLocaleString() ?? 0 }} words
+                                                        <span class="text-xs tracking-tight text-muted-foreground">
+                                                            {{ stage.description || stage.name }}
                                                         </span>
                                                     </div>
                                                     <div

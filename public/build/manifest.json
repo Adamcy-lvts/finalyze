@@ -900,7 +900,7 @@
     "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
   },
   "resources/js/app.ts": {
-    "file": "assets/app-DGfD1zfu.js",
+    "file": "assets/app-BrgEdgXx.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -2213,7 +2213,7 @@
     ]
   },
   "resources/js/pages/projects/BulkGeneration.vue": {
-    "file": "assets/BulkGeneration-BkpKyufj.js",
+    "file": "assets/BulkGeneration-B9uk7_Ng.js",
     "name": "BulkGeneration",
     "src": "resources/js/pages/projects/BulkGeneration.vue",
     "isDynamicEntry": true,
@@ -2242,7 +2242,7 @@
       "_DialogTitle.vue_vue_type_script_setup_true_lang-uESiFFP8.js"
     ],
     "css": [
-      "assets/BulkGeneration-B4N2n0CJ.css"
+      "assets/BulkGeneration-CSpzPbds.css"
     ]
   },
   "resources/js/pages/projects/ChapterAIGenerationEditor.vue": {
