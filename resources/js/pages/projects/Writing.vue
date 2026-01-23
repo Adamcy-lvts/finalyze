@@ -99,7 +99,7 @@ const pendingNewMode = ref<'auto' | 'manual'>('auto');
 
 // Dialog state for bulk generation confirmation
 const showBulkGenerationDialog = ref(false);
-const showTopicApprovalDialog = ref(false);
+const showTopicChangeDialog = ref(false);
 
 const goToBulkAnalysis = () => {
     router.visit(route('projects.analysis', { project: props.project.slug }));
@@ -483,29 +483,29 @@ const confirmBulkGeneration = () => {
  * CONFIRM TOPIC APPROVAL RESET
  * Called when user confirms going back to topic approval
  */
-const confirmTopicApprovalReset = () => {
-    showTopicApprovalDialog.value = false;
+const confirmTopicChangeReset = () => {
+    showTopicChangeDialog.value = false;
     try {
         // Use Inertia router for better CSRF handling
         router.post(
-            route('projects.go-back-to-topic-approval', props.project.slug),
+            route('projects.go-back-to-topic-selection', props.project.slug),
             {},
             {
                 onSuccess: () => {
                     toast('Success', {
-                        description: 'Returned to topic approval',
+                        description: 'Returned to topic selection',
                     });
                 },
                 onError: () => {
                     toast('Error', {
-                        description: 'Failed to go back. Please try again.',
+                        description: 'Failed to change topic. Please try again.',
                     });
                 },
             },
         );
     } catch {
         toast('Error', {
-            description: 'Failed to go back. Please try again.',
+            description: 'Failed to change topic. Please try again.',
         });
     }
 };
@@ -579,9 +579,9 @@ const toggleWritingMode = async () => {
  * GO BACK TO TOPIC APPROVAL
  * Allows users to modify their topic approval status
  */
-// const goBackToTopicApproval = () => {
-//     showTopicApprovalDialog.value = true;
-// };
+const goToTopicChange = () => {
+    showTopicChangeDialog.value = true;
+};
 // Tutorial Logic
 const startTour = () => {
     const steps = [
@@ -694,6 +694,10 @@ onMounted(() => {
 	                    </Button> -->
                 </div>
                 <div class="flex items-center gap-2">
+                    <Button @click="goToTopicChange" variant="ghost" size="sm" class="gap-2">
+                        <Target class="h-4 w-4 shrink-0" />
+                        <span class="hidden sm:inline">Change Topic</span>
+                    </Button>
                     <Button @click="goToBulkAnalysis" variant="ghost" size="sm" class="gap-2">
                         <Brain class="h-4 w-4 shrink-0" />
                         <span class="hidden sm:inline">Analyze Chapters</span>
@@ -1505,13 +1509,13 @@ onMounted(() => {
                 </DialogContent>
             </Dialog>
 
-            <!-- Topic Approval Reset Confirmation Dialog -->
-            <Dialog v-model:open="showTopicApprovalDialog">
+            <!-- Topic Change Confirmation Dialog -->
+            <Dialog v-model:open="showTopicChangeDialog">
                 <DialogContent class="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle class="flex items-center gap-2 text-destructive">
                             <AlertTriangle class="h-5 w-5" />
-                            Return to Topic Approval
+                            Change Project Topic
                         </DialogTitle>
                         <DialogDescription class="space-y-4 pt-2 text-left">
                             <div class="rounded-xl bg-orange-50 p-4 border border-orange-200">
@@ -1520,11 +1524,9 @@ onMounted(() => {
                                     <div class="space-y-1">
                                         <p class="font-semibold text-orange-900">Warning: Progress Reset</p>
                                         <p class="text-sm text-orange-800/80">
-                                            This will reset your writing progress and return you to the topic
-                                            approval
-                                            stage. All
-                                            chapter content will be preserved, but you'll need to re-approve
-                                            your topic.
+                                            This will reset your writing progress and return you to topic
+                                            selection. All chapter content will be preserved, but you'll
+                                            need to select and approve a new topic.
                                         </p>
                                     </div>
                                 </div>
@@ -1534,12 +1536,12 @@ onMounted(() => {
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter class="flex-col gap-2 sm:flex-row">
-                        <Button @click="showTopicApprovalDialog = false" variant="outline" class="w-full sm:w-auto">
+                        <Button @click="showTopicChangeDialog = false" variant="outline" class="w-full sm:w-auto">
                             Cancel
                         </Button>
-                        <Button @click="confirmTopicApprovalReset" variant="destructive" class="w-full sm:w-auto">
+                        <Button @click="confirmTopicChangeReset" variant="destructive" class="w-full sm:w-auto">
                             <ArrowLeft class="mr-2 h-4 w-4" />
-                            Reset Progress
+                            Change Topic
                         </Button>
                     </DialogFooter>
                 </DialogContent>
