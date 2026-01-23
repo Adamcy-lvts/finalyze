@@ -7,12 +7,12 @@ use App\Jobs\CollectPapersForProject;
 use App\Models\Chapter;
 use App\Models\ChatConversation;
 use App\Models\ChatFileUpload;
-use App\Models\DocumentCitation;
 use App\Models\Project;
 use App\Services\AI\SystemPromptService;
 use App\Services\AIContentGenerator;
 use App\Services\ChapterReviewService;
 use App\Services\ChapterContentAnalysisService;
+use App\Services\ChapterCitationService;
 use App\Services\CitationWhitelistService;
 use App\Services\DocumentAnalysisService;
 use App\Services\FacultyStructureService;
@@ -518,7 +518,7 @@ class ChapterController extends Controller
                     'preview' => substr($fullContent, 0, 200),
                 ]);
 
-                $this->validateGeneratedCitations($chapter);
+                app(ChapterCitationService::class)->validateGeneratedCitations($chapter);
 
                 // Update section progress if this was section generation
                 if ($isSecondGeneration) {
@@ -1181,7 +1181,7 @@ class ChapterController extends Controller
             'status' => 'draft',
         ]);
 
-        $this->validateGeneratedCitations($chapter);
+        app(ChapterCitationService::class)->validateGeneratedCitations($chapter);
 
         return $chapter;
     }
@@ -1220,7 +1220,7 @@ class ChapterController extends Controller
             'status' => 'draft',
         ]);
 
-        $this->validateGeneratedCitations($chapter);
+        app(ChapterCitationService::class)->validateGeneratedCitations($chapter);
 
         return $chapter;
     }
@@ -3472,65 +3472,9 @@ ORIGINAL PROMPT CONTEXT:
         );
     }
 
-    private function validateGeneratedCitations(Chapter $chapter): void
-    {
-        try {
-            DocumentCitation::where('chapter_id', $chapter->id)
-                ->where('source', 'ai_generated')
-                ->delete();
-
-            app(CitationWhitelistService::class)->validateChapterCitations(
-                $chapter,
-                $chapter->content ?? ''
-            );
-            $this->appendReferencesIfMissing($chapter);
-        } catch (\Exception $e) {
-            Log::error('Citation validation failed', [
-                'chapter_id' => $chapter->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
     private function computeWordCount(string $content): int
     {
         return app(ChapterContentAnalysisService::class)->getWordCount($content);
-    }
-
-    private function appendReferencesIfMissing(Chapter $chapter): void
-    {
-        $content = (string) ($chapter->content ?? '');
-        if ($content === '') {
-            return;
-        }
-
-        if ($this->chapterHasReferencesSection($content)) {
-            return;
-        }
-
-        $referencesHtml = app(\App\Services\ChapterReferenceService::class)
-            ->formatChapterReferencesFromDatabase($chapter);
-
-        if ($referencesHtml === '') {
-            return;
-        }
-
-        $chapter->update([
-            'content' => $content."\n\n".$referencesHtml,
-        ]);
-    }
-
-    private function chapterHasReferencesSection(string $html): bool
-    {
-        if (preg_match('/<div[^>]*class="references-section"[^>]*>/i', $html)) {
-            return true;
-        }
-
-        if (preg_match('/<h[12][^>]*>\\s*REFERENCES?\\s*<\\/h[12]>/i', $html)) {
-            return true;
-        }
-
-        return preg_match('/<p[^>]*>\\s*(?:<strong[^>]*>|<b[^>]*>)?\\s*REFERENCES?\\s*(?:<\\/strong>|<\\/b>)?\\s*<\\/p>/i', $html) === 1;
     }
 
     /**

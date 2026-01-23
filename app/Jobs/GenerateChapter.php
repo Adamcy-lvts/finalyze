@@ -6,6 +6,7 @@ use App\Http\Controllers\ChapterController;
 use App\Models\Chapter;
 use App\Models\Project;
 use App\Models\ProjectGeneration;
+use App\Services\ChapterCitationService;
 use App\Services\GenerationBroadcaster;
 use App\Jobs\Concerns\CancellationAware;
 use App\Jobs\Concerns\GenerationCancelledException;
@@ -116,6 +117,8 @@ class GenerateChapter implements ShouldQueue
                     'last_ai_generation' => now(),
                 ]);
             });
+
+            app(ChapterCitationService::class)->validateGeneratedCitations($chapter);
 
             $generationTime = round(microtime(true) - $startTime, 2);
             $chaptersCompleted = $this->project->chapters()
