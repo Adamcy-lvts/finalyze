@@ -1,1 +1,0 @@
-import{bt as t,cn as o,co as s,bE as l,go as n,d0 as p,cp as c,dx as g}from"./vendor-BwJgEX4g.js";const _=t({__name:"AlertDialogTrigger",props:{asChild:{type:Boolean},as:{}},setup(e){const a=e;return(r,i)=>(s(),o(l(n),p({"data-slot":"alert-dialog-trigger"},a),{default:c(()=>[g(r.$slots,"default")]),_:3},16))}});export{_};

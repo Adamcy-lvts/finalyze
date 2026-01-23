@@ -1,0 +1,1 @@
+import{c as a}from"./index-BpTO5Kag.js";import{bt as r,cB as t,co as l,dx as c,cu as n,bE as f}from"./vendor-DwcF3VNb.js";const d=r({__name:"DialogFooter",props:{class:{}},setup(s){const e=s;return(o,m)=>(l(),t("div",{"data-slot":"dialog-footer",class:n(f(a)("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",e.class))},[c(o.$slots,"default")],2))}});export{d as _};
