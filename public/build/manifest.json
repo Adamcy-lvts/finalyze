@@ -900,7 +900,7 @@
     "src": "node_modules/katex/dist/fonts/KaTeX_Typewriter-Regular.woff2"
   },
   "resources/js/app.ts": {
-    "file": "assets/app-BuKLeVac.js",
+    "file": "assets/app-Dxz4OrMm.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -983,7 +983,7 @@
       "resources/js/pages/settings/Profile.vue"
     ],
     "css": [
-      "assets/app-eOQfWBvM.css"
+      "assets/app-DwyIwg1I.css"
     ]
   },
   "resources/js/components/chapter-editor/ChapterNavigation.vue": {
@@ -2762,7 +2762,7 @@
     ]
   },
   "resources/js/pages/projects/Writing.vue": {
-    "file": "assets/Writing-BkP05tzw.js",
+    "file": "assets/Writing-Cb2mf-K9.js",
     "name": "Writing",
     "src": "resources/js/pages/projects/Writing.vue",
     "isDynamicEntry": true,

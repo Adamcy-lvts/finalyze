@@ -783,26 +783,26 @@ onMounted(() => {
                         <!-- Complete Project Generation (Stand Alone) - MOVED TO TOP -->
                         <button v-if="currentMode === 'auto'" @click="generateChapter('bulk')" ref="bulkCardRef"
                             :disabled="isGenerating || !canGenerateMoreChapters"
-                            class="group relative w-full flex items-center justify-between gap-6 rounded-3xl border border-border/50 bg-card p-6 md:px-8 md:py-7 text-left shadow-sm transition-all hover:border-pink-500/30 hover:shadow-lg hover:shadow-pink-500/5 hover:-translate-y-0.5 overflow-hidden"
-                            :class="{ 'border-pink-500/30 shadow-lg shadow-pink-500/5 -translate-y-0.5': isBulkCardActive }">
+                            class="group relative w-full flex items-center justify-between gap-6 rounded-3xl border border-border/50 bg-card p-6 md:px-8 md:py-7 text-left shadow-sm transition-all hover:border-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/5 hover:-translate-y-0.5 overflow-hidden"
+                            :class="{ 'border-indigo-500/30 shadow-lg shadow-indigo-500/5 -translate-y-0.5': isBulkCardActive }">
 
                             <!-- Subtle Hover Gradient -->
-                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
                                 :class="{ 'opacity-100': isBulkCardActive }">
                             </div>
 
                             <div class="relative z-10 flex-1 space-y-2">
                                 <div class="flex items-center gap-2.5 mb-1">
                                     <div
-                                        class="flex items-center justify-center rounded-md bg-pink-100/50 p-1.5 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400">
+                                        class="flex items-center justify-center rounded-md bg-indigo-100/50 p-1.5 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400">
                                         <Sparkles class="h-3.5 w-3.5" />
                                     </div>
                                     <span
-                                        class="text-xs font-semibold tracking-wide text-pink-600 dark:text-pink-400 uppercase">Automated
+                                        class="text-xs font-semibold tracking-wide text-indigo-600 dark:text-indigo-400 uppercase">Automated
                                         Workflow</span>
                                 </div>
-                                <h3 class="text-lg md:text-xl font-semibold text-foreground group-hover:text-pink-600 transition-colors"
-                                    :class="{ 'text-pink-600': isBulkCardActive }">
+                                <h3 class="text-lg md:text-xl font-semibold text-foreground group-hover:text-indigo-600 transition-colors"
+                                    :class="{ 'text-indigo-600': isBulkCardActive }">
                                     Complete Project Generation</h3>
                                 <p class="text-muted-foreground max-w-2xl text-sm leading-relaxed">
                                     Finalyze will draft your entire project chapters in one seamless process, with
@@ -811,8 +811,8 @@ onMounted(() => {
                             </div>
 
                             <div class="relative z-10 hidden sm:flex items-center justify-center pl-4">
-                                <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-background shadow-sm group-hover:border-pink-500/30 group-hover:text-pink-600 transition-all duration-300 group-hover:scale-110"
-                                    :class="{ 'border-pink-500/30 text-pink-600 scale-110': isBulkCardActive }">
+                                <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-background shadow-sm group-hover:border-indigo-500/30 group-hover:text-indigo-600 transition-all duration-300 group-hover:scale-110"
+                                    :class="{ 'border-indigo-500/30 text-indigo-600 scale-110': isBulkCardActive }">
                                     <ArrowRight class="h-5 w-5" />
                                 </div>
                             </div>
@@ -950,7 +950,7 @@ onMounted(() => {
                                                     v-if="currentMode === 'auto' && (!chapter.content || chapter.content.trim() === '')"
                                                     @click="generateChapter('progressive', chapter.chapter_number)"
                                                     size="sm"
-                                                    class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-sm">
+                                                    class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-sm">
                                                     <Brain class="mr-1 h-4 w-4" />
                                                     Generate
                                                 </Button>
@@ -1051,24 +1051,24 @@ onMounted(() => {
                                             <label
                                                 class="group relative flex cursor-pointer flex-col justify-between gap-6 rounded-3xl border-2 p-6 transition-all duration-300 hover:shadow-xl overflow-hidden"
                                                 :class="generationType === 'bulk'
-                                                    ? 'border-pink-500 bg-pink-50/50 shadow-pink-500/10 dark:bg-pink-950/10'
-                                                    : 'border-border/50 bg-card hover:border-pink-500/30 hover:bg-accent/5'">
+                                                    ? 'border-indigo-500 bg-indigo-50/50 shadow-indigo-500/10 dark:bg-indigo-950/10'
+                                                    : 'border-border/50 bg-card hover:border-indigo-500/30 hover:bg-accent/5'">
 
                                                 <!-- Decorative background element for 'premium' feel -->
                                                 <div v-if="generationType === 'bulk'"
-                                                    class="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 blur-2xl">
+                                                    class="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-blue-500/20 to-indigo-500/20 blur-2xl">
                                                 </div>
 
                                                 <div class="flex items-start justify-between relative z-10">
                                                     <div
-                                                        class="p-3 rounded-2xl bg-pink-100/80 text-pink-600 dark:bg-pink-900/40 dark:text-pink-400 transition-colors group-hover:bg-pink-100 dark:group-hover:bg-pink-900/60">
+                                                        class="p-3 rounded-2xl bg-indigo-100/80 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 transition-colors group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60">
                                                         <Sparkles class="h-6 w-6" />
                                                     </div>
                                                     <div class="relative flex h-5 w-5 items-center justify-center">
                                                         <div class="h-5 w-5 rounded-full border-2 transition-colors"
-                                                            :class="generationType === 'bulk' ? 'border-pink-600' : 'border-muted-foreground/30'">
+                                                            :class="generationType === 'bulk' ? 'border-indigo-600' : 'border-muted-foreground/30'">
                                                         </div>
-                                                        <div class="absolute h-2.5 w-2.5 rounded-full bg-pink-600 transition-transform duration-200"
+                                                        <div class="absolute h-2.5 w-2.5 rounded-full bg-indigo-600 transition-transform duration-200"
                                                             :class="generationType === 'bulk' ? 'scale-100' : 'scale-0'">
                                                         </div>
                                                         <input type="radio" v-model="generationType" value="bulk"
@@ -1078,10 +1078,10 @@ onMounted(() => {
                                                 <div class="relative z-10">
                                                     <div class="flex items-center gap-2 mb-1">
                                                         <p
-                                                            class="text-lg font-bold text-foreground group-hover:text-pink-600 transition-colors">
+                                                            class="text-lg font-bold text-foreground group-hover:text-indigo-600 transition-colors">
                                                             Complete Project</p>
                                                         <Badge variant="secondary"
-                                                            class="bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 text-[10px] px-1.5 py-0 h-5">
+                                                            class="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-[10px] px-1.5 py-0 h-5">
                                                             POPULAR</Badge>
                                                     </div>
 
@@ -1127,7 +1127,7 @@ onMounted(() => {
 
                                         <div v-if="generationType === 'bulk'" class="space-y-4">
                                             <Button @click="generateChapter('bulk')" :disabled="isGenerating" size="lg"
-                                                class="w-full h-14 text-base font-semibold bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-700 hover:via-pink-700 hover:to-rose-700 text-white shadow-lg shadow-pink-500/25 transition-all hover:scale-[1.01] hover:shadow-pink-500/40">
+                                                class="w-full h-14 text-base font-semibold bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:via-indigo-700 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.01] hover:shadow-indigo-500/40">
                                                 <Zap v-if="!isGenerating" class="mr-2 h-5 w-5 fill-current" />
                                                 <Clock v-else class="mr-2 h-5 w-5 animate-spin" />
                                                 {{ isGenerating ? 'Generating Complete Project...' : `Generate
@@ -1135,7 +1135,7 @@ onMounted(() => {
                                             </Button>
                                             <p
                                                 class="text-sm text-center text-muted-foreground flex items-center justify-center gap-2">
-                                                <Sparkles class="h-4 w-4 text-pink-500" />
+                                                <Sparkles class="h-4 w-4 text-indigo-500" />
                                                 AI will collect literature, generate all chapters, and assemble the
                                                 complete project.
                                             </p>
@@ -1253,7 +1253,7 @@ onMounted(() => {
                                                     <Button
                                                         v-if="currentMode === 'auto' && !project.chapters.find((c) => c.chapter_number === i && c.content && c.content.trim() !== '')"
                                                         @click="generateChapter('progressive', i)" size="sm"
-                                                        class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
+                                                        class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white">
                                                         <Brain class="mr-1 h-4 w-4" />
                                                         Generate
                                                     </Button>
@@ -1422,13 +1422,13 @@ onMounted(() => {
             <!-- Bulk Generation Confirmation Dialog -->
             <Dialog v-model:open="showBulkGenerationDialog">
                 <DialogContent
-                    class="sm:max-w-lg p-0 gap-0 border-border/50 bg-background/80 backdrop-blur-3xl overflow-hidden shadow-2xl rounded-3xl">
+                    class="sm:max-w-md p-0 gap-0 border-border/50 bg-background/95 backdrop-blur-3xl overflow-hidden shadow-2xl rounded-2xl">
                     <!-- Stylish Header Background -->
                     <div
-                        class="relative h-36 w-full overflow-hidden bg-gradient-to-br from-purple-600 via-fuchsia-600 to-pink-600">
-                        <!-- Abstract Noise/Texture -->
+                        class="relative w-full overflow-hidden bg-gradient-to-br from-indigo-500 via-blue-600 to-indigo-700 p-6 sm:p-8">
+                        <!-- Abstract Noise/Texture (Subtle) -->
                         <div
-                            class="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]">
+                            class="absolute inset-0 opacity-10 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay">
                         </div>
                         <!-- Grid Pattern -->
                         <div
@@ -1436,95 +1436,68 @@ onMounted(() => {
                         </div>
 
                         <!-- Content -->
-                        <div class="absolute bottom-6 left-6 flex items-center gap-4 z-10">
+                        <div class="relative z-10 flex flex-col gap-2">
                             <div
-                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 border border-white/20 shadow-xl backdrop-blur-md">
-                                <Sparkles class="h-7 w-7 text-white" />
+                                class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 border border-white/20 shadow-lg backdrop-blur-md mb-2">
+                                <Sparkles class="h-6 w-6 text-white" />
                             </div>
-                            <div class="text-white">
-                                <h3 class="text-xl font-bold tracking-tight text-white mb-0.5 shadow-sm">
+                            <div>
+                                <h3 class="text-xl font-bold tracking-tight text-white shadow-sm">
                                     Complete Project
                                 </h3>
-                                <p class="text-xs font-medium text-white/80">AI Automated Workflow</p>
+                                <p class="text-sm font-medium text-blue-100/90">AI Automated Workflow</p>
                             </div>
                         </div>
                     </div>
 
-                    <div class="p-6 md:p-8 space-y-6">
-                        <!-- Description Box -->
-                        <div
-                            class="rounded-2xl border border-purple-100 bg-purple-50/50 p-5 dark:border-purple-900/30 dark:bg-purple-950/10">
-                            <p class="text-sm text-purple-900 dark:text-purple-100 leading-relaxed font-medium">
-                                "This will kickstart a comprehensive generation process. The AI will research, draft,
-                                and format
-                                your entire project based on the approved topic."
-                            </p>
-                        </div>
+                    <div class="p-6 space-y-6">
+                        <!-- Simplified Description -->
+                        <p class="text-sm text-muted-foreground leading-relaxed">
+                            Start a comprehensive generation process. The AI will research, draft, and format your
+                            entire project based on the approved topic.
+                        </p>
 
-                        <div class="space-y-4">
-                            <h4 class="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">Generation
-                                Components
-                            </h4>
-                            <div class="grid grid-cols-1 gap-3">
-                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                                    <div
-                                        class="h-8 w-8 rounded-full bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 flex items-center justify-center shrink-0">
-                                        <BookOpen class="h-4 w-4" />
-                                    </div>
-                                    <div class="text-sm">
-                                        <span class="font-semibold text-foreground block">Full Chapter Generation</span>
-                                        <span class="text-muted-foreground text-xs">Drafting sections 1-{{
-                                            maxAllowedChapters }}
-                                            with context.</span>
-                                    </div>
+                        <!-- Clean Component List -->
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-3 p-2 rounded-lg bg-secondary/30 border border-border/50">
+                                <div
+                                    class="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                    <BookOpen class="h-4 w-4" />
                                 </div>
+                                <div class="text-sm font-medium">Full Chapter Generation</div>
+                            </div>
 
-                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                                    <div
-                                        class="h-8 w-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center shrink-0">
-                                        <FileText class="h-4 w-4" />
-                                    </div>
-                                    <div class="text-sm">
-                                        <span class="font-semibold text-foreground block">Literature Integration</span>
-                                        <span class="text-muted-foreground text-xs">Finding and citing relevant academic
-                                            sources.</span>
-                                    </div>
+                            <div class="flex items-center gap-3 p-2 rounded-lg bg-secondary/30 border border-border/50">
+                                <div
+                                    class="h-8 w-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center shrink-0">
+                                    <FileText class="h-4 w-4" />
                                 </div>
+                                <div class="text-sm font-medium">Literature Integration</div>
+                            </div>
 
-                                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                                    <div
-                                        class="h-8 w-8 rounded-full bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center shrink-0">
-                                        <Edit class="h-4 w-4" />
-                                    </div>
-                                    <div class="text-sm">
-                                        <span class="font-semibold text-foreground block">Formatting & Appendices</span>
-                                        <span class="text-muted-foreground text-xs">Structuring preliminary pages and
-                                            references.</span>
-                                    </div>
+                            <div class="flex items-center gap-3 p-2 rounded-lg bg-secondary/30 border border-border/50">
+                                <div
+                                    class="h-8 w-8 rounded-full bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400 flex items-center justify-center shrink-0">
+                                    <Edit class="h-4 w-4" />
                                 </div>
+                                <div class="text-sm font-medium">Formatting & Appendices</div>
                             </div>
                         </div>
 
-                        <div
-                            class="flex items-center gap-3 rounded-xl bg-purple-50/80 p-4 border border-purple-100 dark:bg-purple-900/10 dark:border-purple-800/30">
-                            <Clock class="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
-                            <div class="text-sm">
-                                <p class="font-semibold text-purple-900 dark:text-purple-200">Estimated Duration</p>
-                                <p class="text-purple-700/80 dark:text-purple-300/80 text-xs">Approximately 15-20
-                                    minutes to
-                                    complete.</p>
-                            </div>
+                        <!-- Estimated Duration -->
+                        <div class="flex items-center gap-2 text-xs text-muted-foreground justify-center">
+                            <Clock class="h-3.5 w-3.5" />
+                            <span>Estimated 15-20 minutes</span>
                         </div>
                     </div>
 
                     <div
-                        class="border-t border-border/40 bg-muted/20 p-6 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
-                        <Button @click="showBulkGenerationDialog = false" variant="ghost"
-                            class="w-full sm:w-auto hover:bg-transparent hover:underline">
+                        class="border-t border-border/40 bg-muted/30 p-4 sm:p-6 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+                        <Button @click="showBulkGenerationDialog = false" variant="ghost" class="w-full sm:w-auto">
                             Cancel
                         </Button>
                         <Button @click="confirmBulkGeneration"
-                            class="w-full sm:w-auto h-11 px-8 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:scale-[1.02] transition-all font-semibold">
+                            class="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all">
                             <Sparkles class="mr-2 h-4 w-4" />
                             Start Generation
                         </Button>
